@@ -23,6 +23,9 @@ importers:
       '@aurastage/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@aurastage/engines':
+        specifier: workspace:*
+        version: link:../../engines
       '@fastify/cors':
         specifier: ^10.0.1
         version: 10.1.0
@@ -48,12 +51,18 @@ importers:
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.4)
 
   apps/web:
     dependencies:
       '@aurastage/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@aurastage/engines':
+        specifier: workspace:*
+        version: link:../../engines
       '@supabase/supabase-js':
         specifier: ^2.45.4
         version: 2.117.2

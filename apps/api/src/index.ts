@@ -9,6 +9,7 @@ import cors from "@fastify/cors";
 import { registerAuth } from "./infrastructure/auth";
 import { registerProjectsRoutes } from "./modules/projects/projects.controller";
 import { registerCollaborationRoutes } from "./modules/collaboration/collaboration.controller";
+import { registerScreenplayRoutes } from "./modules/screenplay/screenplay.controller";
 
 const app = Fastify({ logger: true });
 
@@ -20,13 +21,14 @@ async function main() {
   app.get("/health", async () => ({
     status: "ok",
     service: "aurastage-api",
-    phase: 1,
+    phase: 2,
     timestamp: new Date().toISOString(),
   }));
 
   await registerAuth(app);
   await registerProjectsRoutes(app);
   await registerCollaborationRoutes(app);
+  await registerScreenplayRoutes(app);
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });

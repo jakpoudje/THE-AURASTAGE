@@ -51,7 +51,7 @@ messages must be safe; diagnostic detail belongs in authorized logs only.
 
 - [x] Phase 0 — repository skeleton, CLAUDE.md, contracts stubs, workspace tooling
 - [x] Phase 1 — Project + Assets + permissions + audit + MOS foundation (org/project CRUD, RLS, audit trigger, jobs table skeleton; asset ingest still open)
-- [ ] Phase 2 — Scriptwriter
+- [ ] Phase 2 — Scriptwriter (in progress: story setup, runtime plan, structured editor, versions, approval → canonical scenes, character candidates are live; AI story development/script generation waits on the Provider Gateway, Phase 7; screenplay file import still open)
 - [ ] Phase 3 — Casting & Characters
 - [ ] Phase 4 — Dialogue Intelligence
 - [ ] Phase 5 — Scene DNA + production graph/invalidation

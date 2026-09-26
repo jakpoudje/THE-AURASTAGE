@@ -1,40 +1,29 @@
 # Scriptwriter (frontend module)
 
 ## Purpose
-Frontend workspace for the Scriptwriter production stage.
+Frontend workspace for the Scriptwriter production stage
+(docs/design/UI_REFERENCE.md §3). Route: `/projects/[id]/scriptwriter`.
 
 ## Canonical owner
 apps/api/src/modules/screenplay (canonical object: Script / Scene)
 
+## Steps
+1 Project Setup (story fields + runtime) · 2 Story Development (AI, not yet) ·
+3 Outline & Structure (runtime plan) · 4 Generate Script (AI, not yet) ·
+5 Edit & Refine (editor, live preview + analysis, versions, approve) ·
+6 Scene Breakdown · 7 Character Extraction.
+Steps 2 and 4 say plainly that they need an AI writing service (Phase 7).
+
 ## Inputs / reads
-TODO — fill in as the module is built (Build Guide §12 requires this to stay current).
+`GET /api/projects/:id`, `GET /api/projects/:id/script`, `GET /api/projects/:id/scope-plan`.
 
 ## Outputs / writes
-TODO
-
-## Upstream dependencies
-TODO
-
-## Downstream consumers
-TODO
+`PATCH /api/projects/:id` (story setup), `POST .../script/versions`, `POST .../script/approve`.
 
 ## Relevant engines
-engines/story/**
+engines/story/** — run in the browser for live analysis (same deterministic
+engines the API uses, so numbers match what gets saved).
 
-## API endpoints
-TODO
-
-## Database objects
-TODO
-
-## Events emitted / consumed
-TODO
-
-## Permissions
-TODO
-
-## Tests
-See ./tests
-
-## Known operational error codes
-TODO
+## Structure
+`page.tsx` (composition) · `hooks/useScriptwriter.ts` · `api/scriptwriterApi.ts`
+· `components/*` · `types/`. Shared chrome: `src/components/AppShell.tsx`.

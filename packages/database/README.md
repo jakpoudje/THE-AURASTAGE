@@ -22,6 +22,19 @@ SQL editor, the `supabase` CLI, or the MCP tool.
 - `0003_phase1_project_audit_trigger.sql` — writes an `audit_events` row on
   every Project insert/update/delete (SRS §2.2 event model; simplified outbox
   for Phase 1, replaced by a full transactional outbox once MOS/workers land).
+- `0004_phase2_scriptwriter.sql` — Scriptwriter story fields on `projects`
+  (tone, audience, opening/ending style); `scripts`, immutable
+  `script_versions`, and `scenes` (read-only via RLS). All writes go through
+  `save_script_version()` (optimistic concurrency, AURA-SCR-409) and
+  `approve_script_version()` (idempotent scene upsert; changed scenes →
+  `review_state = 'review_required'`, removed scenes → `omitted`, never
+  deleted). Both write `ScriptVersionSaved` / `ScriptApproved` audit events.
+- `0005_revoke_public_function_execute.sql` — fixes Supabase advisor 0028:
+  revokes the default PUBLIC execute grant so signed-out callers can't reach
+  SECURITY DEFINER functions; the audit trigger function isn't callable at all.
+
+Integration check for 0004: `tests/integration/scriptwriter_db.sql` (runs in a
+rolled-back transaction; expected output is listed in the file).
 
 ## Client
 

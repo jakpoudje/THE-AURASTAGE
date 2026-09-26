@@ -63,6 +63,8 @@ export const IntExtSchema = z.enum(["INT", "EXT", "INT/EXT", "UNKNOWN"]);
 export type IntExt = z.infer<typeof IntExtSchema>;
 
 export const SceneStatusSchema = z.enum(["active", "omitted"]);
+/** CLAUDE.md rule 11: set when a re-approved script changed or dropped this scene, so downstream work gets re-checked, never silently overwritten. */
+export const SceneReviewStateSchema = z.enum(["current", "review_required"]);
 
 export const SceneSchema = z.object({
   id: z.string().uuid(),
@@ -78,8 +80,11 @@ export const SceneSchema = z.object({
   estimated_seconds: z.number().int().nonnegative(),
   element_start: z.number().int().nonnegative(),
   element_end: z.number().int().nonnegative(),
+  /** sha256 of the scene's element types + text; changes only when the scene's content changes. */
+  content_hash: z.string(),
   source_version_id: z.string().uuid(),
   status: SceneStatusSchema,
+  review_state: SceneReviewStateSchema,
   created_at: z.string(),
   updated_at: z.string(),
 });
