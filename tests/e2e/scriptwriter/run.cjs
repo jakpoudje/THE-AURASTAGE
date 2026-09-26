@@ -33,7 +33,7 @@ const SP = process.env.E2E_OUT || require("os").tmpdir(), BASE = "http://localho
   await step("write, save v1, approve", async () => {
     await page.locator("main nav button", { hasText: "Edit & Refine" }).click();
     await page.getByText("Insert a short example").click();
-    await page.getByText("Unsaved changes").waitFor();
+    await page.getByText("Unsaved changes", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Save version" }).click();
     await page.getByText("Saved as version 1.").waitFor();
     await page.getByRole("button", { name: "Approve script" }).click();
@@ -73,7 +73,22 @@ const SP = process.env.E2E_OUT || require("os").tmpdir(), BASE = "http://localho
     await page.evaluate(async () => { await fetch("http://localhost:3911/api/projects/11111111-1111-4111-8111-111111111111/script/versions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_text: "INT. X - DAY\n", base_version_id: (await (await fetch("http://localhost:3911/api/projects/11111111-1111-4111-8111-111111111111/script")).json()).current_version.id }) }); });
     const ta = page.locator("textarea"); await ta.fill((await ta.inputValue()) + "\nMore.\n");
     await page.getByRole("button", { name: "Save version" }).click();
-    await page.getByText(/Someone saved a newer version/).waitFor();
+    await page.getByText(/Someone saved a newer version while you were editing/).waitFor();
+    await page.getByRole("button", { name: "Save mine as the newest version" }).click();
+    await page.getByText(/Saved as version 4\./).waitFor();
+  });
+  await step("unsaved typing survives a reload and can be discarded", async () => {
+    const ta = page.locator("textarea");
+    await ta.fill((await ta.inputValue()) + "\nUNSAVED LINE FOR RECOVERY.\n");
+    await page.waitForTimeout(800);
+    await page.reload();
+    await page.getByText(/We kept your unsaved changes/).waitFor();
+    await page.locator("main nav button", { hasText: "Edit & Refine" }).click();
+    if (!(await page.locator("textarea").inputValue()).includes("UNSAVED LINE FOR RECOVERY")) throw new Error("text not recovered");
+    await page.getByText("Unsaved changes", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Discard them" }).click();
+    if ((await page.locator("textarea").inputValue()).includes("UNSAVED LINE FOR RECOVERY")) throw new Error("not discarded");
+    await page.getByText("All changes saved").waitFor();
   });
   console.log("ERRORS:", errors.filter((e) => !/Failed to load resource.*(409|404)/.test(e)));
   await browser.close();

@@ -61,7 +61,16 @@ export default function ScriptwriterPage() {
       project={sw.project}
       active="scriptwriter"
       actions={
-        approvedId ? (
+        <>
+        <button
+          onClick={() => sw.saveVersion()}
+          disabled={!sw.dirty || sw.busy !== null || sw.conflict}
+          title={sw.dirty ? "Save a new version of the script" : "All changes saved"}
+          className="rounded-md border border-aura-border px-4 py-2 text-sm disabled:opacity-40"
+        >
+          {sw.busy === "save" ? "Saving…" : sw.dirty ? "Save" : "Saved"}
+        </button>
+        {approvedId ? (
           <Link href={`/projects/${id}/casting`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
             Next: Casting & Characters →
           </Link>
@@ -69,7 +78,8 @@ export default function ScriptwriterPage() {
           <button onClick={() => setStep("edit")} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
             Open Script Editor →
           </button>
-        )
+        )}
+        </>
       }
     >
       <section className="border-b border-aura-border bg-gradient-to-r from-black via-[#16120a] to-black px-8 py-10">
@@ -99,6 +109,31 @@ export default function ScriptwriterPage() {
         ))}
       </nav>
 
+      {sw.recovered && (
+        <div className="mx-6 mt-4 flex flex-wrap items-center gap-3 rounded-md border border-aura-gold/40 px-4 py-2 text-sm text-aura-gold">
+          <span className="flex-1">
+            We kept your unsaved changes from {new Date(sw.recovered).toLocaleString()}. Save a version to keep them.
+          </span>
+          <button onClick={() => setStep("edit")} className="underline">
+            Show me
+          </button>
+          <button onClick={sw.discardRecovered} className="text-white/60 hover:text-white">
+            Discard them
+          </button>
+        </div>
+      )}
+      {sw.conflict && (
+        <div className="mx-6 mt-4 flex flex-wrap items-center gap-3 rounded-md border border-sky-400/40 px-4 py-2 text-sm text-sky-200">
+          <span className="flex-1">A newer version was saved since you started. Your text can be saved after it — nothing is overwritten.</span>
+          <button
+            onClick={() => sw.saveVersion(undefined, true)}
+            disabled={sw.busy !== null}
+            className="rounded-md border border-sky-400/60 px-3 py-1 disabled:opacity-50"
+          >
+            Save mine as the newest version
+          </button>
+        </div>
+      )}
       {(sw.error || sw.notice) && (
         <div className={`mx-6 mt-4 rounded-md border px-4 py-2 text-sm ${sw.error ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300"}`}>
           {sw.error ?? sw.notice}

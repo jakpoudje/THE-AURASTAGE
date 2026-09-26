@@ -4,12 +4,13 @@
 // analysis runs the same deterministic engines the API uses, so what the
 // writer sees while typing matches what gets saved.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Project, ScopePlan, UpdateProjectInput } from "@aurastage/contracts";
 import { sceneBoundaryEngine, screenplayFormatEngine, screenplayImportEngine } from "@aurastage/engines";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ApiError } from "@/lib/apiClient";
+import { clearDraft, readDraft, writeDraft } from "@/lib/localDraft";
 import { scriptwriterApi } from "../api/scriptwriterApi";
 import type { ScriptWorkspace } from "../types";
 
@@ -23,6 +24,11 @@ export function useScriptwriter(projectId: string) {
   const [busy, setBusy] = useState<null | "setup" | "save" | "approve">(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Set when a save hit 409: someone else saved first. Lets the writer save on top of the latest. */
+  const [conflict, setConflict] = useState(false);
+  const [recovered, setRecovered] = useState<string | null>(null);
+  const draftScope = `script:${projectId}`;
+  const ready = useRef(false);
 
   const load = useCallback(async () => {
     const [p, ws, sp] = await Promise.all([
@@ -33,8 +39,18 @@ export function useScriptwriter(projectId: string) {
     setProject(p);
     setWorkspace(ws);
     setPlan(sp.plan);
-    setDraft(ws.current_version?.source_text ?? "");
-  }, [projectId]);
+    const saved = ws.current_version?.source_text ?? "";
+    const local = readDraft(draftScope);
+    if (local && local.text !== saved) {
+      setDraft(local.text);
+      setRecovered(local.saved_at);
+      if (local.base_version_id !== (ws.current_version?.id ?? null)) setConflict(true);
+    } else {
+      if (local) clearDraft(draftScope);
+      setDraft(saved);
+    }
+    ready.current = true;
+  }, [projectId, draftScope]);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +81,33 @@ export function useScriptwriter(projectId: string) {
   const savedText = workspace?.current_version?.source_text ?? "";
   const dirty = draft !== savedText;
 
+  // Keep unsaved typing on this device (debounced) and warn before leaving with unsaved changes.
+  const baseId = workspace?.current_version?.id ?? null;
+  useEffect(() => {
+    if (!ready.current) return;
+    const t = setTimeout(() => {
+      if (dirty) writeDraft(draftScope, { text: draft, base_version_id: baseId, saved_at: new Date().toISOString() });
+      else clearDraft(draftScope);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [draft, dirty, baseId, draftScope]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  function discardRecovered() {
+    clearDraft(draftScope);
+    setDraft(savedText);
+    setRecovered(null);
+    setConflict(false);
+  }
+
   async function run<T>(kind: "setup" | "save" | "approve", fn: () => Promise<T>) {
     setBusy(kind);
     setError(null);
@@ -73,7 +116,8 @@ export function useScriptwriter(projectId: string) {
       return await fn();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setError(`${err.message} Your text is still in the editor — copy it before reloading.`);
+        setConflict(true);
+        setError("Someone saved a newer version while you were editing. Your text is safe in the editor.");
       } else {
         setError(err instanceof Error ? err.message : "Something went wrong");
       }
@@ -92,14 +136,20 @@ export function useScriptwriter(projectId: string) {
       setNotice("Story setup saved.");
     });
 
-  const saveVersion = (note?: string) =>
+  const saveVersion = (note?: string, onTopOfLatest = false) =>
     run("save", async () => {
+      // "Save on top of latest" re-reads the newest version and saves the writer's text after it.
+      // Nothing is lost: every earlier version, including the other person's, stays in history.
+      const base = onTopOfLatest ? (await scriptwriterApi.getWorkspace(projectId)).current_version?.id ?? null : baseId;
       const v = await scriptwriterApi.saveVersion(projectId, {
         source_text: draft,
-        base_version_id: workspace?.current_version?.id ?? null,
-        note: note || undefined,
+        base_version_id: base,
+        note: note || (onTopOfLatest ? "Saved on top of a newer version" : undefined),
       });
       setWorkspace(await scriptwriterApi.getWorkspace(projectId));
+      clearDraft(draftScope);
+      setConflict(false);
+      setRecovered(null);
       setNotice(`Saved as version ${v.version_number}.`);
     });
 
@@ -132,6 +182,9 @@ export function useScriptwriter(projectId: string) {
   }
 
   return {
+    conflict,
+    recovered,
+    discardRecovered,
     importFile,
     project,
     workspace,
