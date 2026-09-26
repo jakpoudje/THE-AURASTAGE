@@ -1,6 +1,10 @@
 // apps/api/src/modules/characters/characters.events.ts
-// Typed domain events emitted after committed changes.
 // Domain: Casting & Characters
-// Canonical object: Character / CharacterState
-
-export {};
+// Written transactionally into audit_events by the migration-0006 functions.
+export const CHARACTER_EVENTS = {
+  Synced: "CharactersSynced",
+  Updated: "CharacterUpdated",
+  AliasAdded: "CharacterAliasAdded",
+  Merged: "CharacterMerged",
+  Unmerged: "CharacterUnmerged",
+} as const;

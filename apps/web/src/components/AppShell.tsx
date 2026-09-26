@@ -11,7 +11,7 @@ import type { Project } from "@aurastage/contracts";
 
 export const STAGES = [
   { key: "scriptwriter", label: "Scriptwriter", path: "scriptwriter" },
-  { key: "casting", label: "Casting & Characters" },
+  { key: "casting", label: "Casting & Characters", path: "casting" },
   { key: "dialogue", label: "Dialogue Intelligence" },
   { key: "scene-dna", label: "Scene DNA" },
   { key: "storyboard", label: "Storyboard & Shots" },

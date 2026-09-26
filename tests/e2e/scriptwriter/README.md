@@ -19,3 +19,6 @@ cd apps/web && NEXT_PUBLIC_API_URL=http://localhost:3911 NEXT_PUBLIC_SUPABASE_UR
 # CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome
 node tests/e2e/scriptwriter/run.cjs          # every line should read PASS
 ```
+
+The same stand-in API also serves the Casting endpoints; see `tests/e2e/casting/run.cjs`
+(start a fresh `mock-api.cjs` for each run — it keeps state in memory).

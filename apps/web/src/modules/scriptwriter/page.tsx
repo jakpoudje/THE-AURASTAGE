@@ -61,12 +61,15 @@ export default function ScriptwriterPage() {
       project={sw.project}
       active="scriptwriter"
       actions={
-        <button
-          onClick={() => setStep("edit")}
-          className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black"
-        >
-          Open Script Editor →
-        </button>
+        approvedId ? (
+          <Link href={`/projects/${id}/casting`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Next: Casting & Characters →
+          </Link>
+        ) : (
+          <button onClick={() => setStep("edit")} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Open Script Editor →
+          </button>
+        )
       }
     >
       <section className="border-b border-aura-border bg-gradient-to-r from-black via-[#16120a] to-black px-8 py-10">
