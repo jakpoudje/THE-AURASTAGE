@@ -32,6 +32,10 @@ export const ProjectSchema = z.object({
   setting: z.string().nullable().optional(),
   time_period: z.string().nullable().optional(),
   logline: z.string().nullable().optional(),
+  tone: z.string().nullable().optional(),
+  audience: z.string().nullable().optional(),
+  opening_style: z.string().nullable().optional(),
+  ending_style: z.string().nullable().optional(),
   target_runtime_minutes: z.number().int().positive().nullable().optional(),
   status: ProjectStatusSchema,
   created_by: z.string().uuid().nullable().optional(),
@@ -52,6 +56,10 @@ export const CreateProjectInputSchema = z.object({
   setting: z.string().max(200).optional(),
   time_period: z.string().max(100).optional(),
   logline: z.string().max(500).optional(),
+  tone: z.string().max(100).optional(),
+  audience: z.string().max(100).optional(),
+  opening_style: z.string().max(100).optional(),
+  ending_style: z.string().max(100).optional(),
   target_runtime_minutes: z.number().int().min(1).max(600).optional(),
 });
 export type CreateProjectInput = z.infer<typeof CreateProjectInputSchema>;
