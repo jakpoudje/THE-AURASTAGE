@@ -44,6 +44,7 @@ export function ProjectSetupForm({
     setting: project.setting ?? "",
     time_period: project.time_period ?? "",
     logline: project.logline ?? "",
+    synopsis: project.synopsis ?? "",
     tone: project.tone ?? "",
     audience: project.audience ?? "",
     opening_style: project.opening_style ?? "",
@@ -60,6 +61,14 @@ export function ProjectSetupForm({
     e.preventDefault();
     // Send empty strings (not undefined) so clearing a field actually clears it.
     const opt = (v: string) => v.trim();
+    // A pasted story outline in the logline box is kept, as the synopsis.
+    let logline = opt(f.logline);
+    let synopsis = opt(f.synopsis);
+    if (logline.length > 500) {
+      synopsis = synopsis ? `${logline}\n\n${synopsis}` : logline;
+      logline = "";
+      setF((s) => ({ ...s, logline: "", synopsis }));
+    }
     onSave({
       title: f.title.trim(),
       type: f.type,
@@ -68,7 +77,8 @@ export function ProjectSetupForm({
       subgenre: opt(f.subgenre),
       setting: opt(f.setting),
       time_period: opt(f.time_period),
-      logline: opt(f.logline),
+      logline,
+      synopsis,
       tone: opt(f.tone),
       audience: opt(f.audience),
       opening_style: opt(f.opening_style),
@@ -123,8 +133,14 @@ export function ProjectSetupForm({
           <input placeholder="Present day" maxLength={100} {...text("time_period")} />
         </Field>
       </div>
-      <Field label="Logline">
-        <textarea rows={2} maxLength={500} placeholder="One or two sentences: who wants what, and what stands in the way." {...text("logline")} />
+      <Field label={`Logline (${f.logline.trim().length}/500)`}>
+        <textarea rows={2} placeholder="One or two sentences: who wants what, and what stands in the way." {...text("logline")} />
+      </Field>
+      {f.logline.trim().length > 500 && (
+        <p className="-mt-2 text-xs text-aura-gold">That's longer than a logline — it will be saved as your story synopsis.</p>
+      )}
+      <Field label={`Story synopsis (${f.synopsis.trim().length.toLocaleString()}/20,000)`}>
+        <textarea rows={6} maxLength={20000} placeholder="Acts, key events, the ending — as long as you need." {...text("synopsis")} />
       </Field>
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Tone">

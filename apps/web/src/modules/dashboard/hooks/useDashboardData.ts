@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Organization, Project } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet, apiPost } from "@/lib/apiClient";
+import type { NewProjectInput } from "../components/NewProjectForm";
 
 export function useDashboardData() {
   const router = useRouter();
@@ -48,7 +49,7 @@ export function useDashboardData() {
     };
   }, [router, refreshProjects]);
 
-  async function createProject(input: { title: string; genre?: string; logline?: string; target_runtime_minutes?: number }) {
+  async function createProject(input: NewProjectInput) {
     if (!org) return;
     await apiPost("/api/projects", { org_id: org.id, ...input });
     await refreshProjects(org.id);

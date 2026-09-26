@@ -20,6 +20,14 @@ http.createServer((req, res) => {
     console.log(req.method, u);
     if (u === "/api/organizations/bootstrap") return send(200, { id: ORG, name: "Test Studio", slug: "t", created_at: now() });
     if (u === "/api/projects" && req.method === "GET") return send(200, [project]);
+    if (u === "/api/projects" && req.method === "POST") {
+      // Same validation as the real API (packages/contracts).
+      const c = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));
+      console.log("POST /api/projects body:", body);
+      const r = c.CreateProjectInputSchema.safeParse(b);
+      if (!r.success) return send(400, { error: { code: "AURA-SCR-001", message: "Invalid project input", issues: r.error.issues } });
+      return send(201, { ...project, ...r.data, id: crypto.randomUUID() });
+    }
     if (u === `/api/projects/${P}` && req.method === "GET") return send(200, project);
     if (u === `/api/projects/${P}` && req.method === "PATCH") { const { org_id, ...rest } = b; project = { ...project, ...rest, updated_at: now() }; return send(200, project); }
     if (u === `/api/projects/${P}/script`) return send(200, ws());

@@ -33,6 +33,12 @@ SQL editor, the `supabase` CLI, or the MCP tool.
   revokes the default PUBLIC execute grant so signed-out callers can't reach
   SECURITY DEFINER functions; the audit trigger function isn't callable at all.
 
+- `0006_phase3_casting.sql` — Casting: `characters`, `character_aliases`,
+  `character_appearances` + sync/update/alias/merge/unmerge functions
+  (see apps/api/src/modules/characters/README.md). Test: `tests/integration/casting_db.sql`.
+- `0007_project_synopsis.sql` — long-form `synopsis` on projects (≤ 20,000
+  chars); the logline stays a short pitch (≤ 500).
+
 Integration check for 0004: `tests/integration/scriptwriter_db.sql` (runs in a
 rolled-back transaction; expected output is listed in the file).
 

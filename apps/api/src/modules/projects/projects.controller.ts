@@ -9,6 +9,9 @@ import { ForbiddenError } from "./projects.permissions";
 
 function handleError(err: unknown, reply: FastifyReply) {
   if (err instanceof ProjectValidationError) {
+    // Log which fields failed (paths/codes only, never the user's text) so live 400s are diagnosable.
+    const issues = (err.issues as { path: unknown[]; code: string }[]).map((i) => ({ path: i.path.join("."), code: i.code }));
+    reply.log.warn({ code: err.code, issues }, "project input rejected");
     return reply.code(400).send({ error: { code: err.code, message: err.message, issues: err.issues } });
   }
   if (err instanceof ForbiddenError) {

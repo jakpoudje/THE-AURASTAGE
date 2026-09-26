@@ -32,6 +32,7 @@ export const ProjectSchema = z.object({
   setting: z.string().nullable().optional(),
   time_period: z.string().nullable().optional(),
   logline: z.string().nullable().optional(),
+  synopsis: z.string().nullable().optional(),
   tone: z.string().nullable().optional(),
   audience: z.string().nullable().optional(),
   opening_style: z.string().nullable().optional(),
@@ -55,7 +56,10 @@ export const CreateProjectInputSchema = z.object({
   subgenre: z.string().max(100).optional(),
   setting: z.string().max(200).optional(),
   time_period: z.string().max(100).optional(),
-  logline: z.string().max(500).optional(),
+  /** One or two sentences. Longer story text belongs in `synopsis`. */
+  logline: z.string().max(500, "Logline must be 500 characters or fewer — put longer story text in the synopsis").optional(),
+  /** Long-form story outline (acts, beats). Feeds Story Development. */
+  synopsis: z.string().max(20000, "Synopsis must be 20,000 characters or fewer").optional(),
   tone: z.string().max(100).optional(),
   audience: z.string().max(100).optional(),
   opening_style: z.string().max(100).optional(),
