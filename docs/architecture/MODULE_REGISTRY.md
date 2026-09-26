@@ -50,7 +50,7 @@ messages must be safe; diagnostic detail belongs in authorized logs only.
 ## Build phase status
 
 - [x] Phase 0 — repository skeleton, CLAUDE.md, contracts stubs, workspace tooling
-- [ ] Phase 1 — Project + Assets + permissions + audit + MOS foundation
+- [x] Phase 1 — Project + Assets + permissions + audit + MOS foundation (org/project CRUD, RLS, audit trigger, jobs table skeleton; asset ingest still open)
 - [ ] Phase 2 — Scriptwriter
 - [ ] Phase 3 — Casting & Characters
 - [ ] Phase 4 — Dialogue Intelligence
