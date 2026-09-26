@@ -56,3 +56,15 @@ Phase 0 (this scaffold) -> 1 Project+Assets+permissions+audit+MOS foundation -> 
 - Tests pass and a regression test exists for bugs.
 - Module README is updated if behavior/contracts changed.
 - Every response ends with a concise changed-file manifest and downstream impact note.
+
+## Working agreement
+
+The owner (Julius) is not technical. Every session works fully autonomously under these rules:
+
+1. Never ask the owner technical questions or for permission. Make the professional decision yourself, following this file, `docs/SRS/` and `docs/design/UI_REFERENCE.md`.
+2. Only stop to ask for things only the owner can provide (a payment, an account login, an API key, or an environment/network setting). Say exactly where to find or change it.
+3. Loop for every piece of work: build it -> run tests and the full `pnpm build` -> push to `main` -> watch the Railway deploys for both services (`THE-AURASTAGE` API and `web`) and fix any failure -> verify the live site yourself.
+4. Live verification means: `GET https://the-aurastage-production.up.railway.app/health` returns ok, `https://web-production-be750e.up.railway.app` loads, and a real signed-in test of the new feature passes. Create a throwaway test account for it (e.g. `*@aurastage.invalid`) and delete it (and its org/projects) afterwards.
+5. Never say something is done until it has been checked live. If a check could not be run, say so plainly and say why.
+6. Build order: finish the current phase, then continue through the phases in "Build order" above. After each phase, give the owner a short plain-language update: what's new, the link to see it, and what to try.
+7. Database migrations live in `packages/database/migrations/` and are applied to the live Supabase project (ref `wczporjnmgdqmxqxvbhm`) in the same piece of work; run the Supabase security advisor afterwards.
