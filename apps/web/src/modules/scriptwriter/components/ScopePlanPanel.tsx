@@ -29,7 +29,7 @@ export function ScopePlanPanel({ plan, actualScenes }: { plan: ScopePlan | null;
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/5">
               <div className="h-full bg-aura-gold/70" style={{ width: `${(a.minutes / plan.target_runtime_minutes) * 100}%` }} />
             </div>
-            <span className="w-32 shrink-0 text-right text-white/60">
+            <span className="w-40 shrink-0 text-right text-white/60">
               {a.minutes} min · {a.scenes} scenes
             </span>
           </div>

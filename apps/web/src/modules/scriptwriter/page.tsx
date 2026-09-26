@@ -117,7 +117,7 @@ export default function ScriptwriterPage() {
             <h2 className="font-display text-xl">{STEPS.find((s) => s.key === step)!.label}</h2>
             <p className="mt-2 text-sm text-white/60">
               AI story development and script generation will switch on once an AI writing service is connected to
-              The AuraStage. Until then, write or paste your screenplay in Edit & Refine — everything else on this page
+              The AuraStage. Until then, write, paste or import (Final Draft or Fountain) your screenplay in Edit & Refine — everything else on this page
               already works with it.
             </p>
             <button onClick={() => setStep("edit")} className="mt-4 rounded-md border border-aura-gold/60 px-4 py-2 text-sm text-aura-gold">
@@ -138,6 +138,7 @@ export default function ScriptwriterPage() {
               approved={!!currentId && currentId === approvedId}
               onSave={sw.saveVersion}
               onApprove={sw.approveCurrent}
+              onImport={sw.importFile}
             />
             <div className="space-y-4">
               <ScriptAnalysisPanel analysis={sw.live.analysis} />

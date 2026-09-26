@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Project, ScopePlan, UpdateProjectInput } from "@aurastage/contracts";
-import { sceneBoundaryEngine, screenplayFormatEngine } from "@aurastage/engines";
+import { sceneBoundaryEngine, screenplayFormatEngine, screenplayImportEngine } from "@aurastage/engines";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ApiError } from "@/lib/apiClient";
 import { scriptwriterApi } from "../api/scriptwriterApi";
@@ -112,7 +112,27 @@ export function useScriptwriter(projectId: string) {
       setNotice("Script approved. Scenes are now the production anchor for every later stage.");
     });
 
+  /** Loads a file into the editor (not saved until the writer clicks Save version). Returns a suggested version note. */
+  function importFile(fileName: string, content: string): string | null {
+    setError(null);
+    setNotice(null);
+    try {
+      const out = screenplayImportEngine({ file_name: fileName, content });
+      setDraft(out.source_text);
+      const scenes = sceneBoundaryEngine({ elements: screenplayFormatEngine({ source_text: out.source_text }).elements }).scenes.length;
+      setNotice(
+        `Imported ${fileName}: ${scenes} ${scenes === 1 ? "scene" : "scenes"} found. Review it, then click Save version.` +
+          (out.warnings.length ? ` Note: ${out.warnings.join(" ")}` : "")
+      );
+      return `Imported from ${fileName}`;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not import that file");
+      return null;
+    }
+  }
+
   return {
+    importFile,
     project,
     workspace,
     plan,

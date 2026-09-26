@@ -103,6 +103,7 @@ export function AppShell({
               return (
                 <li key={s.key} className="flex items-center gap-1">
                   <span
+                    title={s.label}
                     className={`flex items-center gap-1.5 whitespace-nowrap px-1 pb-1 text-[11px] ${
                       isActive ? "border-b-2 border-aura-gold text-aura-gold" : "text-white/40"
                     }`}
@@ -114,7 +115,7 @@ export function AppShell({
                     >
                       {i + 1}
                     </span>
-                    {s.label}
+                    <span className={isActive ? "" : "hidden 2xl:inline"}>{s.label}</span>
                   </span>
                   {i < STAGES.length - 1 && <span className="text-white/20">–</span>}
                 </li>

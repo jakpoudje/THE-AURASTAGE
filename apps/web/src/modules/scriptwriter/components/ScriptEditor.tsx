@@ -4,7 +4,7 @@
 // formatted preview. Saving creates a new immutable version; approving pins
 // the saved version and derives the canonical scene list from it.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ScreenplayElement } from "@aurastage/contracts";
 import { ScreenplayPreview } from "./ScreenplayPreview";
 
@@ -34,6 +34,7 @@ export function ScriptEditor({
   approved,
   onSave,
   onApprove,
+  onImport,
 }: {
   draft: string;
   setDraft: (v: string) => void;
@@ -44,14 +45,37 @@ export function ScriptEditor({
   approved: boolean;
   onSave: (note?: string) => void;
   onApprove: () => void;
+  onImport: (fileName: string, content: string) => string | null;
 }) {
   const [view, setView] = useState<"write" | "preview">("write");
   const [note, setNote] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (draft.trim() && !window.confirm("Replace the text in the editor with this file? Your saved versions are kept.")) return;
+    const suggested = onImport(file.name, await file.text());
+    if (suggested) {
+      setNote(suggested);
+      setView("write");
+    }
+  }
 
   return (
     <div className="rounded-xl border border-aura-border bg-aura-panel">
       <div className="flex flex-wrap items-center gap-2 border-b border-aura-border px-4 py-2">
         <h2 className="mr-auto font-display text-lg">Script Editor</h2>
+        <input ref={fileRef} type="file" accept=".fdx,.fountain,.txt,.spmd" onChange={handleFile} className="hidden" />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={busy !== null}
+          className="rounded-md border border-aura-border px-3 py-1 text-xs text-white/70 hover:border-aura-gold/60"
+          title="Final Draft (.fdx), Fountain (.fountain) or plain text (.txt)"
+        >
+          Import file
+        </button>
         {(["write", "preview"] as const).map((v) => (
           <button
             key={v}

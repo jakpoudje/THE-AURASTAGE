@@ -55,5 +55,7 @@ not found · AURA-SCR-409 concurrent edit · AURA-SCR-500 unexpected.
 
 ## Not built yet
 AI story development / outline / script generation (needs the Provider Gateway,
-Phase 7 — `commands/GenerateScreenplay.ts` is still an empty stub), screenplay
-file import (FDX/PDF), and the character-extraction job (Phase 3).
+Phase 7 — `commands/GenerateScreenplay.ts` is still an empty stub), PDF
+import, and the character-extraction job (Phase 3). Final Draft / Fountain
+import runs in the browser via `engines/story/screenplayImportEngine` and is
+saved through the normal versions endpoint.

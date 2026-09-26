@@ -1,0 +1,80 @@
+const { chromium } = require("playwright");
+const SP = process.env.E2E_OUT || require("os").tmpdir(), BASE = "http://localhost:3902", P = "11111111-1111-4111-8111-111111111111";
+(async () => {
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+  page.on("console", (m) => m.type() === "error" && errors.push("console: " + m.text()));
+  page.on("dialog", (d) => d.accept());
+  await page.goto(BASE + "/sign-in");
+  const session = { access_token: "fake", refresh_token: "fake", token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 36000, user: { id: "u1", email: "e2e@aurastage.invalid", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: new Date().toISOString() } };
+  await page.evaluate((s) => localStorage.setItem("sb-localhost-auth-token", JSON.stringify(s)), session);
+  const step = async (name, fn) => { try { await fn(); console.log("PASS", name); } catch (e) { console.log("FAIL", name, e.message.split("\n")[0]); await page.screenshot({ path: `${SP}/fail-${name.replace(/\W+/g, "_")}.png` }); } };
+
+  await step("dashboard lists project and opens Scriptwriter", async () => {
+    await page.goto(BASE + "/dashboard");
+    await page.getByText("Open Scriptwriter →").click();
+    await page.waitForURL(`**/projects/${P}/scriptwriter`);
+    await page.getByText("Powerful Screenplay").waitFor();
+  });
+  await step("project setup saves and runtime plan shows", async () => {
+    await page.getByPlaceholder("Tense, grounded").fill("Tense");
+    await page.getByRole("button", { name: "Save story setup" }).click();
+    await page.getByText("Story setup saved.").waitFor();
+    await page.getByText("Runtime plan").waitFor();
+    await page.getByText(/Act 1/).first().waitFor();
+  });
+  await page.screenshot({ path: `${SP}/1-setup.png`, fullPage: true });
+  await step("AI step is honest", async () => {
+    await page.locator("main nav button", { hasText: "Generate Script" }).click();
+    await page.getByText(/switch on once an AI writing service is connected/).waitFor();
+  });
+  await step("write, save v1, approve", async () => {
+    await page.locator("main nav button", { hasText: "Edit & Refine" }).click();
+    await page.getByText("Insert a short example").click();
+    await page.getByText("Unsaved changes").waitFor();
+    await page.getByRole("button", { name: "Save version" }).click();
+    await page.getByText("Saved as version 1.").waitFor();
+    await page.getByRole("button", { name: "Approve script" }).click();
+    await page.getByText(/Script approved/).waitFor();
+    await page.getByRole("button", { name: "Approved ✓" }).waitFor();
+  });
+  await page.screenshot({ path: `${SP}/2-editor.png`, fullPage: true });
+  await step("preview renders", async () => {
+    await page.getByRole("button", { name: "preview" }).click();
+    await page.getByText("They buried it. But not deep enough.").waitFor();
+    await page.getByRole("button", { name: "write" }).click();
+  });
+  await step("import FDX, save v2, approve -> changed scene flagged, removed scene omitted", async () => {
+    await page.setInputFiles('input[type="file"]', require("path").join(__dirname, "sample.fdx"));
+    await page.getByText(/Imported sample.fdx: 1 scene found/).waitFor();
+    if ((await page.getByPlaceholder("Version note (optional)").inputValue()) !== "Imported from sample.fdx") throw new Error("note not prefilled");
+    await page.getByRole("button", { name: "Save version" }).click();
+    await page.getByText("Saved as version 2.").waitFor();
+    await page.getByRole("button", { name: "Approve script" }).click();
+    await page.getByText(/Script approved/).waitFor();
+    await page.locator("main nav button", { hasText: "Scene Breakdown" }).click();
+    await page.getByText("Review required").waitFor();
+    await page.getByText("Omitted").waitFor();
+  });
+  await page.screenshot({ path: `${SP}/3-breakdown.png`, fullPage: true });
+  await step("character extraction", async () => {
+    await page.locator("main nav button", { hasText: "Character Extraction" }).click();
+    await page.getByText("TUNDE").first().waitFor();
+    await page.getByText(/1 line · 1 scene/).waitFor();
+  });
+  await step("unsupported file shows plain error", async () => {
+    await page.locator("main nav button", { hasText: "Edit & Refine" }).click();
+    await page.setInputFiles('input[type="file"]', { name: "script.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") });
+    await page.getByText(/PDF import isn't supported yet/).waitFor();
+  });
+  await step("stale save gets a clear conflict message", async () => {
+    await page.evaluate(async () => { await fetch("http://localhost:3911/api/projects/11111111-1111-4111-8111-111111111111/script/versions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_text: "INT. X - DAY\n", base_version_id: (await (await fetch("http://localhost:3911/api/projects/11111111-1111-4111-8111-111111111111/script")).json()).current_version.id }) }); });
+    const ta = page.locator("textarea"); await ta.fill((await ta.inputValue()) + "\nMore.\n");
+    await page.getByRole("button", { name: "Save version" }).click();
+    await page.getByText(/Someone saved a newer version/).waitFor();
+  });
+  console.log("ERRORS:", errors.filter((e) => !/Failed to load resource.*(409|404)/.test(e)));
+  await browser.close();
+})();
