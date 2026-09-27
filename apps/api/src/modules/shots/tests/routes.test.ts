@@ -1,7 +1,13 @@
 // Route tests for Storyboard & Shots with an in-memory stand-in for the per-request
 // Supabase client. Database behaviour is covered by tests/integration/shots_db.sql.
 import Fastify from "fastify";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Scene DNA's own drift logic is tested in its module; here we check that
+// Storyboard asks Scene DNA to refresh before reading it.
+const refresh = vi.hoisted(() => ({ fn: async (_db: unknown, _p: string) => {} }));
+vi.mock("../../scene-dna/sceneDna.service", () => ({ refreshSceneDnaReview: (db: unknown, p: string) => refresh.fn(db, p) }));
+
 import { registerShotsRoutes } from "../shots.controller";
 
 const P = "11111111-1111-4111-8111-111111111111";
@@ -199,6 +205,19 @@ describe("Storyboard & Shots routes", () => {
       const fake = fakeDb(rows, (_f, a) => ({ data: planRow({ review_state: a.p_state, review_reason: a.p_reason }) }));
       await (await appWith(fake)).inject({ method: "GET", url: `/api/projects/${P}/storyboard` });
       expect(fake.calls[0].args).toMatchObject({ p_state: "review_required", p_reason: "Scene DNA needs review. Tunde Okafor (character) changed since approval." });
+    });
+
+    it("regression: an upstream change nobody has looked at in Scene DNA still flags the shots", async () => {
+      // Stored Scene DNA says "current"; the refresh (Scene DNA's own job) discovers the Casting change.
+      refresh.fn = async () => {
+        rows.scene_dna[0].review_state = "review_required";
+        rows.scene_dna[0].drift = [{ message: "Tunde Okafor (character) changed since approval." }];
+      };
+      const fake = fakeDb(rows, (_f, a) => ({ data: planRow({ review_state: a.p_state, review_reason: a.p_reason }) }));
+      const ws = (await (await appWith(fake)).inject({ method: "GET", url: `/api/projects/${P}/storyboard` })).json();
+      refresh.fn = async () => {};
+      expect(ws.scenes[0].plan.review_state).toBe("review_required");
+      expect(ws.scenes[0].dna.state).toBe("needs_review");
     });
 
     it("writes nothing when nothing changed", async () => {

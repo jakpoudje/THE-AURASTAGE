@@ -30,6 +30,9 @@ dialogue lines as mandatory beats, readiness predicates).
 - `DELETE /api/shots/:id` — removes a working shot (approved snapshots keep it)
 
 ## Versioning & invalidation (CLAUDE.md rules 10–11)
+Before reading Scene DNA state the service asks Scene DNA to refresh its own
+review state (`refreshSceneDnaReview`), so a Casting/Dialogue/script change
+propagates even if nobody opened Scene DNA since.
 A plan is derived from one Scene DNA version. If Scene DNA is locked again the
 plan becomes **stale**; if Scene DNA needs review (its own upstream changed) or
 has unlocked edits, the plan becomes **review_required** with the reason.

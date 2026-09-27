@@ -201,6 +201,34 @@ function summary(scene: Row) {
   };
 }
 
+/** MOS invalidation step: persist drift evidence when it differs from what is stored. */
+async function persistDrift(db: SupabaseClient, e: ReturnType<typeof sceneEntry>) {
+  let row = e.row;
+  if (row && e.approved) {
+    const drift = e.drift.map(toDriftDTO);
+    if (row.review_state !== e.state || stable(row.drift ?? []) !== stable(drift)) {
+      row = await repo.setDrift(db, row.id, e.state, drift);
+    }
+  }
+  return row;
+}
+
+/**
+ * Brings every locked Scene DNA's review state up to date with its upstream
+ * (script, Casting, Dialogue) without building the whole workspace. Downstream
+ * domains (Storyboard) call this before reading Scene DNA state, so an upstream
+ * change is flagged even if nobody has opened Scene DNA since (production graph
+ * propagation; regression: Casting change not reaching Storyboard).
+ */
+export async function refreshSceneDnaReview(db: SupabaseClient, projectId: string) {
+  const u = await loadUpstream(db, projectId);
+  if (!u.version) return;
+  for (const scene of u.scenes) {
+    const row = u.records.get(scene.id);
+    if (row?.approved_version_id) await persistDrift(db, sceneEntry(u, scene));
+  }
+}
+
 export async function getSceneDnaWorkspace(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
   const u = await loadUpstream(db, projectId);
@@ -210,14 +238,7 @@ export async function getSceneDnaWorkspace(db: SupabaseClient, projectId: string
   const scenes = [];
   for (const scene of visible) {
     const e = sceneEntry(u, scene);
-    let row = e.row;
-    // MOS invalidation step: persist drift evidence when it differs from what is stored.
-    if (row && e.approved) {
-      const drift = e.drift.map(toDriftDTO);
-      if (row.review_state !== e.state || stable(row.drift ?? []) !== stable(drift)) {
-        row = await repo.setDrift(db, row.id, e.state, drift);
-      }
-    }
+    const row = await persistDrift(db, e);
     scenes.push({
       scene: summary(scene),
       record: row ? toRecordDTO(row, e.approved ? Number(e.approved.version_number) : null) : null,

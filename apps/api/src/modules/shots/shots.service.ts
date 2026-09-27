@@ -5,6 +5,8 @@
 // review, the plan is marked stale / review_required with a reason (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { coverageMath, coverageMathEngine, planStoryTime, shotPlanning, shotPlanningEngine } from "@aurastage/engines";
+// Scene DNA owns its review state; we ask it to refresh (never write its tables).
+import { refreshSceneDnaReview } from "../scene-dna/sceneDna.service";
 import { assertProjectAccess, assertSceneInProject, assertShotAccess } from "./shots.permissions";
 import * as repo from "./shots.repository";
 import { toPlanDTO, toShotDTO } from "./shots.mapper";
@@ -16,6 +18,8 @@ export const COVERAGE_ENGINE_VERSION = coverageMath.ENGINE_VERSION;
 type Row = Record<string, any>;
 
 async function load(db: SupabaseClient, projectId: string) {
+  // Propagate upstream changes (script/Casting/Dialogue -> Scene DNA) before we read Scene DNA state.
+  await refreshSceneDnaReview(db, projectId);
   const [scenes, dna, dnaVersions, lines, chars, plans, shots, planVersions] = await Promise.all([
     repo.listScenes(db, projectId),
     repo.listSceneDna(db, projectId),
