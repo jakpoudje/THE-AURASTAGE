@@ -1,6 +1,5 @@
 // apps/api/src/modules/dialogue/dialogue.mapper.ts
-// Maps persistence <-> contract DTOs.
-// Domain: Dialogue Intelligence
-// Canonical object: DialogueLine
+import { DialogueLineSchema } from "@aurastage/contracts";
 
-export {};
+export const toLineDTO = (row: Record<string, unknown>) =>
+  DialogueLineSchema.parse({ ...row, estimated_seconds: Number(row.estimated_seconds) });

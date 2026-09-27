@@ -53,7 +53,7 @@ messages must be safe; diagnostic detail belongs in authorized logs only.
 - [x] Phase 1 — Project + Assets + permissions + audit + MOS foundation (org/project CRUD, RLS, audit trigger, jobs table skeleton; asset ingest still open)
 - [x] Phase 2 — Scriptwriter (story setup, runtime plan, structured editor, Final Draft/Fountain import, immutable versions, approval → canonical scenes with review flags, character candidates. Deferred with reason: AI story development/script generation needs the Provider Gateway (Phase 7); PDF import needs a PDF text extractor, planned with Assets ingest)
 - [x] Phase 3 — Casting & Characters (extraction with evidence + confidence, confirmation queue, identity resolution/aliases, manual characters, profiles, relationships, wardrobe looks, merge/undo, consistency checks. Deferred with reason: visual/voice DNA and casting images need the Provider Gateway (Phase 7); CharacterState is resolved in Scene DNA (Phase 5))
-- [ ] Phase 4 — Dialogue Intelligence
+- [x] Phase 4 — Dialogue Intelligence (lines from the approved script with speakers/listeners/timing, annotations, line and scene approval, change-safe re-sync with review flags, voiceprints, balance and quality checks. Deferred with reason: AI intent/subtext suggestions, exposition/knowledge guard and rewrite alternatives need the Provider Gateway (Phase 7))
 - [ ] Phase 5 — Scene DNA + production graph/invalidation
 - [ ] Phase 6 — Storyboard & Shots
 - [ ] Phase 7 — Provider Gateway + Visual Generation

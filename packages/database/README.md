@@ -49,6 +49,9 @@ SQL editor, the `supabase` CLI, or the MCP tool.
   carry looks and relationships to the surviving character. Test:
   `tests/integration/casting_part2_db.sql`.
 
+- `0010_phase4_dialogue.sql` — `dialogue_lines` + `sync_dialogue_lines`,
+  `update_dialogue_line`, `approve_scene_dialogue`. Test: `tests/integration/dialogue_db.sql`.
+
 Integration check for 0004: `tests/integration/scriptwriter_db.sql` (runs in a
 rolled-back transaction; expected output is listed in the file).
 

@@ -2,3 +2,4 @@
 // exports its named engines; add a domain here once it has a real engine.
 export * from "./story";
 export * from "./character";
+export * from "./dialogue";

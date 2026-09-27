@@ -6,7 +6,7 @@ const P = "11111111-1111-4111-8111-111111111111", ORG = "22222222-2222-4222-8222
 const now = () => new Date().toISOString();
 let project = { id: P, org_id: ORG, title: "Shadows of Lagos", type: "feature_film", genre: "Thriller", target_runtime_minutes: 110, status: "draft", created_at: now(), updated_at: now() };
 let script = null; const versions = []; let scenes = [];
-const chars = [], aliases = [], apps = [], rels = [], looks = []; let lastSyncVersion = null, lastSyncAt = null;
+const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
 const ws = () => {
   const cur = script && versions.find((v) => v.id === script.current_version_id);
   return { script, current_version: cur || null, versions: versions.map(({ id, version_number, note, parser_version, created_at }) => ({ id, version_number, note, parser_version, created_at })).reverse(), scenes, analysis: cur ? eng.sceneBoundaryEngine({ elements: cur.elements }).analysis : null };
@@ -117,6 +117,64 @@ http.createServer((req, res) => {
       const c = chars.find((x) => x.id === m[1]);
       if (b.name) { const n = norm(b.name); if (aliases.some((a) => a.normalized === n && a.character_id !== c.id)) return send(409, { error: { code: "AURA-CHR-409", message: "another character already uses that name" } }); for (const a of aliases) if (a.character_id === c.id && a.source === "name") a.source = "user"; aliases.push({ id: crypto.randomUUID(), character_id: c.id, alias: b.name, normalized: n, source: "name" }); }
       Object.assign(c, b, { updated_at: now() }); return send(200, c);
+    }
+
+    // ---- Dialogue (mirrors apps/api/src/modules/dialogue + migration 0010 semantics) ----
+    if (u === `/api/projects/${P}/dialogue` && req.method === "GET") {
+      const v = approved();
+      const active = dlines.filter((l) => l.status === "active").map((l) => ({ ...l, word_count: (l.text.match(/[\p{L}\p{N}'’-]+/gu) ?? []).length }));
+      return send(200, {
+        script: v ? { approved_version_id: v.id, version_number: v.version_number } : null,
+        sync: { state: !v ? "no_script" : !dlgSyncVersion ? "never" : dlgSyncVersion === v.id ? "current" : "stale", synced_version_id: dlgSyncVersion, synced_at: dlgSyncAt },
+        scenes: scenes.map((s) => ({ id: s.id, number: s.number, heading: s.heading, status: s.status, review_state: s.review_state })),
+        characters: chars.filter((c) => !c.merged_into).map((c) => ({ id: c.id, name: c.name })),
+        lines: dlines,
+        analysis: {
+          voiceprints: eng.dialogueVoiceprintEngine({ lines: active }).voiceprints,
+          balance: eng.dialogueBalanceEngine({ lines: active }).scenes,
+          unresolved_speakers: [...new Set(active.filter((l) => !l.character_id).map((l) => l.speaker_name))],
+          review_required: dlines.filter((l) => l.review_state === "review_required").length,
+        },
+      });
+    }
+    if (u === `/api/projects/${P}/dialogue/sync`) {
+      const v = approved();
+      if (!v) return send(412, { error: { code: "AURA-DLG-412", message: "Approve the script in Scriptwriter first — dialogue is built from the approved script." } });
+      const sc = eng.sceneBoundaryEngine({ elements: v.elements }).scenes;
+      const { lines } = eng.dialogueExtractionEngine({ elements: v.elements, scenes: sc });
+      const resolveChar = (key) => { const a = aliases.find((x) => x.normalized === key); if (!a) return null; let c = chars.find((x) => x.id === a.character_id); while (c && c.merged_into) c = chars.find((x) => x.id === c.merged_into); return c ? c.id : null; };
+      const seen = new Set(); let created = 0, kept = 0, changed = 0, omitted = 0;
+      for (const l of lines) {
+        const scene = scenes.find((s) => s.number === l.scene_number && s.status === "active"); if (!scene) continue;
+        const character_id = resolveChar(l.speaker_key);
+        const listener_ids = [...new Set(apps.filter((a) => a.scene_id === scene.id && !a.voice_only).map((a) => a.character_id))].filter((x) => x !== character_id);
+        const base = { scene_id: scene.id, scene_number: l.scene_number, ordinal: l.ordinal, character_id, speaker_name: l.speaker_name, speaker_key: l.speaker_key, extensions: l.extensions, parenthetical: l.parenthetical, listener_ids, estimated_seconds: l.estimated_seconds, element_index: l.element_index, source_version_id: v.id, updated_at: now() };
+        let e = dlines.find((x) => x.scene_id === scene.id && x.text_hash === l.text_hash && !seen.has(x.id));
+        if (e) { if (e.status === "omitted") e.review_state = "review_required"; Object.assign(e, base, { status: "active" }); seen.add(e.id); kept++; continue; }
+        e = dlines.find((x) => x.scene_id === scene.id && x.speaker_key === l.speaker_key && x.ordinal === l.ordinal && x.status === "active" && !seen.has(x.id));
+        if (e) { const annotated = e.approval === "approved" || e.intention || e.subtext || e.emotion || e.notes || e.intensity !== null; if (annotated) { e.previous_text = e.previous_text || e.text; e.review_state = "review_required"; } Object.assign(e, base, { text: l.text, text_hash: l.text_hash }); seen.add(e.id); changed++; continue; }
+        const n = { id: crypto.randomUUID(), project_id: P, ...base, text: l.text, text_hash: l.text_hash, intention: null, subtext: null, emotion: null, intensity: null, notes: null, status: "active", approval: "draft", review_state: "current", previous_text: null, created_at: now() };
+        dlines.push(n); seen.add(n.id); created++;
+      }
+      for (const x of dlines) if (x.status === "active" && !seen.has(x.id)) { x.status = "omitted"; if (x.approval === "approved" || x.intention || x.emotion) x.review_state = "review_required"; omitted++; }
+      dlines.sort((a, b) => a.scene_number - b.scene_number || a.ordinal - b.ordinal);
+      dlgSyncVersion = v.id; dlgSyncAt = now();
+      return send(200, { version_id: v.id, created, kept, changed, omitted });
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/dialogue\/scenes\/([^/]+)\/approve$/))) {
+      let n = 0; for (const l of dlines) if (l.scene_id === m[1] && l.status === "active") { l.approval = "approved"; l.review_state = "current"; l.previous_text = null; n++; }
+      return n ? send(200, { approved_lines: n }) : send(404, { error: { code: "AURA-DLG-404", message: "no dialogue in that scene" } });
+    }
+    if ((m = u.match(/^\/api\/dialogue-lines\/([^/]+)$/)) && req.method === "PATCH") {
+      const l = dlines.find((x) => x.id === m[1]); if (!l) return send(404, { error: { code: "AURA-DLG-404", message: "line not found" } });
+      const EMO = ["neutral","joy","sadness","anger","fear","surprise","disgust","trust","anticipation","tension","love","contempt","resignation","determination"];
+      if (b.emotion && !EMO.includes(b.emotion)) return send(400, { error: { code: "AURA-DLG-002", message: "Invalid dialogue input" } });
+      const annot = ["intention","subtext","emotion","intensity","notes"].some((k) => k in b);
+      for (const k of ["intention","subtext","emotion","intensity","notes"]) if (k in b) l[k] = b[k] === "" ? null : b[k];
+      if ("approval" in b) l.approval = b.approval; else if (annot) l.approval = "draft";
+      if (b.acknowledge_review || b.approval === "approved") { l.review_state = "current"; l.previous_text = null; }
+      l.updated_at = now();
+      return send(200, l);
     }
     send(404, { error: { code: "AURA-X-404", message: "not mocked " + u } });
   });

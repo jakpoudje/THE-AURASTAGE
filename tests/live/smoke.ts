@@ -171,6 +171,26 @@ await check("casting: relationship + wardrobe look", async () => {
   const final = await api("GET", `/api/projects/${projectId}/characters`);
   assert(!final.wardrobe_looks.some((l: any) => l.id === look.id), "look not deleted");
 });
+let lineId = "";
+await check("dialogue: bring in lines from the approved script", async () => {
+  const before = await api("GET", `/api/projects/${projectId}/dialogue`);
+  assert(before.sync.state === "never", `state ${before.sync.state}`);
+  const s = await api("POST", `/api/projects/${projectId}/dialogue/sync`, {});
+  assert(s.created === 3, `created ${s.created}`);
+  const ws = await api("GET", `/api/projects/${projectId}/dialogue`);
+  assert(ws.sync.state === "current", `state after ${ws.sync.state}`);
+  const first = ws.lines.find((l: any) => l.text === "Someone has to tell the truth.");
+  assert(first && first.character_id === tundeId, "speaker not resolved to Tunde");
+  lineId = first.id;
+  return ws.lines.map((l: any) => l.speaker_name).join(", ");
+});
+await check("dialogue: annotate, approve, bad emotion refused", async () => {
+  const l = await api("PATCH", `/api/dialogue-lines/${lineId}`, { intention: "confess", emotion: "tension", intensity: 7 });
+  assert(l.emotion === "tension" && l.intensity === 7 && l.approval === "draft", "annotation not saved");
+  await api("PATCH", `/api/dialogue-lines/${lineId}`, { emotion: "rage" }, [400]);
+  const a = await api("PATCH", `/api/dialogue-lines/${lineId}`, { approval: "approved" });
+  assert(a.approval === "approved", "not approved");
+});
 await check("persistence: everything still there on re-read", async () => {
   const [p, s, c] = await Promise.all([
     api("GET", `/api/projects/${projectId}`),
