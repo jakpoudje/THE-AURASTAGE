@@ -39,6 +39,11 @@ SQL editor, the `supabase` CLI, or the MCP tool.
 - `0007_project_synopsis.sql` — long-form `synopsis` on projects (≤ 20,000
   chars); the logline stays a short pitch (≤ 500).
 
+- `0008_project_audit_on_org_delete.sql` — fix: deleting an organization with
+  projects failed (the project audit trigger wrote a row for the org being
+  deleted). Also makes `casting_assert_member` internal-only. Test:
+  `tests/integration/org_delete_db.sql`.
+
 Integration check for 0004: `tests/integration/scriptwriter_db.sql` (runs in a
 rolled-back transaction; expected output is listed in the file).
 
