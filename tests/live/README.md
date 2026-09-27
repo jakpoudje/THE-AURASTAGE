@@ -22,3 +22,14 @@ save/409/approve -> scenes, casting sync/confirm/edit/approve/rename clash,
 manual characters, relationships, wardrobe looks, dialogue sync/annotate/approve,
 Scene DNA assemble/save/412 not-ready/lock/upstream-change review/re-lock,
 persistence re-read, and cross-project 403.
+
+## Real-browser check (`live-browser`)
+
+`tests/live/browser/run.mjs` signs in through the real web form with the same
+throwaway account, creates a project, then uses Scriptwriter, Casting, Dialogue
+and Scene DNA like a person would — and **reloads every page** to prove the
+work was saved. It runs as the Railway service `live-browser` (Playwright image,
+`RAILWAY_DOCKERFILE_PATH=tests/live/browser/Dockerfile`, restart policy NEVER,
+watch pattern `tests/live/browser/**`). Env: `WEB_URL`, `SMOKE_EMAIL`,
+`SMOKE_PASSWORD`. Run it (redeploy) after `live-smoke`, while the account still
+exists; read `SUMMARY n/m passed` in its deploy logs; then clean up as above.
