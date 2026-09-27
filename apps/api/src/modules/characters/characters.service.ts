@@ -12,14 +12,17 @@ import {
   type Resolution,
 } from "@aurastage/engines";
 import { z } from "zod";
-import { assertCharacterAccess, assertProjectAccess } from "./characters.permissions";
+import { assertCharacterAccess, assertProjectAccess, assertRowAccess } from "./characters.permissions";
 import * as repo from "./characters.repository";
-import { toAliasDTO, toAppearanceDTO, toCharacterDTO } from "./characters.mapper";
+import { toAliasDTO, toAppearanceDTO, toCharacterDTO, toLookDTO, toRelationshipDTO } from "./characters.mapper";
 import {
   CharacterValidationError,
   ScriptNotApprovedError,
   validateAliasInput,
+  validateCreateInput,
+  validateLookInput,
   validateMergeInput,
+  validateRelationshipInput,
   validateSyncInput,
   validateUpdateInput,
 } from "./characters.validator";
@@ -66,12 +69,14 @@ function toSyncItem(r: Resolution) {
 
 export async function getCastingWorkspace(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
-  const [chars, aliases, apps, sync, resolved] = await Promise.all([
+  const [chars, aliases, apps, sync, resolved, relationships, looks] = await Promise.all([
     repo.listCharacters(db, projectId),
     repo.listAliases(db, projectId),
     repo.listAppearances(db, projectId),
     repo.lastSync(db, projectId),
     resolveFromApprovedScript(db, projectId),
+    repo.listRelationships(db, projectId),
+    repo.listLooks(db, projectId),
   ]);
   const approvedVersionId = resolved?.version.id ?? null;
   const syncedVersionId = sync?.input_snapshot?.script_version_id ?? null;
@@ -81,6 +86,8 @@ export async function getCastingWorkspace(db: SupabaseClient, projectId: string)
     characters: chars.map(toCharacterDTO),
     aliases: aliases.map(toAliasDTO),
     appearances: apps.map(toAppearanceDTO) as CharacterAppearance[],
+    relationships: relationships.map(toRelationshipDTO),
+    wardrobe_looks: looks.map(toLookDTO),
     script: resolved ? { approved_version_id: resolved.version.id, version_number: resolved.version.version_number } : null,
     sync: {
       state: !approvedVersionId ? "no_script" : !syncedVersionId ? "never" : syncedVersionId === approvedVersionId && newFromScript === 0 ? "current" : "stale",
@@ -138,4 +145,36 @@ export async function unmergeCharacter(db: SupabaseClient, characterId: string) 
     await repo.syncCharacters(db, project_id, resolved.version.id, items, EXTRACTION_ENGINE_VERSION);
   }
   return restored;
+}
+
+export async function createCharacter(db: SupabaseClient, projectId: string, payload: unknown) {
+  const input = validateCreateInput(payload);
+  await assertProjectAccess(db, projectId);
+  const normalized = normalizeCharacterName(input.name);
+  if (!normalized) throw new CharacterValidationError([], "Name must contain letters or numbers");
+  return toCharacterDTO(await repo.createCharacter(db, projectId, input.name, normalized, input.role, input.kind));
+}
+
+export async function setRelationship(db: SupabaseClient, projectId: string, payload: unknown) {
+  const input = validateRelationshipInput(payload);
+  await assertProjectAccess(db, projectId);
+  return toRelationshipDTO(await repo.setRelationship(db, input.character_a, input.character_b, input.relationship, input.description || null));
+}
+
+export async function deleteRelationship(db: SupabaseClient, id: string) {
+  await assertRowAccess(db, "character_relationships", id);
+  await repo.deleteRelationship(db, id);
+  return { deleted: true };
+}
+
+export async function saveLook(db: SupabaseClient, characterId: string, payload: unknown) {
+  const input = validateLookInput(payload);
+  await assertCharacterAccess(db, characterId);
+  return toLookDTO(await repo.saveLook(db, input.id ?? null, characterId, input.name, input.description || null));
+}
+
+export async function deleteLook(db: SupabaseClient, id: string) {
+  await assertRowAccess(db, "wardrobe_looks", id);
+  await repo.deleteLook(db, id);
+  return { deleted: true };
 }

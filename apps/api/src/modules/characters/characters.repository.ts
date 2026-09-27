@@ -52,6 +52,13 @@ export const listAppearances = (db: SupabaseClient, projectId: string) =>
       .order("scene_number", { ascending: true })
   );
 
+export const listRelationships = (db: SupabaseClient, projectId: string) =>
+  rows<Record<string, unknown>>(db.from("character_relationships").select("id, project_id, character_a, character_b, relationship, description, created_at, updated_at").eq("project_id", projectId));
+export const listLooks = (db: SupabaseClient, projectId: string) =>
+  rows<Record<string, unknown>>(
+    db.from("wardrobe_looks").select("id, project_id, character_id, name, description, created_at, updated_at").eq("project_id", projectId).order("created_at", { ascending: true })
+  );
+
 export async function lastSync(db: SupabaseClient, projectId: string) {
   const { data, error } = await db
     .from("jobs")
@@ -87,3 +94,11 @@ export const mergeCharacters = (db: SupabaseClient, sourceId: string, targetId: 
   rpc<Record<string, unknown>>(db, "merge_characters", { p_source_id: sourceId, p_target_id: targetId });
 export const unmergeCharacter = (db: SupabaseClient, id: string) =>
   rpc<Record<string, unknown>>(db, "unmerge_character", { p_source_id: id });
+export const createCharacter = (db: SupabaseClient, projectId: string, name: string, normalized: string, role: string, kind: string) =>
+  rpc<Record<string, unknown>>(db, "create_character", { p_project_id: projectId, p_name: name, p_normalized: normalized, p_role: role, p_kind: kind });
+export const setRelationship = (db: SupabaseClient, a: string, b: string, relationship: string, description: string | null) =>
+  rpc<Record<string, unknown>>(db, "set_character_relationship", { p_a: a, p_b: b, p_relationship: relationship, p_description: description });
+export const deleteRelationship = (db: SupabaseClient, id: string) => rpc<null>(db, "delete_character_relationship", { p_id: id });
+export const saveLook = (db: SupabaseClient, id: string | null, characterId: string, name: string, description: string | null) =>
+  rpc<Record<string, unknown>>(db, "save_wardrobe_look", { p_id: id, p_character_id: characterId, p_name: name, p_description: description });
+export const deleteLook = (db: SupabaseClient, id: string) => rpc<null>(db, "delete_wardrobe_look", { p_id: id });

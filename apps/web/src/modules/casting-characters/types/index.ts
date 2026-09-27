@@ -1,4 +1,4 @@
-import type { Character, CharacterAlias, CharacterAppearance } from "@aurastage/contracts";
+import type { Character, CharacterAlias, CharacterAppearance, CharacterRelationship, WardrobeLook } from "@aurastage/contracts";
 import type { CharacterCandidate } from "@aurastage/engines";
 
 /** Response of GET /api/projects/:id/characters (apps/api/src/modules/characters). */
@@ -6,6 +6,8 @@ export interface CastingWorkspace {
   characters: Character[];
   aliases: CharacterAlias[];
   appearances: CharacterAppearance[];
+  relationships: CharacterRelationship[];
+  wardrobe_looks: WardrobeLook[];
   script: { approved_version_id: string; version_number: number } | null;
   sync: {
     state: "no_script" | "never" | "current" | "stale";

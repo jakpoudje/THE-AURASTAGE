@@ -6,18 +6,31 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { Character, CharacterAlias, CharacterAppearance, CharacterRole, UpdateCharacterInput } from "@aurastage/contracts";
+import type {
+  Character,
+  CharacterAlias,
+  CharacterAppearance,
+  CharacterRelationship,
+  CharacterRole,
+  SaveWardrobeLookInput,
+  SetRelationshipInput,
+  UpdateCharacterInput,
+  WardrobeLook,
+} from "@aurastage/contracts";
 import { RolePill } from "./RolePill";
+import { RelationshipsTab } from "./RelationshipsTab";
+import { WardrobeTab } from "./WardrobeTab";
 
-type Tab = "profile" | "personality" | "scenes" | "names";
+type Tab = "profile" | "personality" | "relationships" | "wardrobe" | "scenes" | "names";
 const TABS: { key: Tab | string; label: string; soon?: boolean }[] = [
   { key: "profile", label: "Profile" },
   { key: "personality", label: "Personality & Backstory" },
+  { key: "relationships", label: "Relationships" },
+  { key: "wardrobe", label: "Wardrobe" },
   { key: "scenes", label: "Scenes & Continuity" },
   { key: "names", label: "Names & Merges" },
   { key: "visual", label: "Appearance & Visual DNA", soon: true },
   { key: "voice", label: "Voice DNA", soon: true },
-  { key: "wardrobe", label: "Wardrobe & Props", soon: true },
 ];
 const ROLES: CharacterRole[] = ["lead", "supporting", "minor", "extra"];
 const PROFILE_FIELDS = ["name", "age", "gender", "nationality", "occupation", "description"] as const;
@@ -42,6 +55,12 @@ export function CharacterProfile({
   onAddAlias,
   onMerge,
   onUnmerge,
+  relationships,
+  looks,
+  onSaveRelationship,
+  onDeleteRelationship,
+  onSaveLook,
+  onDeleteLook,
 }: {
   character: Character;
   characters: Character[];
@@ -53,6 +72,12 @@ export function CharacterProfile({
   onAddAlias: (alias: string) => void;
   onMerge: (sourceId: string) => void;
   onUnmerge: (id: string) => void;
+  relationships: CharacterRelationship[];
+  looks: WardrobeLook[];
+  onSaveRelationship: (input: SetRelationshipInput) => void;
+  onDeleteRelationship: (id: string) => void;
+  onSaveLook: (input: SaveWardrobeLookInput) => void;
+  onDeleteLook: (id: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>("profile");
   const initial = useMemo(() => {
@@ -167,6 +192,22 @@ export function CharacterProfile({
         )}
 
         {tab === "personality" && <div className="grid gap-4 md:grid-cols-2">{STORY_FIELDS.map((k) => field(k, true))}</div>}
+
+        {tab === "relationships" && (
+          <RelationshipsTab
+            character={character}
+            characters={characters}
+            relationships={relationships}
+            appearances={appearances}
+            busy={busy !== null}
+            onSave={onSaveRelationship}
+            onDelete={onDeleteRelationship}
+          />
+        )}
+
+        {tab === "wardrobe" && (
+          <WardrobeTab character={character} looks={looks} busy={busy !== null} onSave={onSaveLook} onDelete={onDeleteLook} />
+        )}
 
         {tab === "scenes" && (
           <div>

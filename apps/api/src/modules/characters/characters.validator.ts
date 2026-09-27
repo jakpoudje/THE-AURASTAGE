@@ -4,6 +4,9 @@
 
 import {
   AddAliasInputSchema,
+  CreateCharacterInputSchema,
+  SaveWardrobeLookInputSchema,
+  SetRelationshipInputSchema,
   MergeCharactersInputSchema,
   SyncCharactersInputSchema,
   UpdateCharacterInputSchema,
@@ -43,3 +46,6 @@ export function validateUpdateInput(p: unknown) {
   if (Object.keys(data).length === 0) throw new CharacterValidationError([], "Nothing to update");
   return data;
 }
+export const validateCreateInput = (p: unknown) => parse(CreateCharacterInputSchema, p);
+export const validateRelationshipInput = (p: unknown) => parse(SetRelationshipInputSchema, p);
+export const validateLookInput = (p: unknown) => parse(SaveWardrobeLookInputSchema, p);

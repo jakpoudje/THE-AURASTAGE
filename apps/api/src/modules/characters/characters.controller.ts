@@ -5,9 +5,14 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   addCharacterAlias,
+  createCharacter,
+  deleteLook,
+  deleteRelationship,
   editCharacter,
   getCastingWorkspace,
   mergeCharacters,
+  saveLook,
+  setRelationship,
   syncFromScript,
   unmergeCharacter,
 } from "./characters.service";
@@ -50,4 +55,9 @@ export async function registerCharactersRoutes(app: FastifyInstance) {
   app.patch("/api/characters/:id", route(({ params, body, db }) => editCharacter(db, params.id, body)));
   app.post("/api/characters/:id/aliases", route(({ params, body, db }) => addCharacterAlias(db, params.id, body), 201));
   app.post("/api/characters/:id/unmerge", route(({ params, db }) => unmergeCharacter(db, params.id)));
+  app.post("/api/projects/:id/characters", route(({ params, body, db }) => createCharacter(db, params.id, body), 201));
+  app.post("/api/projects/:id/relationships", route(({ params, body, db }) => setRelationship(db, params.id, body)));
+  app.delete("/api/relationships/:id", route(({ params, db }) => deleteRelationship(db, params.id)));
+  app.post("/api/characters/:id/looks", route(({ params, body, db }) => saveLook(db, params.id, body)));
+  app.delete("/api/looks/:id", route(({ params, db }) => deleteLook(db, params.id)));
 }

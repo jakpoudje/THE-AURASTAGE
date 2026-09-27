@@ -10,8 +10,9 @@ apps/api/src/modules/characters (Character identity).
 - Finds characters in the approved script (sync banner shows never/current/stale from real sync records).
 - Uncertain names go to "Needs your confirmation" — added only when a person confirms.
 - Characters (N) list with role filters; profile with Profile, Personality & Backstory,
-  Scenes & Continuity (script evidence with line numbers) and Names & Merges (aliases,
-  merge duplicates, undo). Visual/Voice/Wardrobe tabs are marked Soon.
+  Relationships (with shared-scene evidence), Wardrobe (named looks), Scenes & Continuity
+  (script evidence with line numbers) and Names & Merges (aliases, merge duplicates, undo).
+  "+ Add Character" for people the script doesn't name clearly. Visual/Voice DNA tabs are marked Soon.
 - Character Consistency checklist: every tick is a real check on stored data.
 
 ## Structure

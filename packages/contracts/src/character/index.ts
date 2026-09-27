@@ -110,3 +110,52 @@ export function normalizeCharacterName(name: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+// ---- Phase 3 part 2: manual characters, relationships, wardrobe looks ----
+
+export const CreateCharacterInputSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  role: CharacterRoleSchema.default("minor"),
+  kind: CharacterKindSchema.default("individual"),
+});
+export type CreateCharacterInput = z.infer<typeof CreateCharacterInputSchema>;
+
+/** Undirected: stored with character_a < character_b. */
+export const CharacterRelationshipSchema = z.object({
+  id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  character_a: z.string().uuid(),
+  character_b: z.string().uuid(),
+  relationship: z.string(),
+  description: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type CharacterRelationship = z.infer<typeof CharacterRelationshipSchema>;
+
+export const SetRelationshipInputSchema = z.object({
+  character_a: z.string().uuid(),
+  character_b: z.string().uuid(),
+  relationship: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(2000).optional(),
+});
+export type SetRelationshipInput = z.infer<typeof SetRelationshipInputSchema>;
+
+/** SRS §3: WardrobeLook — named character look, canonical owner Casting. */
+export const WardrobeLookSchema = z.object({
+  id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  character_id: z.string().uuid(),
+  name: z.string(),
+  description: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type WardrobeLook = z.infer<typeof WardrobeLookSchema>;
+
+export const SaveWardrobeLookInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(2000).optional(),
+});
+export type SaveWardrobeLookInput = z.infer<typeof SaveWardrobeLookInputSchema>;

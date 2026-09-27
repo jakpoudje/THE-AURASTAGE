@@ -5,13 +5,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Project, UpdateCharacterInput } from "@aurastage/contracts";
+import type { CharacterRole, Project, SaveWardrobeLookInput, SetRelationshipInput, UpdateCharacterInput } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet } from "@/lib/apiClient";
 import { castingApi } from "../api/castingApi";
 import type { CastingWorkspace } from "../types";
 
-type Busy = null | "sync" | "save" | "alias" | "merge" | "unmerge";
+type Busy = null | "sync" | "save" | "alias" | "merge" | "unmerge" | "create" | "relationship" | "look";
 
 export function useCasting(projectId: string) {
   const router = useRouter();
@@ -82,5 +82,19 @@ export function useCasting(projectId: string) {
     merge: (sourceId: string, targetId: string) =>
       run("merge", async () => (await castingApi.merge(projectId, sourceId, targetId), "Merged. You can undo this from Names & Merges.")),
     unmerge: (id: string) => run("unmerge", async () => (await castingApi.unmerge(id), "Merge undone and scenes re-checked against the script.")),
+    create: async (name: string, role: CharacterRole) => {
+      let createdId: string | null = null;
+      const ok = await run("create", async () => {
+        createdId = (await castingApi.create(projectId, { name, role })).id;
+        return `Added ${name}.`;
+      });
+      return ok ? createdId : null;
+    },
+    setRelationship: (input: SetRelationshipInput) =>
+      run("relationship", async () => (await castingApi.setRelationship(projectId, input), "Relationship saved.")),
+    deleteRelationship: (id: string) => run("relationship", async () => (await castingApi.deleteRelationship(id), "Relationship removed.")),
+    saveLook: (characterId: string, input: SaveWardrobeLookInput) =>
+      run("look", async () => (await castingApi.saveLook(characterId, input), `Look "${input.name}" saved.`)),
+    deleteLook: (id: string) => run("look", async () => (await castingApi.deleteLook(id), "Look removed.")),
   };
 }

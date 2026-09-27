@@ -44,6 +44,11 @@ SQL editor, the `supabase` CLI, or the MCP tool.
   deleted). Also makes `casting_assert_member` internal-only. Test:
   `tests/integration/org_delete_db.sql`.
 
+- `0009_phase3_relationships_wardrobe.sql` — manual `create_character`,
+  `character_relationships`, `wardrobe_looks` (+ save/delete functions); merges
+  carry looks and relationships to the surviving character. Test:
+  `tests/integration/casting_part2_db.sql`.
+
 Integration check for 0004: `tests/integration/scriptwriter_db.sql` (runs in a
 rolled-back transaction; expected output is listed in the file).
 

@@ -4,6 +4,7 @@
 import { useMemo, useState } from "react";
 import type { Character, CharacterAppearance, CharacterRole } from "@aurastage/contracts";
 import { RolePill } from "./RolePill";
+import { AddCharacterForm } from "./AddCharacterForm";
 
 const FILTERS: ("all" | CharacterRole)[] = ["all", "lead", "supporting", "minor", "extra"];
 
@@ -12,11 +13,15 @@ export function CharacterList({
   appearances,
   selectedId,
   onSelect,
+  busy,
+  onCreate,
 }: {
   characters: Character[];
   appearances: CharacterAppearance[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  busy: boolean;
+  onCreate: (name: string, role: CharacterRole) => Promise<unknown>;
 }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
@@ -32,7 +37,10 @@ export function CharacterList({
   return (
     <div className="rounded-xl border border-aura-border bg-aura-panel">
       <div className="border-b border-aura-border p-4">
-        <h2 className="font-display text-lg">Characters ({characters.length})</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-display text-lg">Characters ({characters.length})</h2>
+        </div>
+        <AddCharacterForm busy={busy} onCreate={onCreate} />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}

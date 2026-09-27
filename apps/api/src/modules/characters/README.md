@@ -26,9 +26,16 @@ SRS §6.1) and `characterIdentityResolutionEngine` (alias/merge-aware matching, 
 - `PATCH /api/characters/:id` — profile/role/status/name (renames keep the old name as an alias)
 - `POST /api/characters/:id/aliases` — `{alias}`
 - `POST /api/characters/:id/unmerge` — undo a merge, then re-sync
+- `POST /api/projects/:id/characters` — `{name, role?, kind?}` add a character by hand (409 on a name clash)
+- `POST /api/projects/:id/relationships` — `{character_a, character_b, relationship, description?}` (one per pair; saving again updates)
+- `DELETE /api/relationships/:id`
+- `POST /api/characters/:id/looks` — `{id?, name, description?}` create/update a WardrobeLook
+- `DELETE /api/looks/:id`
 
 ## Database objects
-Migration 0006: tables above + `sync_script_characters`, `update_character`,
+Migration 0006 (+0009: `character_relationships`, `wardrobe_looks`, `create_character`,
+`set_character_relationship`, `delete_character_relationship`, `save_wardrobe_look`,
+`delete_wardrobe_look`; merges now carry looks and relationships to the survivor): tables above + `sync_script_characters`, `update_character`,
 `add_character_alias`, `merge_characters`, `unmerge_character`. Tables are
 read-only through RLS; all writes go through these functions.
 
@@ -47,6 +54,6 @@ AURA-CHR-002 invalid input · 403 no access · 404 not found · 409 name clash /
 merged / script changed · 412 script not approved · 500 unexpected.
 
 ## Not built yet
-Relationships, wardrobe looks, visual/voice DNA and casting options (need
-Visual Generation / Audio), CharacterState (Scene DNA). `commands/GenerateCharacters.ts`
+Visual/voice DNA, look images and casting options (need Visual Generation /
+Audio), CharacterState (Scene DNA), props (Scene/Asset domain). `commands/GenerateCharacters.ts`
 is still an empty stub (AI character development needs the Provider Gateway).

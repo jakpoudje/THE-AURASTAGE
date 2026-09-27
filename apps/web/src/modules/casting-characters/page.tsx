@@ -13,6 +13,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useCasting } from "./hooks/useCasting";
+import { AddCharacterForm } from "./components/AddCharacterForm";
 import { CharacterList } from "./components/CharacterList";
 import { CharacterProfile } from "./components/CharacterProfile";
 import { ConsistencyChecklist } from "./components/ConsistencyChecklist";
@@ -81,13 +82,31 @@ export default function CastingCharactersPage() {
         {active.length === 0 ? (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="rounded-xl border border-dashed border-aura-border p-10 text-center text-sm text-white/50">
-              No characters yet.
+              <p>No characters yet.</p>
+              <div className="mx-auto mt-4 max-w-xs text-left">
+                <AddCharacterForm busy={c.busy !== null} onCreate={async (name, role) => {
+                  const cid = await c.create(name, role);
+                  if (cid) setSelectedId(cid);
+                  return cid;
+                }} />
+              </div>
             </div>
             <PendingCandidates pending={c.ws.pending} busy={c.busy !== null} onConfirm={(keys) => c.sync(keys)} />
           </div>
         ) : (
           <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)_300px]">
-            <CharacterList characters={active} appearances={c.ws.appearances} selectedId={selected?.id ?? null} onSelect={setSelectedId} />
+            <CharacterList
+              characters={active}
+              appearances={c.ws.appearances}
+              selectedId={selected?.id ?? null}
+              onSelect={setSelectedId}
+              busy={c.busy !== null}
+              onCreate={async (name, role) => {
+                const id = await c.create(name, role);
+                if (id) setSelectedId(id);
+                return id;
+              }}
+            />
             {selected && (
               <CharacterProfile
                 key={`${selected.id}:${selected.updated_at}`}
@@ -101,6 +120,12 @@ export default function CastingCharactersPage() {
                 onAddAlias={(alias) => c.addAlias(selected.id, alias)}
                 onMerge={(sourceId) => c.merge(sourceId, selected.id)}
                 onUnmerge={(sourceId) => c.unmerge(sourceId)}
+                relationships={c.ws.relationships}
+                looks={c.ws.wardrobe_looks}
+                onSaveRelationship={(input) => c.setRelationship(input)}
+                onDeleteRelationship={(rid) => c.deleteRelationship(rid)}
+                onSaveLook={(input) => c.saveLook(selected.id, input)}
+                onDeleteLook={(lid) => c.deleteLook(lid)}
               />
             )}
             <div className="space-y-4">

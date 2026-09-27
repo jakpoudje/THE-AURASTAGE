@@ -6,14 +6,14 @@ const P = "11111111-1111-4111-8111-111111111111", ORG = "22222222-2222-4222-8222
 const now = () => new Date().toISOString();
 let project = { id: P, org_id: ORG, title: "Shadows of Lagos", type: "feature_film", genre: "Thriller", target_runtime_minutes: 110, status: "draft", created_at: now(), updated_at: now() };
 let script = null; const versions = []; let scenes = [];
-const chars = [], aliases = [], apps = []; let lastSyncVersion = null, lastSyncAt = null;
+const chars = [], aliases = [], apps = [], rels = [], looks = []; let lastSyncVersion = null, lastSyncAt = null;
 const ws = () => {
   const cur = script && versions.find((v) => v.id === script.current_version_id);
   return { script, current_version: cur || null, versions: versions.map(({ id, version_number, note, parser_version, created_at }) => ({ id, version_number, note, parser_version, created_at })).reverse(), scenes, analysis: cur ? eng.sceneBoundaryEngine({ elements: cur.elements }).analysis : null };
 };
 http.createServer((req, res) => {
   let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
-    res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Headers", "*"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
+    res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Headers", "*"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
     if (req.method === "OPTIONS") return res.end();
     const send = (code, obj) => { res.statusCode = code; res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(obj)); };
     const b = body ? JSON.parse(body) : {}; const u = req.url.split("?")[0];
@@ -73,7 +73,7 @@ http.createServer((req, res) => {
     if (u === `/api/projects/${P}/characters` && req.method === "GET") {
       const r = resolve();
       const newFromScript = r ? r.rs.filter((y) => y.decision === "create").length : 0;
-      return send(200, { characters: chars, aliases, appearances: apps, script: r ? { approved_version_id: r.v.id, version_number: r.v.version_number } : null,
+      return send(200, { characters: chars, aliases, appearances: apps, relationships: rels, wardrobe_looks: looks, script: r ? { approved_version_id: r.v.id, version_number: r.v.version_number } : null,
         sync: { state: !r ? "no_script" : !lastSyncVersion ? "never" : lastSyncVersion === r.v.id && newFromScript === 0 ? "current" : "stale", synced_version_id: lastSyncVersion, synced_at: lastSyncAt, engine_version: "1.0.0", new_from_script: newFromScript },
         pending: r ? r.rs.filter((y) => y.decision === "confirm").map((y) => y.candidate) : [] });
     }
@@ -87,6 +87,32 @@ http.createServer((req, res) => {
     let m;
     if ((m = u.match(/^\/api\/characters\/([^/]+)\/unmerge$/))) { const s = chars.find((c) => c.id === m[1]); const a = aliases.find((x) => x.id === s._nameAlias); if (a) { a.character_id = s.id; a.source = "name"; } s.merged_into = null; doSync([]); return send(200, s); }
     if ((m = u.match(/^\/api\/characters\/([^/]+)\/aliases$/))) { const a = { id: crypto.randomUUID(), character_id: m[1], alias: b.alias, normalized: norm(b.alias), source: "user" }; if (aliases.some((x) => x.normalized === a.normalized && x.character_id !== m[1])) return send(409, { error: { code: "AURA-CHR-409", message: "another character already uses that name — merge them instead" } }); aliases.push(a); return send(201, a); }
+
+    if (u === `/api/projects/${P}/characters` && req.method === "POST") {
+      const n = norm(b.name || "");
+      if (!n) return send(400, { error: { code: "AURA-CHR-002", message: "Invalid character input" } });
+      if (aliases.some((a) => a.normalized === n)) return send(409, { error: { code: "AURA-CHR-409", message: "a character with that name already exists" } });
+      const c = { id: crypto.randomUUID(), org_id: ORG, project_id: P, name: b.name, role: b.role || "minor", kind: b.kind || "individual", status: "draft", merged_into: null, created_from_version_id: null, created_at: now(), updated_at: now() };
+      chars.push(c); aliases.push({ id: crypto.randomUUID(), character_id: c.id, alias: b.name, normalized: n, source: "name" });
+      return send(201, c);
+    }
+    if (u === `/api/projects/${P}/relationships`) {
+      if (b.character_a === b.character_b) return send(400, { error: { code: "AURA-CHR-400", message: "a character cannot have a relationship with themselves" } });
+      const [a2, b2] = [b.character_a, b.character_b].sort();
+      let r = rels.find((x) => x.character_a === a2 && x.character_b === b2);
+      if (!r) { r = { id: crypto.randomUUID(), project_id: P, character_a: a2, character_b: b2, created_at: now() }; rels.push(r); }
+      Object.assign(r, { relationship: b.relationship, description: b.description ?? null, updated_at: now() });
+      return send(200, r);
+    }
+    if ((m = u.match(/^\/api\/relationships\/([^/]+)$/)) && req.method === "DELETE") { const i = rels.findIndex((x) => x.id === m[1]); if (i >= 0) rels.splice(i, 1); return send(200, { deleted: true }); }
+    if ((m = u.match(/^\/api\/characters\/([^/]+)\/looks$/))) {
+      if (looks.some((l) => l.character_id === m[1] && l.name.toLowerCase() === b.name.toLowerCase() && l.id !== b.id)) return send(409, { error: { code: "AURA-CHR-409", message: "this character already has a look with that name" } });
+      let l = b.id && looks.find((x) => x.id === b.id);
+      if (!l) { l = { id: crypto.randomUUID(), project_id: P, character_id: m[1], created_at: now() }; looks.push(l); }
+      Object.assign(l, { name: b.name, description: b.description ?? null, updated_at: now() });
+      return send(200, l);
+    }
+    if ((m = u.match(/^\/api\/looks\/([^/]+)$/)) && req.method === "DELETE") { const i = looks.findIndex((x) => x.id === m[1]); if (i >= 0) looks.splice(i, 1); return send(200, { deleted: true }); }
     if ((m = u.match(/^\/api\/characters\/([^/]+)$/)) && req.method === "PATCH") {
       const c = chars.find((x) => x.id === m[1]);
       if (b.name) { const n = norm(b.name); if (aliases.some((a) => a.normalized === n && a.character_id !== c.id)) return send(409, { error: { code: "AURA-CHR-409", message: "another character already uses that name" } }); for (const a of aliases) if (a.character_id === c.id && a.source === "name") a.source = "user"; aliases.push({ id: crypto.randomUUID(), character_id: c.id, alias: b.name, normalized: n, source: "name" }); }

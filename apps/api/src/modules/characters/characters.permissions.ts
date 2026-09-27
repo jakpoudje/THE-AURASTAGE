@@ -32,3 +32,12 @@ export async function assertCharacterAccess(db: SupabaseClient, characterId: str
   if (!data) throw new CharacterForbiddenError("Character not found or not accessible");
   return data as { id: string; project_id: string };
 }
+
+/** Returns the row's project if the caller can see it (relationships / wardrobe looks). */
+export async function assertRowAccess(db: SupabaseClient, table: "character_relationships" | "wardrobe_looks", id: string) {
+  if (!isUuid(id)) throw new CharacterForbiddenError("Not found or not accessible");
+  const { data, error } = await db.from(table).select("id, project_id").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new CharacterForbiddenError("Not found or not accessible");
+  return data as { id: string; project_id: string };
+}

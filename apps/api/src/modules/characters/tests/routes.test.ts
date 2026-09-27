@@ -196,4 +196,40 @@ describe("Casting routes", () => {
     expect(res.statusCode).toBe(200);
     expect(fake.calls.map((c) => c.fn)).toEqual(["unmerge_character", "sync_script_characters"]);
   });
+
+  it("creates a character by hand with its normalised name (201) and maps a clash to 409", async () => {
+    const fake = fakeDb(rows, () => ({ data: character({ name: "Chief Adeyemi", role: "supporting" }) }));
+    const app = await appWith(fake);
+    const res = await app.inject({ method: "POST", url: `/api/projects/${P}/characters`, payload: { name: "Chief Adeyemi", role: "supporting" } });
+    expect(res.statusCode).toBe(201);
+    expect(fake.calls[0]).toMatchObject({ fn: "create_character", args: { p_name: "Chief Adeyemi", p_normalized: "CHIEF ADEYEMI", p_role: "supporting", p_kind: "individual" } });
+    const clash = await appWith(fakeDb(rows, () => ({ error: { message: "AURA-CHR-409: a character with that name already exists" } })));
+    expect((await clash.inject({ method: "POST", url: `/api/projects/${P}/characters`, payload: { name: "Tunde" } })).statusCode).toBe(409);
+    expect((await clash.inject({ method: "POST", url: `/api/projects/${P}/characters`, payload: { name: "" } })).statusCode).toBe(400);
+  });
+
+  it("sets relationships and wardrobe looks through the database functions", async () => {
+    const OTHER = "66666666-6666-4666-8666-666666666666";
+    rows.characters = [character()];
+    const fake = fakeDb(rows, (fn) => ({
+      data:
+        fn === "set_character_relationship"
+          ? { id: "77777777-7777-4777-8777-777777777777", project_id: P, character_a: TUNDE, character_b: OTHER, relationship: "Sister", description: null, created_at: NOW, updated_at: NOW }
+          : { id: "88888888-8888-4888-8888-888888888888", project_id: P, character_id: TUNDE, name: "Field outfit", description: "Khaki", created_at: NOW, updated_at: NOW },
+    }));
+    const app = await appWith(fake);
+    const rel = await app.inject({ method: "POST", url: `/api/projects/${P}/relationships`, payload: { character_a: TUNDE, character_b: OTHER, relationship: "Sister" } });
+    expect(rel.statusCode).toBe(200);
+    expect(fake.calls[0].args).toMatchObject({ p_a: TUNDE, p_b: OTHER, p_relationship: "Sister", p_description: null });
+    const look = await app.inject({ method: "POST", url: `/api/characters/${TUNDE}/looks`, payload: { name: "Field outfit", description: "Khaki" } });
+    expect(look.statusCode).toBe(200);
+    expect(fake.calls[1].args).toMatchObject({ p_id: null, p_character_id: TUNDE, p_name: "Field outfit", p_description: "Khaki" });
+    expect((await app.inject({ method: "POST", url: `/api/characters/${TUNDE}/looks`, payload: { name: "" } })).statusCode).toBe(400);
+  });
+
+  it("refuses to delete relationships/looks the caller cannot see (403)", async () => {
+    const app = await appWith(fakeDb(rows));
+    expect((await app.inject({ method: "DELETE", url: `/api/relationships/99999999-9999-4999-8999-999999999999` })).statusCode).toBe(403);
+    expect((await app.inject({ method: "DELETE", url: `/api/looks/not-a-uuid` })).statusCode).toBe(403);
+  });
 });
