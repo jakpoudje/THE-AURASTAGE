@@ -66,7 +66,7 @@ await check("api health", async () => {
   assert(r.status === 200 && j.status === "ok", `health ${r.status}`);
   return `phase ${j.phase}`;
 });
-for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password"]) {
+for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna"]) {
   await check(`web ${path}`, async () => {
     const r = await fetch(WEB + path);
     assert(r.status === 200, `status ${r.status}`);
@@ -191,6 +191,44 @@ await check("dialogue: annotate, approve, bad emotion refused", async () => {
   const a = await api("PATCH", `/api/dialogue-lines/${lineId}`, { approval: "approved" });
   assert(a.approval === "approved", "not approved");
 });
+let s1 = "", s2 = "";
+await check("scene dna: every scene assembled from script, cast and dialogue", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/scene-dna`);
+  assert(ws.scenes.length === 2, `scenes ${ws.scenes.length}`);
+  [s1, s2] = ws.scenes.map((e: any) => e.scene.id);
+  const one = ws.scenes[0];
+  assert(one.proposal.participants.some((p: any) => p.character_id === tundeId), "Tunde not in scene 1");
+  assert(one.proposal.ready_for_approval === true, "scene 1 should be ready (its only line is approved)");
+  assert(ws.scenes[1].proposal.ready_for_approval === false, "scene 2 has unapproved lines");
+  return ws.scenes.map((e: any) => `${e.scene.number}: ${e.proposal.readiness.filter((r: any) => r.ok).length}/${e.proposal.readiness.length} checks`).join(", ");
+});
+await check("scene dna: save, bad value refused, not-ready lock refused (412)", async () => {
+  const r = await api("PATCH", `/api/projects/${projectId}/scene-dna/${s1}`, { purpose: "Tunde decides to publish.", mood: ["tense"], camera_energy: "measured" });
+  assert(r.status === "draft" && r.purpose === "Tunde decides to publish.", "not saved");
+  await api("PATCH", `/api/projects/${projectId}/scene-dna/${s1}`, { camera_energy: "wild" }, [400]);
+  const e = await api("POST", `/api/projects/${projectId}/scene-dna/${s2}/approve`, {}, [412]);
+  assert(/dialogue approved/.test(e.error.message), e.error.message);
+});
+await check("scene dna: lock freezes upstream versions", async () => {
+  const v = await api("POST", `/api/projects/${projectId}/scene-dna/${s1}/approve`, {});
+  assert(v.version_number === 1 && v.dependencies >= 3, `v${v.version_number} deps ${v.dependencies}`);
+  const ws = await api("GET", `/api/projects/${projectId}/scene-dna`);
+  const rec = ws.scenes[0].record;
+  assert(rec.status === "approved" && rec.review_state === "current" && rec.approved_version_number === 1, "not locked");
+  return `${v.dependencies} upstream sources recorded`;
+});
+await check("scene dna: a Casting change flags the locked scene for review (and re-lock clears it)", async () => {
+  await api("PATCH", `/api/characters/${tundeId}`, { description: "Now a disgraced reporter" });
+  const ws = await api("GET", `/api/projects/${projectId}/scene-dna`);
+  const rec = ws.scenes[0].record;
+  assert(rec.review_state === "review_required", `state ${rec.review_state}`);
+  assert(rec.drift.some((d: any) => d.id === tundeId && d.kind === "changed"), "no evidence for Tunde");
+  const v2 = await api("POST", `/api/projects/${projectId}/scene-dna/${s1}/approve`, {});
+  assert(v2.version_number === 2, `v${v2.version_number}`);
+  const after = await api("GET", `/api/projects/${projectId}/scene-dna`);
+  assert(after.scenes[0].record.review_state === "current", "still flagged");
+  assert(after.scenes[0].record.purpose === "Tunde decides to publish.", "purpose lost");
+});
 await check("persistence: everything still there on re-read", async () => {
   const [p, s, c] = await Promise.all([
     api("GET", `/api/projects/${projectId}`),
@@ -201,6 +239,7 @@ await check("persistence: everything still there on re-read", async () => {
 });
 await check("security: other project ids are refused", async () => {
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/characters`, undefined, [403]);
+  await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/scene-dna`, undefined, [403]);
 });
 
 const failed = results.filter((r) => !r.ok).length;

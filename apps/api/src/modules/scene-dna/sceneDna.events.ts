@@ -1,6 +1,7 @@
 // apps/api/src/modules/scene-dna/sceneDna.events.ts
-// Typed domain events emitted after committed changes.
-// Domain: Scene DNA
-// Canonical object: SceneDNA
-
-export {};
+// Written transactionally into audit_events by the migration-0011 functions.
+export const SCENE_DNA_EVENTS = {
+  Updated: "SceneDNAUpdated",
+  Approved: "SceneDNAApproved",
+  UpstreamChanged: "UpstreamVersionChanged",
+} as const;

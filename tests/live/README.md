@@ -19,4 +19,6 @@ so the live check runs **inside Railway** as the Function service `live-smoke`
 It covers: API health, web pages, sign-in, studio bootstrap, project create
 (incl. long synopsis regression), story setup edit, runtime plan, script
 save/409/approve -> scenes, casting sync/confirm/edit/approve/rename clash,
+manual characters, relationships, wardrobe looks, dialogue sync/annotate/approve,
+Scene DNA assemble/save/412 not-ready/lock/upstream-change review/re-lock,
 persistence re-read, and cross-project 403.

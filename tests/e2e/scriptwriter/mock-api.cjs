@@ -6,7 +6,7 @@ const P = "11111111-1111-4111-8111-111111111111", ORG = "22222222-2222-4222-8222
 const now = () => new Date().toISOString();
 let project = { id: P, org_id: ORG, title: "Shadows of Lagos", type: "feature_film", genre: "Thriller", target_runtime_minutes: 110, status: "draft", created_at: now(), updated_at: now() };
 let script = null; const versions = []; let scenes = [];
-const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
+const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; const sdna = [], sdnaVersions = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
 const ws = () => {
   const cur = script && versions.find((v) => v.id === script.current_version_id);
   return { script, current_version: cur || null, versions: versions.map(({ id, version_number, note, parser_version, created_at }) => ({ id, version_number, note, parser_version, created_at })).reverse(), scenes, analysis: cur ? eng.sceneBoundaryEngine({ elements: cur.elements }).analysis : null };
@@ -175,6 +175,66 @@ http.createServer((req, res) => {
       if (b.acknowledge_review || b.approval === "approved") { l.review_state = "current"; l.previous_text = null; }
       l.updated_at = now();
       return send(200, l);
+    }
+
+    // ---- Scene DNA (mirrors apps/api/src/modules/scene-dna + migration 0011 semantics) ----
+    const pg = require(require("path").resolve(__dirname, "../../../packages/production-graph/dist/index.js"));
+    const follow = (id) => { let c = chars.find((x) => x.id === id); while (c && c.merged_into) c = chars.find((x) => x.id === c.merged_into); return c ? c.id : id; };
+    const EDIT = { purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, notes: null };
+    const sdnaEntry = (scene) => {
+      const v = approved(); const rec = sdna.find((r) => r.scene_id === scene.id);
+      const editable = rec ? Object.fromEntries(Object.keys(EDIT).map((k) => [k, rec[k]])) : { ...EDIT };
+      const act = scenes.filter((s) => s.status === "active"); const pos = act.indexOf(scene);
+      const adj = (s) => (s ? { number: s.number, heading: s.heading, location: s.location, time_of_day: s.time_of_day, int_ext: s.int_ext } : null);
+      const part = new Map();
+      for (const a of apps.filter((x) => x.scene_id === scene.id)) { const id = follow(a.character_id); const pr = part.get(id); part.set(id, { voice_only: pr ? pr.voice_only && a.voice_only : a.voice_only, speaking: (pr?.speaking ?? false) || a.speaking, line_count: (pr?.line_count ?? 0) + (a.line_count ?? 0) }); }
+      const participants = [...part.entries()].map(([id, x]) => { const c = chars.find((y) => y.id === id); return { character_id: id, name: c.name, kind: c.kind, status: c.status, ...x }; });
+      const lines = dlines.filter((l) => l.scene_id === scene.id && l.status === "active");
+      const ids = new Set(participants.map((x) => x.character_id));
+      const avail = looks.filter((l) => ids.has(follow(l.character_id))).map((l) => ({ id: l.id, character_id: follow(l.character_id), name: l.name }));
+      const { proposal, engine_version } = eng.sceneDnaAssemblyEngine({
+        scene: { id: scene.id, number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day, estimated_seconds: scene.estimated_seconds, status: scene.status },
+        action: scene.status === "active" ? v.elements.filter((e) => e.index >= scene.element_start && e.index <= scene.element_end && e.type === "action").map((e) => ({ line: e.line, text: e.text })) : [],
+        participants, dialogue: lines.map((l) => ({ id: l.id, speaker: l.speaker_name, character_id: l.character_id, emotion: l.emotion, intensity: l.intensity, approval: l.approval, review_state: l.review_state })),
+        adjacent: { previous: adj(act[pos - 1]), next: pos >= 0 ? adj(act[pos + 1]) : null }, wardrobe_available: avail, editable,
+      });
+      const fp = (...x) => JSON.stringify(x);
+      const deps = [{ type: "scene", id: scene.id, fingerprint: scene.content_hash, strength: "hard", label: `Scene ${scene.number}` },
+        ...participants.map((x) => { const c = chars.find((y) => y.id === x.character_id); return { type: "character", id: c.id, fingerprint: fp(c.name, c.kind, c.status, c.role, c.age, c.gender, c.description, x.voice_only), strength: "soft", label: c.name }; }),
+        ...lines.map((l) => ({ type: "dialogue_line", id: l.id, fingerprint: fp(l.text_hash, l.character_id, l.intention, l.subtext, l.emotion, l.intensity, l.approval), strength: "soft", label: `${l.speaker_name}: “${l.text.slice(0, 40)}”` })),
+        ...proposal.participants.filter((x) => x.wardrobe_look_id).map((x) => { const lk = looks.find((l) => l.id === x.wardrobe_look_id); return { type: "wardrobe_look", id: lk.id, fingerprint: fp(lk.name, lk.description), strength: "soft", label: `${x.name} — ${lk.name}` }; })];
+      const ver = rec && sdnaVersions.find((x) => x.id === rec.approved_version_id);
+      if (rec && ver) { const drift = pg.computeDrift(ver.dependencies, deps); rec.review_state = pg.descendantState(drift); rec.drift = drift.map((d) => ({ type: d.ref.type, id: d.ref.id, label: d.ref.label, kind: d.kind, effect: d.effect, message: d.message })); }
+      return { rec, ver, editable, proposal, engine_version, deps, avail };
+    };
+    if (u === `/api/projects/${P}/scene-dna` && req.method === "GET") {
+      const v = approved();
+      if (!v) return send(200, { script: null, scenes: [], summary: { scenes: 0, approved: 0, ready: 0, needs_review: 0 } });
+      const out = scenes.filter((s) => s.status === "active" || sdna.some((r) => r.scene_id === s.id)).map((scene) => {
+        const e = sdnaEntry(scene);
+        return { scene: { id: scene.id, number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day, estimated_seconds: scene.estimated_seconds, status: scene.status },
+          record: e.rec ? { ...e.rec, approved_version_number: e.ver ? e.ver.version_number : null } : null, editable: e.editable, proposal: e.proposal,
+          looks: e.avail.map((l) => ({ ...l, description: looks.find((x) => x.id === l.id).description ?? null })), engine_version: e.engine_version };
+      });
+      return send(200, { script: { approved_version_id: v.id, version_number: v.version_number }, scenes: out,
+        summary: { scenes: out.filter((x) => x.scene.status === "active").length, approved: out.filter((x) => x.record?.status === "approved" && x.record.review_state === "current").length, ready: out.filter((x) => x.proposal.ready_for_approval).length, needs_review: out.filter((x) => x.record && x.record.review_state !== "current").length } });
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/scene-dna\/([^/]+)$/)) && req.method === "PATCH") {
+      const c = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));
+      const r = c.UpdateSceneDnaInputSchema.strict().safeParse(b);
+      if (!r.success) return send(400, { error: { code: "AURA-SDNA-002", message: `${r.error.issues[0].path[0]} isn't valid` } });
+      let rec = sdna.find((x) => x.scene_id === m[1]);
+      if (!rec) { rec = { id: crypto.randomUUID(), project_id: P, scene_id: m[1], ...EDIT, status: "draft", review_state: "current", approved_version_id: null, drift: [] }; sdna.push(rec); }
+      Object.assign(rec, r.data, { status: "draft", updated_at: now() });
+      return send(200, { ...rec, approved_version_number: null });
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/scene-dna\/([^/]+)\/approve$/))) {
+      const scene = scenes.find((s) => s.id === m[1]); const e = sdnaEntry(scene);
+      if (!e.proposal.ready_for_approval) { const f = e.proposal.readiness.filter((x) => x.blocking && !x.ok); return send(412, { error: { code: "AURA-SDNA-412", message: `Not ready to lock yet: ${f.map((x) => x.label.toLowerCase()).join("; ")}.` } }); }
+      let rec = e.rec; if (!rec) { rec = { id: crypto.randomUUID(), project_id: P, scene_id: m[1], ...EDIT, drift: [] }; sdna.push(rec); }
+      const ver = { id: crypto.randomUUID(), scene_dna_id: rec.id, version_number: sdnaVersions.filter((x) => x.scene_dna_id === rec.id).length + 1, dependencies: e.deps };
+      sdnaVersions.push(ver); Object.assign(rec, { status: "approved", review_state: "current", drift: [], approved_version_id: ver.id, updated_at: now() });
+      return send(200, { version_id: ver.id, version_number: ver.version_number, dependencies: e.deps.length });
     }
     send(404, { error: { code: "AURA-X-404", message: "not mocked " + u } });
   });

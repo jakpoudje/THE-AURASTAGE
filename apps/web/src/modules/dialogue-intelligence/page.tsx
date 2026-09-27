@@ -63,9 +63,14 @@ export default function DialogueIntelligencePage() {
       project={d.project}
       active="dialogue"
       actions={
-        <Link href={`/projects/${id}/casting`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
-          ← Casting
-        </Link>
+        <>
+          <Link href={`/projects/${id}/casting`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
+            ← Casting
+          </Link>
+          <Link href={`/projects/${id}/scene-dna`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Next: Scene DNA →
+          </Link>
+        </>
       }
     >
       <IntentSuggestions />
@@ -87,7 +92,9 @@ export default function DialogueIntelligencePage() {
           <span className="rounded-md border border-aura-border px-3 py-1.5">Casting · {ws.characters.length} characters</span>
           <span className="text-aura-gold">→</span>
           <span className="rounded-md border border-aura-gold px-3 py-1.5 text-aura-gold">Dialogue Intelligence</span>
-          <span className="text-white/30">→ Scene DNA</span>
+          <Link href={`/projects/${id}/scene-dna`} className="text-white/50 underline hover:text-aura-gold">
+            → Scene DNA
+          </Link>
         </div>
 
         <DialogueSyncBanner ws={ws} projectId={id} busy={d.busy === "sync"} onSync={d.sync} />

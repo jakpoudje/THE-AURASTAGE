@@ -1,0 +1,82 @@
+"use client";
+
+// Loads and mutates the Scene DNA workspace. Every change goes through the API
+// and the screen reloads from it, so what you see is what is stored.
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Project, UpdateSceneDnaInput } from "@aurastage/contracts";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+import { apiGet } from "@/lib/apiClient";
+import { sceneDnaApi } from "../api/sceneDnaApi";
+import type { SceneDnaWorkspace } from "../types";
+
+type Busy = null | "save" | "approve";
+
+export function useSceneDna(projectId: string) {
+  const router = useRouter();
+  const [project, setProject] = useState<Project | null>(null);
+  const [ws, setWs] = useState<SceneDnaWorkspace | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<Busy>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const reload = useCallback(async () => setWs(await sceneDnaApi.getWorkspace(projectId)), [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await getSupabaseClient().auth.getSession();
+      if (!data.session) {
+        router.replace("/sign-in");
+        return;
+      }
+      try {
+        const [p, w] = await Promise.all([apiGet<Project>(`/api/projects/${projectId}`), sceneDnaApi.getWorkspace(projectId)]);
+        if (cancelled) return;
+        setProject(p);
+        setWs(w);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load Scene DNA");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, router]);
+
+  async function run(kind: Busy, fn: () => Promise<string>) {
+    setBusy(kind);
+    setError(null);
+    setNotice(null);
+    try {
+      const msg = await fn();
+      await reload();
+      setNotice(msg);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return {
+    project,
+    ws,
+    loading,
+    busy,
+    error,
+    notice,
+    save: (sceneId: string, input: UpdateSceneDnaInput) => run("save", async () => (await sceneDnaApi.save(projectId, sceneId, input), "Scene DNA saved.")),
+    approve: (sceneId: string) =>
+      run("approve", async () => {
+        const r = await sceneDnaApi.approve(projectId, sceneId);
+        return `Scene DNA locked as version ${r.version_number}, with ${r.dependencies} upstream sources recorded.`;
+      }),
+  };
+}

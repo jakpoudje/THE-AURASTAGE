@@ -26,6 +26,9 @@ importers:
       '@aurastage/engines':
         specifier: workspace:*
         version: link:../../engines
+      '@aurastage/production-graph':
+        specifier: workspace:*
+        version: link:../../packages/production-graph
       '@fastify/cors':
         specifier: ^10.0.1
         version: 10.1.0
@@ -152,6 +155,9 @@ importers:
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.4)
 
   workers/ai-worker: {}
 
