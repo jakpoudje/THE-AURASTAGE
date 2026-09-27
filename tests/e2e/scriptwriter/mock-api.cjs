@@ -6,7 +6,7 @@ const P = "11111111-1111-4111-8111-111111111111", ORG = "22222222-2222-4222-8222
 const now = () => new Date().toISOString();
 let project = { id: P, org_id: ORG, title: "Shadows of Lagos", type: "feature_film", genre: "Thriller", target_runtime_minutes: 110, status: "draft", created_at: now(), updated_at: now() };
 let script = null; const versions = []; let scenes = [];
-const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; const sdna = [], sdnaVersions = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
+const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
 const ws = () => {
   const cur = script && versions.find((v) => v.id === script.current_version_id);
   return { script, current_version: cur || null, versions: versions.map(({ id, version_number, note, parser_version, created_at }) => ({ id, version_number, note, parser_version, created_at })).reverse(), scenes, analysis: cur ? eng.sceneBoundaryEngine({ elements: cur.elements }).analysis : null };
@@ -232,9 +232,93 @@ http.createServer((req, res) => {
       const scene = scenes.find((s) => s.id === m[1]); const e = sdnaEntry(scene);
       if (!e.proposal.ready_for_approval) { const f = e.proposal.readiness.filter((x) => x.blocking && !x.ok); return send(412, { error: { code: "AURA-SDNA-412", message: `Not ready to lock yet: ${f.map((x) => x.label.toLowerCase()).join("; ")}.` } }); }
       let rec = e.rec; if (!rec) { rec = { id: crypto.randomUUID(), project_id: P, scene_id: m[1], ...EDIT, drift: [] }; sdna.push(rec); }
-      const ver = { id: crypto.randomUUID(), scene_dna_id: rec.id, version_number: sdnaVersions.filter((x) => x.scene_dna_id === rec.id).length + 1, dependencies: e.deps };
+      const ver = { id: crypto.randomUUID(), scene_dna_id: rec.id, version_number: sdnaVersions.filter((x) => x.scene_dna_id === rec.id).length + 1, dependencies: e.deps, content: { editable: e.editable, proposal: e.proposal } };
       sdnaVersions.push(ver); Object.assign(rec, { status: "approved", review_state: "current", drift: [], approved_version_id: ver.id, updated_at: now() });
       return send(200, { version_id: ver.id, version_number: ver.version_number, dependencies: e.deps.length });
+    }
+
+    // ---- Storyboard & Shots (mirrors apps/api/src/modules/shots + migration 0012 semantics) ----
+    const locked = (scene) => {
+      const d = sdna.find((r) => r.scene_id === scene.id); if (d) sdnaEntry(scene);
+      const v = d && sdnaVersions.find((x) => x.id === d.approved_version_id); if (!v) return null;
+      const p = v.content.proposal; const lines = p.dialogue.line_ids.map((id) => dlines.find((l) => l.id === id)).filter(Boolean);
+      return { d, v, current: d.status === "approved" && d.review_state === "current", duration: p.narrative.intended_duration_seconds || 1, editable: v.content.editable, participants: p.participants, lines, lineIds: p.dialogue.line_ids };
+    };
+    const label = (l) => `${l.speaker_name}: “${l.text.length > 40 ? l.text.slice(0, 37) + "…" : l.text}”`;
+    const review = (plan, dna) => {
+      if (!dna) return ["stale", "This scene's Scene DNA is no longer locked."];
+      if (dna.d.approved_version_id !== plan.scene_dna_version_id) return ["stale", `Scene DNA was locked again (now version ${dna.v.version_number}) after these shots were planned.`];
+      if (dna.d.review_state !== "current") return ["review_required", `Scene DNA needs review.${dna.d.drift[0] ? " " + dna.d.drift[0].message : ""}`];
+      if (dna.d.status !== "approved") return ["review_required", "Scene DNA has edits that aren't locked yet."];
+      return ["current", null];
+    };
+    const cover = (dna, list) => eng.coverageMathEngine({ scene_seconds: eng.planStoryTime(dna.duration, dna.lines.map((l) => l.estimated_seconds)), shots: list,
+      line_ids: dna.lineIds, line_labels: Object.fromEntries(dna.lines.map((l) => [l.id, label(l)])), characters: dna.participants.filter((x) => x.presence === "on_screen").map((x) => ({ id: x.character_id, name: x.name })) });
+    const planShots = (plan) => shots.filter((x) => x.plan_id === plan.id).sort((a, b) => a.ordinal - b.ordinal);
+    const touch = (planId) => { const pl = plans.find((x) => x.id === planId); pl.status = "draft"; pl.updated_at = now(); };
+    const renumber = (planId) => planShots({ id: planId }).forEach((x, i) => (x.ordinal = i + 1));
+    if (u === `/api/projects/${P}/storyboard` && req.method === "GET") {
+      const out = scenes.filter((x) => x.status === "active" || plans.some((p) => p.scene_id === x.id)).map((scene) => {
+        const dna = locked(scene); const plan = plans.find((x) => x.scene_id === scene.id) || null;
+        if (plan) { const [st, why] = review(plan, dna); plan.review_state = st; plan.review_reason = why; }
+        const list = plan ? planShots(plan) : [];
+        return { scene: { id: scene.id, number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day, status: scene.status },
+          dna: dna ? { state: dna.current ? "locked" : "needs_review", version_id: dna.v.id, version_number: dna.v.version_number, duration_seconds: dna.duration, mood: dna.editable.mood || [], camera_energy: dna.editable.camera_energy } : { state: "not_locked", version_id: null, version_number: null, duration_seconds: null, mood: [], camera_energy: null },
+          characters: dna ? dna.participants.map((x) => ({ id: x.character_id, name: x.name, presence: x.presence })) : [],
+          lines: dna ? dna.lines.map((l) => ({ id: l.id, label: label(l), character_id: l.character_id })) : [],
+          plan: plan ? { ...plan, approved_version_number: plan.approved_version_id ? planVersions.find((v) => v.id === plan.approved_version_id).version_number : null } : null,
+          shots: list, coverage: plan && dna ? cover(dna, list) : null };
+      });
+      const act = out.filter((x) => x.scene.status === "active");
+      return send(200, { scenes: out, summary: { scenes: act.length, dna_locked: act.filter((x) => x.dna.state === "locked").length, planned: act.filter((x) => x.plan).length, approved: act.filter((x) => x.plan && x.plan.status === "approved" && x.plan.review_state === "current").length, shots: out.reduce((n, x) => n + x.shots.length, 0), needs_review: out.filter((x) => x.plan && x.plan.review_state !== "current").length } });
+    }
+    const newShot = (plan, ordinal, x) => ({ id: crypto.randomUUID(), project_id: P, scene_id: plan.scene_id, plan_id: plan.id, ordinal, angle: "eye", movement: "static", support: "tripod", focus: "deep", lens_mm: null, composition: null, lighting: null, transition_in: "cut", notes: null, character_ids: [], dialogue_line_ids: [], ...x, created_at: now(), updated_at: now() });
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/storyboard\/scenes\/([^/]+)\/generate$/))) {
+      const scene = scenes.find((x) => x.id === m[1]); const dna = locked(scene);
+      if (!dna || !dna.current) return send(412, { error: { code: "AURA-SHOT-412", message: "Lock this scene's Scene DNA first — shots are planned from a locked version." } });
+      let plan = plans.find((x) => x.scene_id === scene.id);
+      if (plan && planShots(plan).length && !b.replace) return send(409, { error: { code: "AURA-SHOT-409", message: `this scene already has ${planShots(plan).length} shots — confirm to replace them` } });
+      if (!plan) { plan = { id: crypto.randomUUID(), project_id: P, scene_id: scene.id, approved_version_id: null }; plans.push(plan); }
+      for (let i = shots.length - 1; i >= 0; i--) if (shots[i].plan_id === plan.id) shots.splice(i, 1);
+      Object.assign(plan, { scene_dna_version_id: dna.v.id, status: "draft", review_state: "current", review_reason: null, engine_version: "1.0.0", updated_at: now() });
+      const r = eng.shotPlanningEngine({ scene: { number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day, duration_seconds: dna.duration },
+        dna: { camera_energy: dna.editable.camera_energy, mood: dna.editable.mood || [], lighting_intent: dna.editable.lighting_intent },
+        participants: dna.participants.map((x) => ({ character_id: x.character_id, name: x.name, presence: x.presence })),
+        lines: dna.lines.map((l) => ({ id: l.id, character_id: l.character_id, speaker: l.speaker_name, text: l.text, estimated_seconds: l.estimated_seconds, intensity: l.intensity, listener_ids: l.listener_ids })) });
+      r.shots.forEach(({ rationale, ...x }, i) => shots.push(newShot(plan, i + 1, { ...x, notes: x.notes ?? rationale })));
+      return send(200, { plan_id: plan.id, shots: r.shots.length, scene_dna_version_number: dna.v.version_number });
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/storyboard\/scenes\/([^/]+)\/shots$/))) {
+      const c = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));
+      const r = c.CreateShotInputSchema.safeParse(b.shot); if (!r.success) return send(400, { error: { code: "AURA-SHOT-002", message: r.error.issues[0].message } });
+      const plan = plans.find((x) => x.scene_id === m[1]); const list = planShots(plan);
+      const pos = b.after_ordinal != null && b.after_ordinal + 1 <= list.length ? b.after_ordinal + 1 : list.length + 1;
+      list.forEach((x) => { if (x.ordinal >= pos) x.ordinal++; });
+      const x = newShot(plan, pos, r.data); shots.push(x); touch(plan.id); return send(200, x);
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/storyboard\/scenes\/([^/]+)\/approve$/))) {
+      const scene = scenes.find((x) => x.id === m[1]); const plan = plans.find((x) => x.scene_id === scene.id); const dna = locked(scene);
+      const [st, why] = review(plan, dna); if (st !== "current") return send(412, { error: { code: "AURA-SHOT-412", message: why } });
+      const c = cover(dna, planShots(plan));
+      if (!c.ready_for_approval) return send(412, { error: { code: "AURA-SHOT-412", message: `Not ready to approve yet: ${c.readiness.filter((x) => x.blocking && !x.ok).map((x) => x.label.toLowerCase()).join("; ")}.` } });
+      const v = { id: crypto.randomUUID(), plan_id: plan.id, version_number: planVersions.filter((x) => x.plan_id === plan.id).length + 1, shots: JSON.parse(JSON.stringify(planShots(plan))) };
+      planVersions.push(v); Object.assign(plan, { status: "approved", review_state: "current", review_reason: null, approved_version_id: v.id });
+      return send(200, { version_id: v.id, version_number: v.version_number, coverage: c.coverage });
+    }
+    if ((m = u.match(/^\/api\/shots\/([^/]+)\/move$/))) {
+      const x = shots.find((y) => y.id === m[1]); const other = shots.find((y) => y.plan_id === x.plan_id && y.ordinal === x.ordinal + b.direction);
+      if (other) { other.ordinal = x.ordinal; x.ordinal += b.direction; touch(x.plan_id); } return send(200, x);
+    }
+    if ((m = u.match(/^\/api\/shots\/([^/]+)$/)) && req.method === "PATCH") {
+      const c = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));
+      const r = c.UpdateShotInputSchema.strict().safeParse(b); if (!r.success) return send(400, { error: { code: "AURA-SHOT-002", message: "That value isn't valid" } });
+      const x = shots.find((y) => y.id === m[1]); Object.assign(x, r.data, { updated_at: now() });
+      if (x.story_end < x.story_start) return send(400, { error: { code: "AURA-SHOT-002", message: "A shot can't end before it starts" } });
+      touch(x.plan_id); return send(200, x);
+    }
+    if ((m = u.match(/^\/api\/shots\/([^/]+)$/)) && req.method === "DELETE") {
+      const i = shots.findIndex((y) => y.id === m[1]); const x = shots[i]; shots.splice(i, 1); renumber(x.plan_id); touch(x.plan_id);
+      return send(200, { deleted_ordinal: x.ordinal });
     }
     send(404, { error: { code: "AURA-X-404", message: "not mocked " + u } });
   });

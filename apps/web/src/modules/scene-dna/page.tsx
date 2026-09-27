@@ -49,9 +49,14 @@ export default function SceneDnaPage() {
       project={d.project}
       active="scene-dna"
       actions={
-        <Link href={`/projects/${id}/dialogue`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
-          ← Dialogue
-        </Link>
+        <>
+          <Link href={`/projects/${id}/dialogue`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
+            ← Dialogue
+          </Link>
+          <Link href={`/projects/${id}/storyboard`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Next: Storyboard →
+          </Link>
+        </>
       }
     >
       <section className="border-b border-aura-border bg-gradient-to-r from-black via-[#16120a] to-black px-8 py-10">
@@ -75,7 +80,9 @@ export default function SceneDnaPage() {
           <span className="rounded-md border border-aura-border px-3 py-1.5">Dialogue</span>
           <span className="text-aura-gold">→</span>
           <span className="rounded-md border border-aura-gold px-3 py-1.5 text-aura-gold">Scene DNA</span>
-          <span className="text-white/30">→ Storyboard</span>
+          <Link href={`/projects/${id}/storyboard`} className="text-white/50 underline hover:text-aura-gold">
+            → Storyboard
+          </Link>
         </div>
 
         {!ws.script ? (

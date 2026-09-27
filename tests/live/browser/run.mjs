@@ -101,6 +101,25 @@ await check("scene dna: save, reload: kept; lock, reload: still locked", async (
   await reload("Production Blueprint");
   await page.getByRole("button", { name: "Locked · version 1 ✓" }).waitFor();
 });
+await check("storyboard: plan shots, reload: kept; edit, reload: kept; approve, reload: approved", async () => {
+  await page.goto(projectUrl + "/storyboard");
+  await page.getByText("Cinematic Precision").waitFor();
+  await page.getByRole("button", { name: /INT\. TUNDE'S APARTMENT/ }).first().click();
+  await page.getByRole("button", { name: "Plan shots from Scene DNA" }).click();
+  await page.getByText(/Planned \d+ shots from Scene DNA version 1/).waitFor();
+  await reload("Cinematic Precision");
+  await page.getByRole("button", { name: "Shot 1", exact: true }).click();
+  await page.getByLabel("Angle").selectOption({ label: "Low" });
+  await page.getByRole("button", { name: "Save shot" }).click();
+  await page.getByText("Shot 1 saved.").waitFor();
+  await reload("Cinematic Precision");
+  await page.getByRole("button", { name: "Shot 1", exact: true }).click();
+  if ((await page.getByLabel("Angle").inputValue()) !== "low") throw new Error("shot edit lost after reload");
+  await page.getByRole("button", { name: "Approve shot plan" }).click();
+  await page.getByText(/Shot plan approved as version 1/).waitFor();
+  await reload("Cinematic Precision");
+  await page.getByRole("button", { name: "Approved · version 1 ✓" }).waitFor();
+});
 await check("dashboard after reload still shows the project", async () => {
   await page.goto(WEB + "/dashboard");
   await reload(TITLE);

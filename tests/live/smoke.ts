@@ -66,7 +66,7 @@ await check("api health", async () => {
   assert(r.status === 200 && j.status === "ok", `health ${r.status}`);
   return `phase ${j.phase}`;
 });
-for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna"]) {
+for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard"]) {
   await check(`web ${path}`, async () => {
     const r = await fetch(WEB + path);
     assert(r.status === 200, `status ${r.status}`);
@@ -229,6 +229,38 @@ await check("scene dna: a Casting change flags the locked scene for review (and 
   assert(after.scenes[0].record.review_state === "current", "still flagged");
   assert(after.scenes[0].record.purpose === "Tunde decides to publish.", "purpose lost");
 });
+await check("storyboard: only locked scenes can be planned (412 otherwise)", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
+  assert(ws.scenes[0].dna.state === "locked" && ws.scenes[1].dna.state === "not_locked", `${ws.scenes[0].dna.state}/${ws.scenes[1].dna.state}`);
+  await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s2}/generate`, {}, [412]);
+});
+let shotId = "";
+await check("storyboard: plan shots from locked Scene DNA; re-plan asks first (409)", async () => {
+  const g = await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, {});
+  assert(g.shots >= 2 && g.scene_dna_version_number === 2, `shots ${g.shots} from v${g.scene_dna_version_number}`);
+  await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, {}, [409]);
+  const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
+  const sc = ws.scenes[0];
+  shotId = sc.shots[0].id;
+  assert(sc.coverage.ready_for_approval === true, "coverage not ready: " + JSON.stringify(sc.coverage.readiness.filter((r: any) => !r.ok)));
+  return `${g.shots} shots, ${Math.round(sc.coverage.coverage * 100)}% covered`;
+});
+await check("storyboard: edit a shot (bad value refused), approve, persists", async () => {
+  await api("PATCH", `/api/shots/${shotId}`, { size: "HUGE" }, [400]);
+  const s = await api("PATCH", `/api/shots/${shotId}`, { angle: "low", composition: "Lamp top-left" });
+  assert(s.angle === "low", "not saved");
+  const v = await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/approve`, {});
+  assert(v.version_number === 1 && v.coverage === 1, `v${v.version_number} coverage ${v.coverage}`);
+  const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
+  const sc = ws.scenes[0];
+  assert(sc.plan.status === "approved" && sc.shots[0].angle === "low" && sc.shots[0].composition === "Lamp top-left", "not persisted");
+});
+await check("storyboard: a Casting change flows through Scene DNA and flags the shots", async () => {
+  await api("PATCH", `/api/characters/${tundeId}`, { description: "Back on the story" });
+  const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
+  assert(ws.scenes[0].plan.review_state === "review_required", `state ${ws.scenes[0].plan.review_state}`);
+  return ws.scenes[0].plan.review_reason;
+});
 await check("persistence: everything still there on re-read", async () => {
   const [p, s, c] = await Promise.all([
     api("GET", `/api/projects/${projectId}`),
@@ -240,6 +272,7 @@ await check("persistence: everything still there on re-read", async () => {
 await check("security: other project ids are refused", async () => {
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/characters`, undefined, [403]);
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/scene-dna`, undefined, [403]);
+  await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/storyboard`, undefined, [403]);
 });
 
 const failed = results.filter((r) => !r.ok).length;

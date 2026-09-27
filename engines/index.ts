@@ -4,3 +4,4 @@ export * from "./story";
 export * from "./character";
 export * from "./dialogue";
 export * from "./scene-dna";
+export * from "./cinematography";

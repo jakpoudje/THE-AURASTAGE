@@ -1,40 +1,18 @@
-# Storyboard Shots (frontend module)
+# Storyboard & Shots (frontend module)
 
 ## Purpose
-Frontend workspace for the Storyboard & Shots production stage.
+Storyboard workspace (docs/design/UI_REFERENCE.md §7): scene list with plan
+status, storyboard grid of numbered frames (schematic framing guides, size
+badge, duration, caption), shot list table, full shot-details editor, planning
+tools, scene shot summary with coverage checks, and the scene shot timeline.
 
 ## Canonical owner
-apps/api/src/modules/shots (canonical object: Shot)
+apps/api/src/modules/shots (canonical objects: Shot, ShotPlan)
 
-## Inputs / reads
-TODO — fill in as the module is built (Build Guide §12 requires this to stay current).
-
-## Outputs / writes
-TODO
-
-## Upstream dependencies
-TODO
-
-## Downstream consumers
-TODO
-
-## Relevant engines
-engines/cinematography/**
-
-## API endpoints
-TODO
-
-## Database objects
-TODO
-
-## Events emitted / consumed
-TODO
-
-## Permissions
-TODO
+## Reads / writes
+Only through `api/storyboardApi.ts`. Plan shots / re-plan (asks before
+replacing), add, edit, move, remove shots, approve the plan. Framing guides
+are drawings, not generated images — real frames arrive with Visual Generation.
 
 ## Tests
-See ./tests
-
-## Known operational error codes
-TODO
+`tests/e2e/storyboard/run.cjs` (offline, against `tests/e2e/scriptwriter/mock-api.cjs`).

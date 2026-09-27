@@ -2,8 +2,8 @@
 
 Named engines specified in the SRS for this domain (subset — see docs/SRS for full contracts):
 
-- `shotPlanningEngine`
-- `coverageMathEngine`
+- `shotPlanningEngine` — **built** (v1.0.0, deterministic): first coverage plan from a locked Scene DNA version
+- `coverageMathEngine` — **built** (v1.0.0): SRS §9.1 coverage of story time + mandatory dialogue beats
 - `cameraRecommendationEngine`
 - `storyboardFrameEngine`
 - `animaticEngine`
