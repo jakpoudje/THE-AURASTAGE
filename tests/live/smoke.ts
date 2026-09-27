@@ -151,6 +151,26 @@ await check("casting: edit + approve character", async () => {
 await check("casting: rename clash refused (409)", async () => {
   await api("PATCH", `/api/characters/${tundeId}`, { name: "Amara Bello" }, [409]);
 });
+let amaraId = "";
+await check("casting: add character by hand; duplicate refused", async () => {
+  const c = await api("POST", `/api/projects/${projectId}/characters`, { name: "Chief Adeyemi", role: "supporting" }, [201]);
+  assert(c.role === "supporting", "role not saved");
+  await api("POST", `/api/projects/${projectId}/characters`, { name: "tunde okafor" }, [409]);
+});
+await check("casting: relationship + wardrobe look", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/characters`);
+  amaraId = ws.characters.find((c: any) => c.name === "Amara Bello")?.id;
+  assert(amaraId, "Amara missing");
+  await api("POST", `/api/projects/${projectId}/relationships`, { character_a: tundeId, character_b: amaraId, relationship: "Love interest" });
+  await api("POST", `/api/projects/${projectId}/relationships`, { character_a: amaraId, character_b: tundeId, relationship: "Partner" });
+  const look = await api("POST", `/api/characters/${tundeId}/looks`, { name: "Field outfit", description: "Khaki jacket" });
+  const after = await api("GET", `/api/projects/${projectId}/characters`);
+  assert(after.relationships.length === 1 && after.relationships[0].relationship === "Partner", "relationship not upserted");
+  assert(after.wardrobe_looks.some((l: any) => l.id === look.id), "look missing");
+  await api("DELETE", `/api/looks/${look.id}`);
+  const final = await api("GET", `/api/projects/${projectId}/characters`);
+  assert(!final.wardrobe_looks.some((l: any) => l.id === look.id), "look not deleted");
+});
 await check("persistence: everything still there on re-read", async () => {
   const [p, s, c] = await Promise.all([
     api("GET", `/api/projects/${projectId}`),
