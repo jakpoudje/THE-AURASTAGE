@@ -6,7 +6,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 /** Carries the HTTP status and AURA-* error code so screens can react (e.g. 409 = someone saved first). */
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public code?: string) {
+  /** `details` carries the server's structured error info (e.g. Picture Lock impact). */
+  constructor(message: string, public status: number, public code?: string, public details?: unknown) {
     super(message);
   }
 }
@@ -25,7 +26,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
-    throw new ApiError(payload?.error?.message ?? `${method} ${path} failed: ${res.status}`, res.status, payload?.error?.code);
+    throw new ApiError(payload?.error?.message ?? `${method} ${path} failed: ${res.status}`, res.status, payload?.error?.code, payload?.error?.issues);
   }
   return res.json();
 }

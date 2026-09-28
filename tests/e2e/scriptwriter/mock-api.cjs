@@ -6,7 +6,7 @@ const P = "11111111-1111-4111-8111-111111111111", ORG = "22222222-2222-4222-8222
 const now = () => new Date().toISOString();
 let project = { id: P, org_id: ORG, title: "Shadows of Lagos", type: "feature_film", genre: "Thriller", target_runtime_minutes: 110, status: "draft", created_at: now(), updated_at: now() };
 let script = null; const versions = []; let scenes = [];
-const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; const assets = [], asessions = [], atracks = [], aclips = [], ameasures = [], aversions = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = [], packages = [], takes = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
+const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; let timeline = null, tclips = []; const tversions = [], locks = []; const assets = [], asessions = [], atracks = [], aclips = [], ameasures = [], aversions = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = [], packages = [], takes = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
 const ws = () => {
   const cur = script && versions.find((v) => v.id === script.current_version_id);
   return { script, current_version: cur || null, versions: versions.map(({ id, version_number, note, parser_version, created_at }) => ({ id, version_number, note, parser_version, created_at })).reverse(), scenes, analysis: cur ? eng.sceneBoundaryEngine({ elements: cur.elements }).analysis : null };
@@ -404,17 +404,19 @@ http.createServer((req, res) => {
     }
     if ((m = u.match(/^\/api\/assets\/([^/]+)\/content$/))) { const a = assets.find((x) => x.id === m[1]); res.statusCode = 200; res.setHeader("Content-Type", a.media_type); return res.end(a.bytes); }
     const clipDTO = (c) => ({ ...c });
+    const audioReview = (s) => {
+      const plan = plans.find((x) => x.scene_id === s.scene_id); const pv = plan && planVersions.find((v) => v.id === plan.approved_version_id);
+      if (!plan || plan.approved_version_id !== s.shot_plan_version_id) { s.review_state = "stale"; s.review_reason = `The shot plan was approved again (now version ${pv && pv.version_number}) after this audio was spotted — re-spot to update the cues. Your recordings are kept.`; }
+      else if (plan.status !== "approved" || plan.review_state !== "current") { s.review_state = "review_required"; s.review_reason = "The shot plan has edits that aren't approved yet."; }
+      else { s.review_state = "current"; s.review_reason = null; }
+    };
     if (u === `/api/projects/${P}/audio` && req.method === "GET") {
       const out = [];
       for (const scene of scenes) {
         const plan = plans.find((x) => x.scene_id === scene.id); const pv = plan && planVersions.find((v) => v.id === plan.approved_version_id);
         const s = asessions.find((x) => x.scene_id === scene.id) || null;
         if (!pv && !s) continue;
-        if (s) {
-          if (!plan || plan.approved_version_id !== s.shot_plan_version_id) { s.review_state = "stale"; s.review_reason = `The shot plan was approved again (now version ${pv.version_number}) after this audio was spotted — re-spot to update the cues. Your recordings are kept.`; }
-          else if (plan.status !== "approved" || plan.review_state !== "current") { s.review_state = "review_required"; s.review_reason = "The shot plan has edits that aren't approved yet."; }
-          else { s.review_state = "current"; s.review_reason = null; }
-        }
+        if (s) audioReview(s);
         const st = s ? atracks.filter((t) => t.session_id === s.id) : []; const sc = s ? aclips.filter((c) => c.session_id === s.id) : [];
         const me = s ? [...ameasures].reverse().find((x) => x.session_id === s.id) || null : null; const r = s ? aud.audioReadiness(s, st, sc, me) : null;
         out.push({ scene: { id: scene.id, number: scene.number, heading: scene.heading },
@@ -455,7 +457,8 @@ http.createServer((req, res) => {
     if ((m = u.match(/^\/api\/projects\/[^/]+\/audio\/scenes\/([^/]+)\/approve$/))) {
       const s = asessions.find((x) => x.scene_id === m[1]); const r = aud.audioReadiness(s, atracks.filter((t) => t.session_id === s.id), aclips.filter((c) => c.session_id === s.id), [...ameasures].reverse().find((x) => x.session_id === s.id) || null);
       if (!r.ready) return aerr(412, `Not ready to approve yet: ${r.readiness.filter((x) => x.blocking && !x.ok).map((x) => x.label.toLowerCase()).join("; ")}.`);
-      const v = { id: crypto.randomUUID(), version_number: aversions.filter((x) => x.session_id === s.id).length + 1, session_id: s.id }; aversions.push(v);
+      const v = { id: crypto.randomUUID(), version_number: aversions.filter((x) => x.session_id === s.id).length + 1, session_id: s.id,
+        tracks: atracks.filter((t) => t.session_id === s.id).map((t) => ({ ...t })), clips: aclips.filter((c) => c.session_id === s.id).map((c) => ({ ...c })), measurement: { duration_seconds: s.scene_seconds } }; aversions.push(v);
       Object.assign(s, { status: "approved", approved_version_id: v.id }); return send(200, { version_id: v.id, version_number: v.version_number });
     }
     if ((m = u.match(/^\/api\/audio-tracks\/([^/]+)$/)) && req.method === "PATCH") {
@@ -481,6 +484,117 @@ http.createServer((req, res) => {
       if (b.session_revision !== s.revision) return aerr(409, "The mix changed while it was being measured — measure again.");
       const me = { id: crypto.randomUUID(), session_id: s.id, ...b, measured_at: now() }; ameasures.push(me); return send(200, me);
     }
+
+    // ---- Editorial & Timeline (mirrors apps/api/src/modules/editorial + migration 0017, using the real engines) ----
+    const FPS = 24, F = (x) => Math.round(x * FPS);
+    const edScenes = () => scenes.map((scene) => {
+      const plan = plans.find((x) => x.scene_id === scene.id); const pv = plan && planVersions.find((v) => v.id === plan.approved_version_id);
+      const session = asessions.find((x) => x.scene_id === scene.id); if (session) audioReview(session);
+      const mixCurrent = session && session.approved_version_id && session.status === "approved" && session.review_state === "current" ? aversions.find((v) => v.id === session.approved_version_id) : null;
+      return { scene, plan, pv, usable: !!(plan && pv && plan.status === "approved" && plan.review_state === "current"), shots: pv ? [...pv.shots].sort((a, b) => a.ordinal - b.ordinal) : [], session, mixCurrent };
+    });
+    const approvedTake = (sid) => takes.find((t) => t.shot_id === sid && t.approval === "approved" && t.status === "succeeded") || null;
+    const takeFrames = (t) => (t.capability === "video" && t.params.duration_seconds ? F(t.params.duration_seconds) : null);
+    const shotLabel = (sc, sh) => `Scene ${sc.scene.number} · Shot ${sh.ordinal}${sh.size ? ` (${sh.size})` : ""}`;
+    const findShot = (rows, id) => { for (const r of rows) { const sh = r.shots.find((x) => x.id === id); if (sh) return { r, sh }; } return null; };
+    const edIssues = (rows) => tclips.flatMap((c) => {
+      if (c.kind === "take") { const f = findShot(rows, c.shot_id); const at = approvedTake(c.shot_id);
+        if (!f) return [{ clip_id: c.id, code: "shot_removed", message: `${c.label}: the shot is no longer in the approved shot plan` }];
+        if (!f.r.usable) return [{ clip_id: c.id, code: "plan_changed", message: `${c.label}: Scene ${f.r.scene.number}'s shot plan has changes that aren't approved` }];
+        if (!at) return [{ clip_id: c.id, code: "take_unapproved", message: `${c.label}: its take is no longer approved` }];
+        if (at.id !== c.take_id) return [{ clip_id: c.id, code: "newer_take", message: `${c.label}: take V${at.take_number} is now the approved take` }]; }
+      if (c.kind === "audio_mix") { const r = rows.find((x) => x.scene.id === c.scene_id);
+        if (!r || !r.mixCurrent) return [{ clip_id: c.id, code: "mix_review", message: `${c.label}: the scene's sound needs review in Audio Studio` }];
+        if (r.mixCurrent.id !== c.audio_session_version_id) return [{ clip_id: c.id, code: "newer_mix", message: `${c.label}: mix v${r.mixCurrent.version_number} is now approved` }]; }
+      return [];
+    });
+    const edConform = (rows) => tclips.flatMap((c) => {
+      if (c.track === "V1" && c.shot_id) { const f = findShot(rows, c.shot_id); if (!f) return []; const at = approvedTake(c.shot_id); const base = shotLabel(f.r, f.sh);
+        if (at && at.id !== c.take_id) return [{ clip_id: c.id, kind: "take", take_id: at.id, audio_session_version_id: null, source_frames: takeFrames(at), label: base }];
+        if (!at && c.kind === "take") return [{ clip_id: c.id, kind: "slug", take_id: null, audio_session_version_id: null, source_frames: null, label: `${base} — no approved take` }]; }
+      if (c.kind === "audio_mix") { const r = rows.find((x) => x.scene.id === c.scene_id);
+        if (r && r.mixCurrent && r.mixCurrent.id !== c.audio_session_version_id) return [{ clip_id: c.id, kind: "audio_mix", take_id: null, audio_session_version_id: r.mixCurrent.id, source_frames: F(r.mixCurrent.measurement.duration_seconds), label: `Scene ${r.scene.number} mix v${r.mixCurrent.version_number}` }]; }
+      return [];
+    });
+    const edQC = (rows, clipsIn) => eng.editorialQCEngine({ fps: FPS, clips: clipsIn, issues: edIssues(rows), target_runtime_minutes: null, scenes: scenes.map((x) => ({ scene_id: x.id, number: x.number, heading: x.heading })) });
+    const edErr = (code, msg, issues) => send(code, { error: { code: `AURA-EDT-${code}`, message: msg, issues } });
+    const edPersist = (clipsIn, action, breakLock) => {
+      const withIds = clipsIn.map((c) => ({ ...c, id: c.id || crypto.randomUUID() }));
+      if (timeline && timeline.status === "locked") {
+        const lock = locks.find((l) => l.id === timeline.current_lock_id); const v = tversions.find((x) => x.id === lock.version_id);
+        const r = eng.pictureLockEngine({ fps: FPS, locked: v.clips, proposed: withIds, scenes: scenes.map((x) => ({ scene_id: x.id, number: x.number, heading: x.heading })) });
+        if (!breakLock) { edErr(423, `The picture is locked. This change touches ${r.impact.map((i) => i.label).join(", ")} — confirm to break Picture Lock ${lock.lock_number}.`, r.impact); return false; }
+        Object.assign(lock, { broken_at: now(), impact: r.impact }); Object.assign(timeline, { status: "draft", current_lock_id: null });
+      }
+      if (!timeline) timeline = { id: crypto.randomUUID(), status: "draft", current_lock_id: null, review_state: "current", review_reason: null };
+      tclips = withIds; Object.assign(timeline, { revision: crypto.randomUUID(), updated_at: now() }); return true;
+    };
+    const edVersion = (label, kind, qc) => { const v = { id: crypto.randomUUID(), version_number: tversions.length + 1, label, kind, clips: tclips.map((c) => ({ ...c })), qc, duration_frames: tclips.reduce((mx, c) => Math.max(mx, c.record_in + c.duration), 0), created_at: now() }; tversions.push(v); return v; };
+    if (u === `/api/projects/${P}/editorial` && req.method === "GET") {
+      runWorker(); const rows = edScenes(); const issues = edIssues(rows);
+      if (timeline) Object.assign(timeline, issues.length ? { review_state: "review_required", review_reason: `${issues.length} clip${issues.length === 1 ? " uses" : "s use"} a take or mix that changed upstream. Your cut is unchanged — Conform to update it.` } : { review_state: "current", review_reason: null });
+      const media = {}; for (const t of takes) if (t.status === "succeeded") media[t.id] = { url: t.media_url, media_type: t.media_type, capability: t.capability, take_number: t.take_number };
+      const mixes = {}; for (const v of aversions) { const ses = asessions.find((x) => x.id === v.session_id); mixes[v.id] = { id: v.id, scene_id: ses.scene_id, version_number: v.version_number, seconds: v.measurement.duration_seconds, tracks: v.tracks, clips: v.clips }; }
+      const lock = timeline && timeline.current_lock_id ? locks.find((l) => l.id === timeline.current_lock_id) : null;
+      return send(200, { fps: FPS, project: { title: project.title, target_runtime_minutes: null },
+        timeline: timeline ? { ...timeline, lock: lock ? { lock_number: lock.lock_number, locked_at: lock.locked_at } : null } : null,
+        clips: tclips, issues, conformable: edConform(rows).length, qc: edQC(rows, tclips),
+        versions: [...tversions].reverse().map(({ clips, qc, ...v }) => v), locks: [...locks].reverse(),
+        bin: rows.filter((r) => r.pv || r.session).map((r) => ({ scene_id: r.scene.id, number: r.scene.number, heading: r.scene.heading, plan: r.pv ? { version_number: r.pv.version_number, usable: r.usable } : null,
+          shots: r.shots.map((sh) => { const at = approvedTake(sh.id); return { shot_id: sh.id, ordinal: sh.ordinal, size: sh.size || null, description: sh.description || "", seconds: sh.story_end - sh.story_start,
+            take: at ? { take_id: at.id, take_number: at.take_number, capability: at.capability, source_frames: takeFrames(at) } : null }; }),
+          mix: r.mixCurrent ? { version_id: r.mixCurrent.id, version_number: r.mixCurrent.version_number, seconds: r.mixCurrent.measurement.duration_seconds } : null,
+          mix_note: r.mixCurrent ? null : r.session && r.session.approved_version_id ? "Sound needs review in Audio Studio" : "No approved mix yet" })),
+        media, mixes });
+    }
+    if (u === `/api/projects/${P}/editorial/assemble`) {
+      const rows = edScenes().filter((r) => r.pv);
+      if (!rows.length) return edErr(412, "Approve at least one scene's shot plan in Storyboard first — the assembly is cut from approved shots.");
+      if (timeline && timeline.revision !== b.base_revision) return edErr(409, "The timeline changed — reload and try again.");
+      const r = eng.assemblyTimelineEngine({ fps: FPS, scenes: rows.map((x) => ({ scene_id: x.scene.id, number: x.scene.number, heading: x.scene.heading,
+        shots: x.shots.map((sh) => { const at = approvedTake(sh.id); return { shot_id: sh.id, ordinal: sh.ordinal, size: sh.size || null, story_start: sh.story_start, story_end: sh.story_end, take: at ? { take_id: at.id, duration_seconds: takeFrames(at) === null ? null : at.params.duration_seconds } : null }; }),
+        audio: x.mixCurrent ? { audio_session_version_id: x.mixCurrent.id, version_number: x.mixCurrent.version_number, scene_seconds: x.mixCurrent.measurement.duration_seconds } : null })) });
+      if (timeline && timeline.status !== "locked" && tclips.length) edVersion("Before re-assembly", "auto", edQC(edScenes(), tclips));
+      if (!edPersist(r.clips, "assemble", !!b.break_lock)) return;
+      const on = r.clips.filter((c) => c.kind === "take").length, off = r.clips.filter((c) => c.kind === "slug").length;
+      return send(200, { summary: `Assembled ${rows.length} scene${rows.length === 1 ? "" : "s"} from approved shots: ${on} picture clip${on === 1 ? "" : "s"}${off ? `, ${off} still offline (no approved take)` : ""}.`, rationale: r.rationale });
+    }
+    if (u === `/api/projects/${P}/editorial/edit`) {
+      if (!timeline) return edErr(412, "Build the first assembly first.");
+      if (timeline.revision !== b.base_revision) return edErr(409, "The timeline changed — reload and try again.");
+      const rows = edScenes(); const op = b.operation; let new_clip;
+      if (op.op === "insert" || op.op === "overwrite") {
+        const base = { id: null, source_in: 0, record_in: op.at, grade: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 }, take_id: null, audio_session_version_id: null, shot_id: null };
+        if (op.source.kind === "shot") { const f = findShot(rows, op.source.shot_id); const at = approvedTake(op.source.shot_id); const fr = at ? takeFrames(at) : null;
+          const want = op.duration || Math.max(1, F(f.sh.story_end - f.sh.story_start)); const duration = fr === null ? want : Math.min(want, fr);
+          new_clip = at ? { ...base, track: "V1", kind: "take", duration, source_frames: fr, scene_id: f.r.scene.id, shot_id: f.sh.id, take_id: at.id, label: shotLabel(f.r, f.sh) }
+            : { ...base, track: "V1", kind: "slug", duration, source_frames: null, scene_id: f.r.scene.id, shot_id: f.sh.id, label: `${shotLabel(f.r, f.sh)} — no approved take` };
+        } else { const r = rows.find((x) => x.scene.id === op.source.scene_id); if (!r || !r.mixCurrent) return edErr(412, "Approve this scene's mix in Audio Studio first.");
+          const fr = F(r.mixCurrent.measurement.duration_seconds); new_clip = { ...base, track: "A1", kind: "audio_mix", duration: Math.min(op.duration || fr, fr), source_frames: fr, scene_id: r.scene.id, audio_session_version_id: r.mixCurrent.id, label: `Scene ${r.scene.number} mix v${r.mixCurrent.version_number}` }; }
+      }
+      let r;
+      try { r = eng.editDecisionEngine({ clips: tclips, operation: op, new_clip, replacements: op.op === "conform" ? edConform(rows) : undefined }); }
+      catch (e) { return edErr(e.code === "AURA-EDT-409" ? 409 : 400, e.message); }
+      if (!edPersist(r.clips, op.op, !!b.break_lock)) return;
+      return send(200, { summary: r.summary });
+    }
+    if (u === `/api/projects/${P}/editorial/versions`) { const v = edVersion(b.label, "manual", edQC(edScenes(), tclips)); return send(200, { version_number: v.version_number, label: v.label }); }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/editorial\/versions\/([^/]+)\/restore$/))) {
+      if (timeline.revision !== b.base_revision) return edErr(409, "The timeline changed — reload and try again.");
+      const v = tversions.find((x) => x.id === m[1]);
+      if (timeline.status !== "locked") edVersion(`Before restoring v${v.version_number}`, "auto", edQC(edScenes(), tclips));
+      if (!edPersist(v.clips.map((c) => ({ ...c })), "restore", !!b.break_lock)) return;
+      return send(200, { summary: `Restored version ${v.version_number} (“${v.label}”). The cut before it was kept as a version.` });
+    }
+    if (u === `/api/projects/${P}/editorial/lock`) {
+      if (timeline.revision !== b.base_revision) return edErr(409, "The timeline changed — reload and try again.");
+      const qc = edQC(edScenes(), tclips);
+      if (!qc.ready_for_lock) return edErr(412, `Not ready for Picture Lock: ${qc.checks.filter((c) => c.blocking && !c.ok).map((c) => c.label.toLowerCase()).join("; ")}.`);
+      const n = locks.length + 1; const v = edVersion(`Picture Lock ${n}`, "picture_lock", qc);
+      const l = { id: crypto.randomUUID(), lock_number: n, version_id: v.id, locked_at: now(), broken_at: null, impact: null }; locks.push(l);
+      Object.assign(timeline, { status: "locked", current_lock_id: l.id }); return send(200, { lock_number: n });
+    }
+    if (u === `/api/projects/${P}/editorial/edl`) { res.statusCode = 200; res.setHeader("Content-Type", "text/plain"); return res.end(eng.edlExportEngine({ title: project.title, fps: FPS, clips: tclips }).edl); }
     send(404, { error: { code: "AURA-X-404", message: "not mocked " + u } });
   });
 }).listen(3911, () => console.log("mock api on 3911"));

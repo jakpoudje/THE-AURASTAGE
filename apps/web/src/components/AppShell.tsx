@@ -17,7 +17,7 @@ export const STAGES = [
   { key: "storyboard", label: "Storyboard & Shots", path: "storyboard" },
   { key: "visual", label: "Visual Generation", path: "visual" },
   { key: "audio", label: "Audio Studio", path: "audio" },
-  { key: "editorial", label: "Editorial & Timeline" },
+  { key: "editorial", label: "Editorial & Timeline", path: "editorial" },
   { key: "export", label: "Export & Deliver" },
 ] as const;
 

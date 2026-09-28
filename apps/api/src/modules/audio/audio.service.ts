@@ -37,9 +37,25 @@ function reviewFor(session: Row, plan: Row | undefined, versionNumber: number | 
   return { state: "current", reason: null };
 }
 
+/**
+ * Brings every session's review state up to date with Storyboard (which first
+ * refreshes Scene DNA). Exported so downstream domains (Editorial) can ask the
+ * Audio Studio to refresh its own state before reading it — they never write it.
+ */
+export async function refreshAudioReview(db: SupabaseClient, projectId: string) {
+  await refreshShotPlanReview(db, projectId);
+  const [plans, versions, sessions] = await Promise.all([repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId), repo.listSessions(db, projectId)]);
+  for (const session of sessions) {
+    const plan = plans.find((p) => p.scene_id === session.scene_id);
+    const pv = plan?.approved_version_id ? versions.find((v) => v.id === plan.approved_version_id) : undefined;
+    const r = reviewFor(session, plan, pv?.version_number ?? null);
+    if (session.review_state !== r.state || (session.review_reason ?? null) !== r.reason) await repo.setReview(db, session.id, r.state, r.reason);
+  }
+}
+
 export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
-  await refreshShotPlanReview(db, projectId);
+  await refreshAudioReview(db, projectId);
   const [scenes, plans, versions, sessions, tracks, clips, measurements, sessionVersions, assets] = await Promise.all([
     repo.listScenes(db, projectId), repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId), repo.listSessions(db, projectId),
     repo.listTracks(db, projectId), repo.listClips(db, projectId), repo.listMeasurements(db, projectId), repo.listVersions(db, projectId),
@@ -49,12 +65,8 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
   for (const scene of scenes) {
     const plan = plans.find((p) => p.scene_id === scene.id);
     const pv = plan?.approved_version_id ? versions.find((v) => v.id === plan.approved_version_id) : undefined;
-    let session = sessions.find((s) => s.scene_id === scene.id) ?? null;
+    const session = sessions.find((s) => s.scene_id === scene.id) ?? null;
     if (!pv && !session) continue;
-    if (session) {
-      const r = reviewFor(session, plan, pv?.version_number ?? null);
-      if (session.review_state !== r.state || (session.review_reason ?? null) !== r.reason) session = await repo.setReview(db, session.id, r.state, r.reason);
-    }
     const st = session ? tracks.filter((t) => t.session_id === session!.id) : [];
     const sc = session ? clips.filter((c) => c.session_id === session!.id) : [];
     const m = session ? measurements.find((x) => x.session_id === session!.id) ?? null : null;

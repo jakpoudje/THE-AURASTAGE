@@ -93,7 +93,8 @@ describe("Audio Studio routes", () => {
     rows.audio_sessions = [session()];
     rows.shot_plan_versions.push({ ...rows.shot_plan_versions[0], id: PV2, version_number: 2 });
     rows.shot_plans[0].approved_version_id = PV2;
-    const fake = fakeDb(rows, (_f, a) => ({ data: session({ review_state: a.p_state, review_reason: a.p_reason }) }));
+    // Like the database: set_audio_review updates the stored row.
+    const fake = fakeDb(rows, (_f, a) => ({ data: Object.assign(rows.audio_sessions[0], { review_state: a.p_state, review_reason: a.p_reason }) }));
     const ws = (await (await app(fake)).inject({ method: "GET", url: `/api/projects/${P}/audio` })).json();
     expect(fake.calls[0]).toMatchObject({ fn: "set_audio_review", args: { p_state: "stale" } });
     expect(ws.scenes[0].session.review_reason).toMatch(/Your recordings are kept/);

@@ -66,7 +66,7 @@ await check("api health", async () => {
   assert(r.status === 200 && j.status === "ok", `health ${r.status}`);
   return `phase ${j.phase}`;
 });
-for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio"]) {
+for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio", "/projects/00000000-0000-4000-8000-000000000000/editorial"]) {
   await check(`web ${path}`, async () => {
     const r = await fetch(WEB + path);
     assert(r.status === 200, `status ${r.status}`);
@@ -355,6 +355,75 @@ await check("audio: place the recording on the dialogue cue; mixer change saved;
   sc = ws.scenes.find((x: any) => x.scene.id === s1);
   assert(sc.session.status === "approved" && sc.session.approved_version_number === 1, "approval not persisted");
 });
+// ---- Editorial & Timeline (Phase 9) ----
+let edRev = "";
+const edWs = () => api("GET", `/api/projects/${projectId}/editorial`);
+await check("editorial: first assembly from approved takes (offline slugs for the rest) with the approved mix on A1", async () => {
+  const before = await edWs();
+  assert(before.timeline === null && before.bin[0].shots.some((s: any) => s.take) && before.bin[0].mix, "bin not ready");
+  const r = await api("POST", `/api/projects/${projectId}/editorial/assemble`, { base_revision: null });
+  const ws = await edWs();
+  edRev = ws.timeline.revision;
+  const v1 = ws.clips.filter((c: any) => c.track === "V1"), a1 = ws.clips.filter((c: any) => c.track === "A1");
+  assert(v1.some((c: any) => c.kind === "take") && a1.length === 1 && a1[0].record_in === 0, "assembly shape");
+  assert(ws.qc.checks.find((c: any) => c.id === "audio_sync").ok, "sound out of sync after assembly");
+  return r.summary;
+});
+await check("editorial: edits apply against the current revision (stale refused 409, impossible refused 409)", async () => {
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: "00000000-0000-4000-8000-000000000000", operation: { op: "blade", track: "V1", at: 6 } }, [409]);
+  let ws = await edWs();
+  const n = ws.clips.length;
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: edRev, operation: { op: "blade", track: "V1", at: 6 } });
+  ws = await edWs();
+  assert(ws.clips.length === n + 1, `blade: ${n} -> ${ws.clips.length}`);
+  const first = ws.clips.find((c: any) => c.track === "V1" && c.record_in === 0);
+  const e = await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "trim", clip_id: first.id, edge: "out", delta: -500, ripple: false } }, [409]);
+  assert(/no length left/.test(e.error.message), e.error.message);
+  const pic = ws.clips.find((c: any) => c.kind === "take");
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "grade", clip_id: pic.id, grade: { exposure: 0.5, contrast: 0, saturation: 0, temperature: 0 } } });
+  ws = await edWs();
+  assert(ws.clips.find((c: any) => c.id === pic.id).grade.exposure === 0.5, "grade not saved");
+  edRev = ws.timeline.revision;
+});
+await check("editorial: Picture Lock refused while offline; lift the slugs, lock, and a locked picture refuses edits until the break is confirmed", async () => {
+  let ws = await edWs();
+  if (ws.clips.some((c: any) => c.kind === "slug")) {
+    const e = await api("POST", `/api/projects/${projectId}/editorial/lock`, { base_revision: ws.timeline.revision }, [412]);
+    assert(/offline/.test(e.error.message), e.error.message);
+  }
+  for (;;) {
+    ws = await edWs();
+    const slug = ws.clips.find((c: any) => c.kind === "slug");
+    if (!slug) break;
+    await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "lift", clip_id: slug.id } });
+  }
+  ws = await edWs();
+  const l = await api("POST", `/api/projects/${projectId}/editorial/lock`, { base_revision: ws.timeline.revision });
+  assert(l.lock_number === 1, `lock ${l.lock_number}`);
+  ws = await edWs();
+  assert(ws.timeline.status === "locked", "not locked");
+  const take = ws.clips.find((c: any) => c.kind === "take");
+  const op = { op: "trim", clip_id: take.id, edge: "out", delta: -2, ripple: true };
+  const refused = await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: op }, [423]);
+  assert(Array.isArray(refused.error.issues) && refused.error.issues.length > 0, "no impact analysis");
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: op, break_lock: true });
+  ws = await edWs();
+  assert(ws.timeline.status === "draft" && ws.locks[0].broken_at && ws.locks[0].impact.length, "break not recorded");
+  return refused.error.issues.map((i: any) => `${i.label}: ${i.change}`).join("; ");
+});
+await check("editorial: versions restore (current cut kept first) and the EDL exports", async () => {
+  let ws = await edWs();
+  const lockVersion = ws.versions.find((v: any) => v.kind === "picture_lock");
+  await api("POST", `/api/projects/${projectId}/editorial/versions`, { label: "Smoke cut" });
+  ws = await edWs();
+  await api("POST", `/api/projects/${projectId}/editorial/versions/${lockVersion.id}/restore`, { base_revision: ws.timeline.revision });
+  ws = await edWs();
+  assert(ws.versions.some((v: any) => /^Before restoring/.test(v.label)) && ws.versions.some((v: any) => v.label === "Smoke cut"), "versions missing");
+  const edl = await fetch(`${API}/api/projects/${projectId}/editorial/edl`, { headers: { Authorization: `Bearer ${token}` } });
+  const text = await edl.text();
+  assert(edl.status === 200 && text.includes("FCM: NON-DROP FRAME") && /^001  /m.test(text), `edl ${edl.status}`);
+  return `${ws.versions.length} versions, EDL ${text.split("\n").length} lines`;
+});
 await check("storyboard: a Casting change flows through Scene DNA and flags the shots", async () => {
   await api("PATCH", `/api/characters/${tundeId}`, { description: "Back on the story" });
   const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
@@ -376,6 +445,12 @@ await check("audio: the upstream change marks the scene mix for review; the reco
   await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/approve`, {}, [412]);
   return sc.session.review_reason;
 });
+await check("editorial: the upstream change flags the timeline for review; the cut is untouched", async () => {
+  const ws = await edWs();
+  assert(ws.timeline.review_state === "review_required" && ws.issues.length > 0, `timeline ${ws.timeline.review_state}`);
+  assert(ws.clips.some((c: any) => c.kind === "take"), "cut changed");
+  return ws.issues[0].message;
+});
 await check("persistence: everything still there on re-read", async () => {
   const [p, s, c] = await Promise.all([
     api("GET", `/api/projects/${projectId}`),
@@ -390,6 +465,7 @@ await check("security: other project ids are refused", async () => {
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/storyboard`, undefined, [403]);
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/visual`, undefined, [403]);
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/audio`, undefined, [403]);
+  await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/editorial`, undefined, [403]);
 });
 
 const failed = results.filter((r) => !r.ok).length;

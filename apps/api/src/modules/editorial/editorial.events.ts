@@ -1,6 +1,9 @@
 // apps/api/src/modules/editorial/editorial.events.ts
-// Typed domain events emitted after committed changes.
-// Domain: Editorial & Timeline
-// Canonical object: AssemblyTimeline / PictureLock
-
-export {};
+// Written transactionally into audit_events by the migration-0017 functions.
+export const EDITORIAL_EVENTS = {
+  Edited: "TimelineEdited",
+  VersionSaved: "TimelineVersionSaved",
+  PictureLocked: "PictureLocked",
+  PictureLockBroken: "PictureLockBroken",
+  UpstreamChanged: "UpstreamVersionChanged",
+} as const;

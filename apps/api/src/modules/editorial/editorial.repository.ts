@@ -1,6 +1,71 @@
 // apps/api/src/modules/editorial/editorial.repository.ts
-// Canonical persistence access for this domain.
-// Domain: Editorial & Timeline
-// Canonical object: AssemblyTimeline / PictureLock
+// Canonical persistence for Editorial. Reads Scriptwriter (scenes), Storyboard
+// (shot plans + approved versions), Visual Generation (takes) and Audio Studio
+// (sessions + approved versions) read-only; writes only via migration-0017 functions.
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { EditorialConflictError, EditorialLockedError, EditorialNotFoundError, EditorialNotReadyError, EditorialValidationError } from "./editorial.validator";
+import { EditorialForbiddenError } from "./editorial.permissions";
 
-export {};
+type Row = Record<string, any>;
+function mapDbError(error: { message?: string; code?: string }): Error {
+  const msg = error.message ?? "";
+  const text = msg.replace(/^AURA-EDT-\d+:\s*/, "");
+  if (msg.startsWith("AURA-EDT-409")) return new EditorialConflictError(text);
+  if (msg.startsWith("AURA-EDT-412")) return new EditorialNotReadyError(text);
+  if (msg.startsWith("AURA-EDT-423")) return new EditorialLockedError(text, []);
+  if (msg.startsWith("AURA-EDT-404")) return new EditorialNotFoundError(text);
+  if (msg.startsWith("AURA-EDT-403") || error.code === "42501") return new EditorialForbiddenError();
+  if (msg.startsWith("AURA-EDT-400")) return new EditorialValidationError([], text);
+  if (error.code === "23503") return new EditorialValidationError([], "A clip refers to a take or mix that doesn't exist in this project");
+  if (error.code === "23514") return new EditorialValidationError([], "A clip runs past the end of its media");
+  return Object.assign(new Error(msg || "Database error"), { cause: error });
+}
+async function rows(q: PromiseLike<{ data: unknown[] | null; error: unknown }>): Promise<Row[]> {
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as Row[];
+}
+async function rpc<T = Row>(db: SupabaseClient, fn: string, args: Row): Promise<T> {
+  const { data, error } = await db.rpc(fn, args);
+  if (error) throw mapDbError(error);
+  return data as T;
+}
+
+export const listScenes = (db: SupabaseClient, p: string) =>
+  rows(db.from("scenes").select("id, number, heading, status").eq("project_id", p).order("number", { ascending: true }));
+export const listPlans = (db: SupabaseClient, p: string) => rows(db.from("shot_plans").select("id, scene_id, status, review_state, review_reason, approved_version_id").eq("project_id", p));
+export const listPlanVersions = (db: SupabaseClient, p: string) => rows(db.from("shot_plan_versions").select("id, plan_id, version_number, shots").eq("project_id", p));
+export const listTakes = (db: SupabaseClient, p: string) =>
+  rows(db.from("takes").select("id, scene_id, shot_id, take_number, capability, params, status, approval, storage_key, media_type").eq("project_id", p));
+export const listSessions = (db: SupabaseClient, p: string) =>
+  rows(db.from("audio_sessions").select("id, scene_id, status, review_state, review_reason, approved_version_id, scene_seconds").eq("project_id", p));
+export const listMixVersions = (db: SupabaseClient, p: string) =>
+  rows(db.from("audio_session_versions").select("id, session_id, version_number, tracks, clips, measurement").eq("project_id", p));
+export async function getTimeline(db: SupabaseClient, p: string) {
+  const { data, error } = await db.from("timelines").select("*").eq("project_id", p).maybeSingle();
+  if (error) throw error;
+  return (data as Row | null) ?? null;
+}
+export const listClips = (db: SupabaseClient, timelineId: string) =>
+  rows(db.from("timeline_clips").select("*").eq("timeline_id", timelineId).order("record_in", { ascending: true }));
+export const listVersions = (db: SupabaseClient, timelineId: string) =>
+  rows(db.from("timeline_versions").select("id, version_number, label, kind, duration_frames, created_at").eq("timeline_id", timelineId).order("version_number", { ascending: false }));
+export async function getVersion(db: SupabaseClient, timelineId: string, versionId: string) {
+  const { data, error } = await db.from("timeline_versions").select("*").eq("timeline_id", timelineId).eq("id", versionId).maybeSingle();
+  if (error) throw error;
+  return (data as Row | null) ?? null;
+}
+export const listLocks = (db: SupabaseClient, timelineId: string) =>
+  rows(db.from("picture_locks").select("*").eq("timeline_id", timelineId).order("lock_number", { ascending: false }));
+
+export const saveTimeline = (db: SupabaseClient, a: { projectId: string; baseRevision: string | null; clips: unknown[]; action: string; summary: string; engineVersion: string; breakLock: boolean; impact: unknown }) =>
+  rpc(db, "save_timeline", {
+    p_project_id: a.projectId, p_base_revision: a.baseRevision, p_clips: a.clips, p_action: a.action, p_summary: a.summary,
+    p_engine_version: a.engineVersion, p_break_lock: a.breakLock, p_impact: a.impact,
+  });
+export const saveVersion = (db: SupabaseClient, projectId: string, label: string, kind: "manual" | "auto", qc: unknown) =>
+  rpc(db, "save_timeline_version", { p_project_id: projectId, p_label: label, p_kind: kind, p_qc: qc });
+export const lockPicture = (db: SupabaseClient, projectId: string, baseRevision: string, qc: unknown) =>
+  rpc(db, "lock_picture", { p_project_id: projectId, p_base_revision: baseRevision, p_qc: qc });
+export const setReview = (db: SupabaseClient, projectId: string, state: string, reason: string | null) =>
+  rpc(db, "set_timeline_review", { p_project_id: projectId, p_state: state, p_reason: reason });

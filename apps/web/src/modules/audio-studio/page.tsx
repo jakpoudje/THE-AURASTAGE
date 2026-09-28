@@ -83,9 +83,14 @@ export default function AudioStudioPage() {
       project={d.project}
       active="audio"
       actions={
-        <Link href={`/projects/${id}/visual`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
-          ← Visual Generation
-        </Link>
+        <>
+          <Link href={`/projects/${id}/visual`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
+            ← Visual Generation
+          </Link>
+          <Link href={`/projects/${id}/editorial`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Next: Editorial & Timeline →
+          </Link>
+        </>
       }
     >
       <section className="border-b border-aura-border bg-gradient-to-r from-black via-[#16120a] to-black px-8 py-10">

@@ -171,6 +171,40 @@ await check("audio: spot, upload a WAV onto the line, measure, approve, export; 
   if (b.subarray(0, 4).toString() !== "RIFF" || b.readUInt32LE(24) !== 48000) throw new Error("export is not a 48 kHz WAV");
   return `${msg} · export ${b.length} bytes`;
 });
+await check("editorial: build the assembly, blade, lift offline shots, lock; reload after each: kept", async () => {
+  const marker = "Perfect Your Film";
+  const v1 = () => page.getByRole("group", { name: "Track V1" }).getByRole("button", { name: /^Clip / });
+  await page.goto(projectUrl + "/editorial");
+  await page.getByText(marker).waitFor();
+  await page.getByRole("button", { name: "Build first assembly" }).click();
+  await page.getByText(/Assembled 1 scene from approved shots/).waitFor();
+  await reload(marker);
+  await page.getByRole("group", { name: "Track A1" }).getByRole("button", { name: /^Clip Scene 1 mix v1/ }).waitFor();
+  const n = await v1().count();
+  await page.getByLabel("Viewer").click();
+  await page.keyboard.press("Shift+ArrowRight");
+  await page.keyboard.press("b");
+  await page.getByText(/in two/).first().waitFor();
+  await reload(marker);
+  if ((await v1().count()) !== n + 1) throw new Error("blade lost after reload");
+  for (let i = 0; i < 10; i++) {
+    const slug = page.getByRole("group", { name: "Track V1" }).getByRole("button", { name: /no approved take|take too short|No shot covers/ }).first();
+    if (!(await slug.count())) break;
+    await slug.click();
+    await page.keyboard.press("Delete");
+    await page.getByText(/^Lifted “/).first().waitFor();
+  }
+  await page.getByRole("button", { name: "Lock picture" }).click();
+  await page.getByText(/Picture locked \(lock 1\)/).waitFor();
+  await reload(marker);
+  await page.getByText("Locked · Picture Lock 1 ✓").waitFor();
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export EDL" }).click()]);
+  const fs = await import("node:fs");
+  await dl.saveAs("/tmp/live.edl");
+  const edl = fs.readFileSync("/tmp/live.edl", "utf8");
+  if (!edl.includes("FCM: NON-DROP FRAME")) throw new Error("bad EDL");
+  return `${n + 1} picture clips before lifting offline shots · EDL ${edl.split("\n").length} lines`;
+});
 await check("dashboard after reload still shows the project", async () => {
   await page.goto(WEB + "/dashboard");
   await reload(TITLE);

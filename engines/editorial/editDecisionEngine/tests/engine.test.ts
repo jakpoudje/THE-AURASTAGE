@@ -1,0 +1,85 @@
+import { describe, expect, it } from "vitest";
+import { NEUTRAL_GRADE } from "@aurastage/contracts";
+import { editDecisionEngine } from "../engine";
+
+const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const clip = (n: number, track: "V1" | "A1", record_in: number, duration: number, extra: Record<string, unknown> = {}) => ({
+  id: U(n), track, kind: track === "V1" ? "take" : "audio_mix", record_in, duration, source_in: 0, source_frames: track === "A1" ? 200 : null,
+  scene_id: U(90), shot_id: track === "V1" ? U(80 + n) : null, take_id: track === "V1" ? U(70 + n) : null, audio_session_version_id: track === "A1" ? U(60) : null,
+  label: `C${n}`, grade: { ...NEUTRAL_GRADE }, ...extra,
+});
+// V1: C1 [0,48) C2 [48,96) C3 [96,192)   A1: C4 [0,192) (scene mix)
+const tl = () => [clip(1, "V1", 0, 48), clip(2, "V1", 48, 48), clip(3, "V1", 96, 96), clip(4, "A1", 0, 192)];
+const run = (operation: unknown, extra: Record<string, unknown> = {}) => editDecisionEngine({ clips: tl(), operation, ...extra });
+const pick = (r: ReturnType<typeof run>, track: string) => r.clips.filter((c) => c.track === track).map((c) => [c.label, c.record_in, c.duration, c.source_in]);
+
+describe("editDecisionEngine", () => {
+  it("blade splits a clip; the new piece continues the source", () => {
+    const r = run({ op: "blade", track: "V1", at: 120 });
+    expect(pick(r, "V1")).toEqual([["C1", 0, 48, 0], ["C2", 48, 48, 0], ["C3", 96, 24, 0], ["C3", 120, 72, 24]]);
+    expect(r.clips.find((c) => c.record_in === 120)!.id).toBeNull();
+  });
+  it("lift leaves a gap; extract closes it on every track (sync lock)", () => {
+    expect(pick(run({ op: "lift", clip_id: U(2) }), "V1")).toEqual([["C1", 0, 48, 0], ["C3", 96, 96, 0]]);
+    const r = run({ op: "extract", clip_id: U(2) });
+    expect(pick(r, "V1")).toEqual([["C1", 0, 48, 0], ["C3", 48, 96, 0]]);
+    // the scene mix loses the same 48 frames: split around the removed range
+    expect(pick(r, "A1")).toEqual([["C4", 0, 48, 0], ["C4", 48, 96, 96]]);
+  });
+  it("insert pushes everything after it later on all tracks", () => {
+    const r = run({ op: "insert", at: 48, source: { kind: "shot", shot_id: U(99) } }, { new_clip: { ...clip(9, "V1", 0, 24), id: null, label: "NEW" } });
+    expect(pick(r, "V1")).toEqual([["C1", 0, 48, 0], ["NEW", 48, 24, 0], ["C2", 72, 48, 0], ["C3", 120, 96, 0]]);
+    expect(pick(r, "A1")).toEqual([["C4", 0, 48, 0], ["C4", 72, 144, 48]]);
+  });
+  it("overwrite replaces a range without changing length", () => {
+    const r = run({ op: "overwrite", at: 40, source: { kind: "shot", shot_id: U(99) } }, { new_clip: { ...clip(9, "V1", 0, 16), id: null, label: "NEW" } });
+    expect(pick(r, "V1")).toEqual([["C1", 0, 40, 0], ["NEW", 40, 16, 0], ["C2", 56, 40, 8], ["C3", 96, 96, 0]]);
+    expect(pick(r, "A1")).toEqual([["C4", 0, 192, 0]]);
+  });
+  it("plain trim refuses to overlap; ripple trim moves what follows", () => {
+    expect(() => run({ op: "trim", clip_id: U(1), edge: "out", delta: 10, ripple: false })).toThrow(/overlap/);
+    expect(pick(run({ op: "trim", clip_id: U(2), edge: "out", delta: -8, ripple: false }), "V1")[1]).toEqual(["C2", 48, 40, 0]);
+    const r = run({ op: "trim", clip_id: U(2), edge: "out", delta: -8, ripple: true });
+    expect(pick(r, "V1")).toEqual([["C1", 0, 48, 0], ["C2", 48, 40, 0], ["C3", 88, 96, 0]]);
+    const g = run({ op: "trim", clip_id: U(2), edge: "out", delta: 12, ripple: true });
+    expect(pick(g, "V1")).toEqual([["C1", 0, 48, 0], ["C2", 48, 60, 0], ["C3", 108, 96, 0]]);
+  });
+  it("ripple trim of a head keeps the clip in place and uses later media", () => {
+    const r = run({ op: "trim", clip_id: U(3), edge: "in", delta: 24, ripple: true });
+    expect(pick(r, "V1")[2]).toEqual(["C3", 96, 72, 24]);
+    const back = editDecisionEngine({ clips: r.clips.map((c, i) => ({ ...c, id: c.id ?? U(50 + i) })), operation: { op: "trim", clip_id: U(3), edge: "in", delta: -24, ripple: true } });
+    expect(pick(back, "V1")[2]).toEqual(["C3", 96, 96, 0]);
+    expect(() => run({ op: "trim", clip_id: U(3), edge: "in", delta: -1, ripple: true })).toThrow(/no more media before/);
+  });
+  it("roll moves the cut point between two clips, keeping total length", () => {
+    const r = run({ op: "roll", clip_id: U(1), delta: 6 });
+    expect(pick(r, "V1").slice(0, 2)).toEqual([["C1", 0, 54, 0], ["C2", 54, 42, 6]]);
+    expect(() => run({ op: "roll", clip_id: U(3), delta: 6 })).toThrow(/no clip right after/);
+  });
+  it("slip changes the media shown, not position; stills and slugs refuse", () => {
+    const clips = tl().map((c) => (c.id === U(2) ? { ...c, source_frames: 120 } : c));
+    const r = editDecisionEngine({ clips, operation: { op: "slip", clip_id: U(2), delta: 30 } });
+    expect(r.clips.find((c) => c.id === U(2))).toMatchObject({ record_in: 48, duration: 48, source_in: 30 });
+    expect(() => editDecisionEngine({ clips, operation: { op: "slip", clip_id: U(2), delta: 100 } })).toThrow(/no more media after/);
+    expect(() => run({ op: "slip", clip_id: U(1), delta: 5 })).toThrow(/still image/);
+  });
+  it("slide moves a clip between its neighbours", () => {
+    const r = run({ op: "slide", clip_id: U(2), delta: 10 });
+    expect(pick(r, "V1")).toEqual([["C1", 0, 58, 0], ["C2", 58, 48, 0], ["C3", 106, 86, 10]]);
+  });
+  it("move refuses overlaps; grade only on picture", () => {
+    expect(() => run({ op: "move", clip_id: U(3), record_in: 90 })).toThrow(/overlap/);
+    expect(run({ op: "move", clip_id: U(3), record_in: 200 }).clips.find((c) => c.id === U(3))!.record_in).toBe(200);
+    const g = run({ op: "grade", clip_id: U(1), grade: { exposure: 0.5, contrast: 0.1, saturation: -0.2, temperature: 0.3 } });
+    expect(g.clips.find((c) => c.id === U(1))!.grade.exposure).toBe(0.5);
+    expect(() => run({ op: "grade", clip_id: U(4), grade: NEUTRAL_GRADE })).toThrow(/picture/);
+  });
+  it("conform swaps sources but keeps the cut", () => {
+    const r = run({ op: "conform" }, { replacements: [{ clip_id: U(2), kind: "take", take_id: U(77), audio_session_version_id: null, source_frames: null, label: "C2 new take" }] });
+    expect(r.clips.find((c) => c.id === U(2))).toMatchObject({ take_id: U(77), record_in: 48, duration: 48, label: "C2 new take" });
+    expect(() => run({ op: "conform" }, { replacements: [] })).toThrow(/already/);
+  });
+  it("refuses unknown clips in plain language", () => {
+    expect(() => run({ op: "lift", clip_id: U(55) })).toThrow(/no longer on the timeline/);
+  });
+});

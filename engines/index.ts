@@ -7,3 +7,4 @@ export * from "./scene-dna";
 export * from "./cinematography";
 export * from "./generation";
 export * from "./audio";
+export * from "./editorial";

@@ -1,0 +1,210 @@
+// Browser test: Editorial & Timeline (offline, against tests/e2e/scriptwriter/mock-api.cjs on :3911,
+// web on :3902 built with NEXT_PUBLIC_API_URL=http://localhost:3911 NEXT_PUBLIC_SUPABASE_URL=http://localhost:3912).
+// Every saved step is checked again after a page reload.
+const { chromium } = require("playwright");
+const fs = require("fs"), path = require("path");
+const BASE = "http://localhost:3902", API = "http://localhost:3911", P = "11111111-1111-4111-8111-111111111111";
+const OUT = process.env.E2E_OUT || require("os").tmpdir();
+
+const SCRIPT = `EXT. LAGOS HARBOUR - NIGHT
+
+Rain lashes the jetty. TUNDE OKAFOR (35) waits under a lamp.
+
+TUNDE
+You came.
+`;
+function wav(seconds) {
+  const sr = 48000, n = sr * seconds, data = Buffer.alloc(n * 2);
+  for (let i = 0; i < n; i++) data.writeInt16LE(Math.round(0.1 * 32767 * Math.sin((2 * Math.PI * 440 * i) / sr)), i * 2);
+  const h = Buffer.alloc(44);
+  h.write("RIFF", 0); h.writeUInt32LE(36 + data.length, 4); h.write("WAVE", 8); h.write("fmt ", 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(sr, 24); h.writeUInt32LE(sr * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write("data", 36); h.writeUInt32LE(data.length, 40);
+  return Buffer.concat([h, data]);
+}
+async function api(method, p, body) {
+  const r = await fetch(API + p, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) });
+  return r.json();
+}
+async function approveTakeFor(shotId) {
+  const c = await api("POST", `/api/projects/${P}/visual/shots/${shotId}/compile`, { aspect_ratio: "16:9" });
+  const q = await api("POST", `/api/visual/packages/${c.package_id}/takes`, { provider: "aurastage-sketch", model: "sketch-v1", capability: "image", variations: 1 });
+  await api("GET", `/api/projects/${P}/visual`); await api("GET", `/api/projects/${P}/visual`);
+  await api("POST", `/api/takes/${q.takes[0].id}/approve`, {});
+}
+
+(async () => {
+  const v1 = await api("POST", `/api/projects/${P}/script/versions`, { source_text: SCRIPT, base_version_id: null });
+  await api("POST", `/api/projects/${P}/script/approve`, { version_id: v1.id });
+  await api("POST", `/api/projects/${P}/characters/sync`, {});
+  await api("POST", `/api/projects/${P}/dialogue/sync`, {});
+  const s1 = (await api("GET", `/api/projects/${P}/dialogue`)).scenes[0].id;
+  await api("POST", `/api/projects/${P}/dialogue/scenes/${s1}/approve`, {});
+  await api("PATCH", `/api/projects/${P}/scene-dna/${s1}`, { purpose: "Tunde commits.", weather: "rain" });
+  await api("POST", `/api/projects/${P}/scene-dna/${s1}/approve`, {});
+  await api("POST", `/api/projects/${P}/storyboard/scenes/${s1}/generate`, {});
+  const ok = await api("POST", `/api/projects/${P}/storyboard/scenes/${s1}/approve`, {});
+  if (!ok.version_number) throw new Error("setup: shot plan not approved");
+  const vis = await api("GET", `/api/projects/${P}/visual`);
+  const shots = vis.scenes[0].shots.map((x) => x.shot.id);
+  if (shots.length < 2) throw new Error("setup: need at least 2 shots, got " + shots.length);
+  await approveTakeFor(shots[0]); // the other shots stay without an approved take (offline in the assembly)
+  // Audio: spot, place a real recording on the dialogue cue, measure, approve.
+  const sp = await api("POST", `/api/projects/${P}/audio/scenes/${s1}/spot`, {});
+  const up = await (await fetch(`${API}/api/projects/${P}/assets/audio?name=line.wav&duration=1&sample_rate=48000&channels=1`, { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav(1) })).json();
+  let aws = await api("GET", `/api/projects/${P}/audio`);
+  const cue = aws.scenes[0].clips.find((c) => c.source.dialogue_line_id);
+  await api("PATCH", `/api/audio-clips/${cue.id}`, { asset_id: up.id, label: "line", duration_seconds: 1 });
+  aws = await api("GET", `/api/projects/${P}/audio`);
+  await api("POST", `/api/audio-sessions/${sp.session_id}/measurements`, { integrated_lufs: -24, true_peak_dbtp: -20, lra_lu: 0, duration_seconds: aws.scenes[0].session.scene_seconds, clip_count: 1, engine_version: "1.0.0", session_revision: aws.scenes[0].session.revision });
+  const ap = await api("POST", `/api/projects/${P}/audio/scenes/${s1}/approve`, {});
+  if (!ap.version_id) throw new Error("setup: mix not approved " + JSON.stringify(ap));
+
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--autoplay-policy=no-user-gesture-required"] });
+  const ctx = await browser.newContext({ viewport: { width: 1600, height: 1100 }, acceptDownloads: true });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+  page.on("dialog", (d) => d.accept());
+  let failed = 0;
+  const step = async (name, fn) => {
+    try { await fn(); console.log("PASS", name); } catch (e) { failed++; console.log("FAIL", name, e.message.split("\n")[0]); await page.screenshot({ path: `${OUT}/fail-editorial-${name.replace(/\W+/g, "_")}.png`, fullPage: true }); }
+  };
+  const reload = async () => { await page.reload(); await page.getByText("Perfect Your Film").waitFor(); };
+  const v1Clips = () => page.getByRole("group", { name: "Track V1" }).getByRole("button", { name: /^Clip / });
+  const notice = (re) => page.getByText(re).first().waitFor();
+
+  await page.goto(BASE + "/");
+  await page.evaluate(() => localStorage.setItem("sb-localhost-auth-token", JSON.stringify({ access_token: "f", refresh_token: "f", token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 36000, user: { id: "u1", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "" } })));
+
+  await step("Audio Studio links to Editorial; the bin lists approved takes and offline shots", async () => {
+    await page.goto(`${BASE}/projects/${P}/audio`);
+    await page.getByRole("link", { name: "Next: Editorial & Timeline →" }).click();
+    await page.waitForURL(`**/projects/${P}/editorial`);
+    await page.getByText("Perfect Your Film").waitFor();
+    const bin = page.getByLabel("Media bin");
+    await bin.getByText("Take V1 approved").waitFor();
+    await bin.getByText("No approved take (offline)").first().waitFor();
+    await bin.getByText(/Scene mix v1/).waitFor();
+  });
+  await step("build the first assembly: picture from approved takes, offline slugs, mix on A1; kept after reload", async () => {
+    await page.getByRole("button", { name: "Build first assembly" }).click();
+    await notice(/Assembled 1 scene from approved shots: 1 picture clip, \d+ still offline/);
+    await reload();
+    await page.getByRole("group", { name: "Track V1" }).getByRole("button", { name: /^Clip Scene 1 · Shot 1/ }).first().waitFor();
+    await page.getByRole("group", { name: "Track V1" }).getByText("OFFLINE").first().waitFor();
+    await page.getByRole("group", { name: "Track A1" }).getByRole("button", { name: "Clip Scene 1 mix v1" }).waitFor();
+    await page.getByRole("img", { name: /Scene 1 · Shot 1/ }).waitFor();
+  });
+  await step("checks block Picture Lock while shots are offline; the timecode link jumps to the problem", async () => {
+    if (!(await page.getByRole("button", { name: "Lock picture" }).isDisabled())) throw new Error("lock should be disabled");
+    const checks = page.getByRole("list", { name: "Timeline checks" });
+    await checks.getByText("No offline media (every shot has an approved take)").waitFor();
+    await checks.getByRole("button", { name: /^00:00:0\d:\d\d — Scene 1 · Shot 2/ }).click();
+    await page.getByLabel("Clip details").getByText(/Scene 1 · Shot 2.*no approved take/).waitFor();
+    await page.getByLabel("Viewer").getByText("OFFLINE").waitFor();
+  });
+  await step("an upstream approval flags the timeline without touching the cut; Conform brings it in; kept after reload", async () => {
+    for (const s of shots.slice(1)) await approveTakeFor(s);
+    await reload();
+    await page.getByText("New approved takes or mixes are available.").waitFor();
+    await page.getByRole("group", { name: "Track V1" }).getByText("OFFLINE").first().waitFor(); // the cut is untouched until you conform
+    await page.getByRole("button", { name: "Conform to approved takes & mixes" }).click();
+    await notice(/Updated \d+ clips? to the currently approved takes and mixes — the cut is unchanged/);
+    await reload();
+    if (await page.getByRole("group", { name: "Track V1" }).getByText("OFFLINE").count()) throw new Error("still offline after conform");
+  });
+  let before = 0;
+  await step("blade at the playhead (B) splits the clip; kept after reload", async () => {
+    before = await v1Clips().count();
+    await page.getByLabel("Viewer").click();
+    for (let i = 0; i < 1; i++) await page.keyboard.press("Shift+ArrowRight");
+    await page.getByLabel("Playhead").getByText("00:00:01:00").waitFor();
+    await page.keyboard.press("b");
+    await notice(/Cut “Scene 1 · Shot 1.*” in two/);
+    await reload();
+    if ((await v1Clips().count()) !== before + 1) throw new Error(`expected ${before + 1} clips, got ${await v1Clips().count()}`);
+  });
+  await step("ripple trim by dragging an edge moves what follows on all tracks", async () => {
+    await page.getByRole("radio", { name: "Ripple" }).click();
+    const first = v1Clips().first();
+    const box = await first.boundingBox();
+    await page.mouse.move(box.x + box.width - 3, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 15, box.y + box.height / 2, { steps: 4 });
+    await page.mouse.move(box.x + box.width - 27, box.y + box.height / 2, { steps: 4 });
+    await page.mouse.up();
+    await notice(/Ripple-trimmed the end of “Scene 1 · Shot 1.*” by -12 frames; later clips followed on all tracks/);
+    await page.getByRole("radio", { name: "Select" }).click();
+  });
+  await step("grade a clip in the inspector; kept after reload", async () => {
+    await v1Clips().first().click();
+    await page.getByLabel("Exposure").fill("0.5");
+    await page.getByRole("button", { name: "Apply grade" }).click();
+    await notice(/Graded “Scene 1 · Shot 1/);
+    await reload();
+    await v1Clips().first().click();
+    if ((await page.getByLabel("Exposure").inputValue()) !== "0.5") throw new Error("grade lost after reload");
+  });
+  await step("save a named version; kept after reload", async () => {
+    await page.getByLabel("Version name").fill("Director's cut");
+    await page.getByRole("button", { name: "Save version" }).click();
+    await notice(/Saved version \d+ — “Director's cut”/);
+    await reload();
+    await page.getByRole("list", { name: "Versions" }).getByText(/Director's cut/).waitFor();
+  });
+  await step("lock the picture; kept after reload", async () => {
+    await page.getByRole("button", { name: "Lock picture" }).click();
+    await notice(/Picture locked \(lock 1\)/);
+    await reload();
+    await page.getByText("Locked · Picture Lock 1 ✓").waitFor();
+  });
+  let clipsAtLock = 0;
+  await step("editing a locked picture asks first and shows the impact; keeping the lock changes nothing", async () => {
+    clipsAtLock = await v1Clips().count();
+    await v1Clips().last().click();
+    await page.keyboard.press("Delete");
+    const dlg = page.getByRole("dialog", { name: "Break Picture Lock" });
+    await dlg.getByText("The picture is locked").first().waitFor();
+    await dlg.getByRole("list", { name: "Impact" }).getByText(/Scene 1 — EXT\. LAGOS HARBOUR - NIGHT/).waitFor();
+    await dlg.getByText(/Sound mix \(re-conform\)/).waitFor();
+    await dlg.getByRole("button", { name: "Keep the lock" }).click();
+    await reload();
+    await page.getByText("Locked · Picture Lock 1 ✓").waitFor();
+    if ((await v1Clips().count()) !== clipsAtLock) throw new Error("the cut changed although the lock was kept");
+  });
+  await step("breaking the lock applies the edit and records it; kept after reload", async () => {
+    await v1Clips().last().click();
+    await page.keyboard.press("Delete");
+    await page.getByRole("button", { name: "Break Picture Lock and apply" }).click();
+    await notice(/Lifted “/);
+    await reload();
+    await page.getByRole("button", { name: "Lock picture" }).waitFor();
+    if ((await v1Clips().count()) !== clipsAtLock - 1) throw new Error("lift not saved");
+    await page.getByText("Lock history").click();
+    await page.getByText(/Lock 1: .* · broken /).waitFor();
+  });
+  await step("restore the Picture Lock version; the current cut is kept as a version; kept after reload", async () => {
+    const row = page.getByRole("list", { name: "Versions" }).getByRole("listitem").filter({ hasText: "Picture Lock 1" });
+    await row.getByRole("button", { name: "Restore" }).click();
+    await notice(/Restored version \d+ \(“Picture Lock 1”\)/);
+    await reload();
+    if ((await v1Clips().count()) !== clipsAtLock) throw new Error("restore not saved");
+    await page.getByRole("list", { name: "Versions" }).getByText(/Before restoring v\d+/).waitFor();
+  });
+  await step("export the cut as a CMX 3600 EDL", async () => {
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export EDL" }).click()]);
+    const p = path.join(OUT, "cut.edl"); await dl.saveAs(p); const t = fs.readFileSync(p, "utf8");
+    if (!t.includes("FCM: NON-DROP FRAME") || !/^001  /m.test(t)) throw new Error("bad EDL: " + t.slice(0, 120));
+  });
+  await step("play the timeline: the playhead advances with the scene mix", async () => {
+    await page.getByRole("button", { name: "⏮" }).click();
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.waitForFunction(() => { const t = document.querySelector('[aria-label="Playhead"]')?.textContent || ""; return t > "00:00:00:12"; }, null, { timeout: 10000 });
+    await page.getByRole("button", { name: "Stop" }).click();
+  });
+
+  if (errors.length) { failed++; console.log("FAIL page errors", errors); }
+  await browser.close();
+  console.log(failed ? `${failed} FAILED` : "ALL PASSED");
+  process.exit(failed ? 1 : 0);
+})();
