@@ -657,6 +657,59 @@ await check("overview: every stage reports real counts and its checks; flagged s
   assert(o.stages.every((s: any) => (s.done === null) === (s.total === null) || s.id === "export"), "counts are paired");
   return o.stages.map((s: any) => `${s.number}:${s.state}`).join(" ");
 });
+// ---- Phase 13-1: Ask AuraStage (plans in the generation worker; test planner until a Claude key is set) ----
+async function planned(tok: string, id: string) {
+  for (let i = 0; i < 60; i++) {
+    const p = await apiAs(tok, "GET", `/api/assistant/proposals/${id}`);
+    if (!["queued", "planning"].includes(p.status)) return p;
+    await Bun.sleep(1500);
+  }
+  throw new Error("the planning worker didn't pick the request up within 90 s");
+}
+let aiPlanner = "";
+await check("assistant: capabilities come from configured keys (planner, six tools)", async () => {
+  const c = await api("GET", "/api/assistant/capabilities");
+  assert(c.planner && c.tools.length === 6, JSON.stringify(c.planner));
+  aiPlanner = c.planner.id;
+  return `${c.planner.name}${c.planner.test_output ? " (test output)" : ""}`;
+});
+let aiId = "", amaraAgeBefore: string | null = null;
+await check("assistant: ask in Casting; the worker plans it; the preview shows before → after with permission and no stale data", async () => {
+  amaraAgeBefore = (await api("GET", `/api/projects/${projectId}/characters`)).characters.find((c: any) => c.id === amaraId).age ?? null;
+  const q = await api("POST", `/api/projects/${projectId}/assistant`, { module: "casting", text: "Make Amara Bello approximately 45" });
+  assert(q.status === "queued" && q.context_refs.some((r: any) => r.id === amaraId), "context missing Amara");
+  aiId = q.id;
+  const p = await planned(token, aiId);
+  assert(p.status === "proposed", `${p.status} ${p.error ?? ""}`);
+  assert(p.test_output === (aiPlanner === "aurastage-test"), "test label mismatch");
+  const call = p.preview.calls.find((c: any) => c.tool === "updateCharacter" && c.object.id === amaraId);
+  assert(call && String(call.after.age).includes("45") && call.allowed && !call.stale, JSON.stringify(p.preview));
+  assert(p.preview.can_apply, "can't apply: " + JSON.stringify(p.preview.issues));
+  return `${p.provider} · ${p.plan.summary}`;
+});
+await check("assistant: apply changes Amara through Casting; re-read keeps it; undo restores it", async () => {
+  const a = await api("POST", `/api/assistant/proposals/${aiId}/apply`, {});
+  assert(a.status === "applied", a.status);
+  const after = (await api("GET", `/api/projects/${projectId}/characters`)).characters.find((c: any) => c.id === amaraId);
+  assert(String(after.age).includes("45"), `age ${after.age}`);
+  const again = await api("GET", `/api/assistant/proposals/${aiId}`);
+  assert(again.status === "applied" && again.results.results.length >= 1, "not recorded");
+  await api("POST", `/api/assistant/proposals/${aiId}/apply`, {}, [409]);
+  const u = await api("POST", `/api/assistant/proposals/${aiId}/undo`, {});
+  assert(u.status === "undone", u.status);
+  const back = (await api("GET", `/api/projects/${projectId}/characters`)).characters.find((c: any) => c.id === amaraId);
+  assert((back.age ?? null) === amaraAgeBefore, `age ${back.age} vs ${amaraAgeBefore}`);
+});
+await check("assistant: a discarded suggestion changes nothing; recent requests list both; unknown ids are 404", async () => {
+  const q = await api("POST", `/api/projects/${projectId}/assistant`, { module: "scene_dna", text: "Make scene 2 rainy and tense" });
+  const p = await planned(token, q.id);
+  assert(p.status === "proposed", p.status);
+  const r = await api("POST", `/api/assistant/proposals/${q.id}/reject`, {});
+  assert(r.status === "rejected", r.status);
+  const list = await api("GET", `/api/projects/${projectId}/assistant`);
+  assert(list.proposals.length >= 2 && list.proposals[0].id === q.id, "list");
+  await api("GET", `/api/assistant/proposals/00000000-0000-4000-8000-000000000000`, undefined, [404]);
+});
 // ---- Phase 11: Team & permissions, with a second throwaway account ----
 let token2 = "", user2 = "";
 await check("team: owner invites a second person as Writer; only the hash is stored", async () => {
@@ -689,6 +742,15 @@ await check("team: a Writer reads the script but can't approve it (plain-languag
   assert(s.current_version?.id, "writer can't read the script");
   const r = await apiAs(token2, "POST", `/api/projects/${projectId}/script/approve`, { version_id: s.current_version.id }, [403]);
   assert(/your role \(Writer\) can't approve in Scriptwriter/.test(r.error.message), r.error.message);
+  return r.error.message;
+});
+await check("assistant: a Writer can ask, but can't apply a Casting change (their own permissions apply)", async () => {
+  const q = await apiAs(token2, "POST", `/api/projects/${projectId}/assistant`, { module: "casting", text: "Make Amara Bello approximately 50" });
+  const p = await planned(token2, q.id);
+  assert(p.status === "proposed" && p.preview.calls.length && !p.preview.calls[0].allowed && !p.preview.can_apply, JSON.stringify(p.preview));
+  const r = await apiAs(token2, "POST", `/api/assistant/proposals/${q.id}/apply`, {}, [403]);
+  const owner = await api("GET", `/api/projects/${projectId}/assistant`);
+  assert(owner.proposals.some((x: any) => x.id === q.id), "the owner (admin) should see the Writer's request for audit");
   return r.error.message;
 });
 await check("team: a Writer can't lock the picture or start projects", async () => {

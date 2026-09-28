@@ -22,6 +22,7 @@ import { registerEditorialRoutes } from "./modules/editorial/editorial.controlle
 import { registerRenderingRoutes } from "./modules/rendering/rendering.controller";
 import { registerHelpRoutes } from "./modules/help/help.controller";
 import { registerSettingsRoutes } from "./modules/settings/settings.controller";
+import { registerAssistantRoutes } from "./modules/assistant/assistant.controller";
 
 const app = Fastify({ logger: true });
 
@@ -53,6 +54,7 @@ async function main() {
   await registerRenderingRoutes(app);
   await registerHelpRoutes(app);
   await registerSettingsRoutes(app);
+  await registerAssistantRoutes(app);
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });

@@ -13,6 +13,8 @@ import { can, roleLabel, useProjectAccess } from "@/lib/useProjectAccess";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { CommentsDrawer, type CommentContext } from "@/modules/team-collaboration/components/CommentsDrawer";
 import { NotificationBell } from "@/modules/team-collaboration/components/NotificationBell";
+import { AskAuraStage } from "@/modules/ask-aurastage/components/AskAuraStage";
+import type { AssistantModule } from "@/modules/ask-aurastage/api/assistantApi";
 
 export const STAGES = [
   { key: "scriptwriter", label: "Scriptwriter", path: "scriptwriter" },
@@ -65,6 +67,7 @@ export function AppShell({
   const role = roleLabel(access);
   const stageModule = active in STAGE_MODULE ? STAGE_MODULE[active as StageKey] : null;
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(null);
   useEffect(() => {
@@ -80,6 +83,8 @@ export function AppShell({
   const commentContext: CommentContext | null = project
     ? { module: commentModule, objectType: "Workspace", objectId: project.id, objectLabel: "this workspace", ...comments } as CommentContext
     : null;
+  // Team and Help have no production data of their own, so the assistant works on the story there.
+  const assistantModule: AssistantModule = commentModule === "team" ? "script" : (commentModule as AssistantModule);
   const viewOnly =
     !!access && !!stageModule && !["create", "edit", "generate", "approve", "lock"].some((a) => can(access, stageModule, a as never));
   return (
@@ -183,8 +188,14 @@ export function AppShell({
                 {role}
               </Link>
             )}
+            {project && (
+              <button onClick={() => (setAskOpen((o) => !o), setCommentsOpen(false))} aria-expanded={askOpen}
+                className="rounded-md border border-aura-gold/60 px-3 py-2 text-sm text-aura-gold hover:bg-aura-gold/10">
+                Ask AuraStage
+              </button>
+            )}
             {commentContext && (
-              <button onClick={() => setCommentsOpen((o) => !o)} className="rounded-md border border-aura-border px-3 py-2 text-sm" aria-expanded={commentsOpen}>
+              <button onClick={() => (setCommentsOpen((o) => !o), setAskOpen(false))} className="rounded-md border border-aura-border px-3 py-2 text-sm" aria-expanded={commentsOpen}>
                 Comments
               </button>
             )}
@@ -198,6 +209,7 @@ export function AppShell({
           </div>
         )}
         <main>{children}</main>
+        {askOpen && project && <AskAuraStage projectId={project.id} module={assistantModule} onClose={() => setAskOpen(false)} />}
         {commentsOpen && commentContext && project && (
           <CommentsDrawer
             projectId={project.id}

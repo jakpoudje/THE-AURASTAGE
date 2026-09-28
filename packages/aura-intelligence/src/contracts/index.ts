@@ -75,5 +75,5 @@ export const PlanSchema = z.object({
 }).strict();
 export type Plan = z.infer<typeof PlanSchema>;
 
-export const PROPOSAL_STATUSES = ["queued", "planning", "proposed", "applying", "applied", "rejected", "failed"] as const;
+export const PROPOSAL_STATUSES = ["queued", "planning", "proposed", "applying", "applied", "rejected", "failed", "undone"] as const;
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];

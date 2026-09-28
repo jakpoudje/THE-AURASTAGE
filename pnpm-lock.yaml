@@ -20,6 +20,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.128.0
         version: 0.128.0(zod@3.25.76)
+      '@aurastage/aura-intelligence':
+        specifier: workspace:*
+        version: link:../../packages/aura-intelligence
       '@aurastage/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -193,6 +196,9 @@ importers:
       '@aurastage/api':
         specifier: workspace:*
         version: link:../../apps/api
+      '@aurastage/aura-intelligence':
+        specifier: workspace:*
+        version: link:../../packages/aura-intelligence
       '@aurastage/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

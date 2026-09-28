@@ -1,0 +1,84 @@
+// Context Engine (directive §18): only the objects a request is about, read with the user's own access (RLS), each
+// with its canonical id and the version it was read at (rows' updated_at). Read-only across domains (rule 4).
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { trimContext, type AssistantRequest, type ContextBundle, type ContextItem, type Intent } from "@aurastage/aura-intelligence";
+
+type Row = Record<string, any>;
+async function rows(q: PromiseLike<{ data: unknown[] | null; error: unknown }>): Promise<Row[]> {
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as Row[];
+}
+const item = (type: ContextItem["ref"]["type"], r: Row, label: string, data: Row): ContextItem =>
+  ({ ref: { type, id: r.id, version: r.updated_at ?? r.created_at ?? null, label }, data });
+
+export async function buildContext(db: SupabaseClient, req: AssistantRequest, intent: Intent): Promise<ContextBundle> {
+  const P = req.project_id;
+  const [projectRows, scenes, chars, looks, dna] = await Promise.all([
+    rows(db.from("projects").select("id, title, type, genre, subgenre, tone, setting, time_period, logline, target_runtime_minutes, updated_at").eq("id", P)),
+    rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, updated_at").eq("project_id", P).eq("status", "active").order("number", { ascending: true }).limit(200)),
+    rows(db.from("characters").select("id, name, role, status, age, gender, occupation, description, merged_into, updated_at").eq("project_id", P).is("merged_into", null).limit(100)),
+    rows(db.from("wardrobe_looks").select("id, character_id, name, description, updated_at").eq("project_id", P).limit(300)),
+    rows(db.from("scene_dna").select("id, scene_id, status, mood, weather, atmosphere, lighting_intent, sound_intent, story_time, camera_energy, wardrobe, updated_at").eq("project_id", P)),
+  ]);
+  const project = projectRows[0];
+  if (!project) throw Object.assign(new Error("Project not found"), { code: "AURA-AI-404" });
+
+  // The scene the request is about: the focus object, a "scene N" mention, or the focus shot/line's scene.
+  let focusScene: Row | undefined = req.object?.type === "scene" ? scenes.find((s) => s.id === req.object!.id) : undefined;
+  const num = req.text.match(/\bscene\s+(\d+)\b/i)?.[1];
+  if (!focusScene && num) focusScene = scenes.find((s) => String(s.number) === num);
+  let shots: Row[] = [];
+  let lines: Row[] = [];
+  if (req.object?.type === "shot") {
+    const s = await rows(db.from("shots").select("scene_id").eq("id", req.object.id));
+    focusScene = scenes.find((x) => x.id === s[0]?.scene_id) ?? focusScene;
+  }
+  if (req.object?.type === "dialogue_line") {
+    const l = await rows(db.from("dialogue_lines").select("scene_id").eq("id", req.object.id));
+    focusScene = scenes.find((x) => x.id === l[0]?.scene_id) ?? focusScene;
+  }
+  if (focusScene) {
+    [shots, lines] = await Promise.all([
+      rows(db.from("shots").select("id, scene_id, ordinal, purpose, size, angle, movement, description, character_ids, updated_at").eq("scene_id", focusScene.id).order("ordinal", { ascending: true }).limit(60)),
+      rows(db.from("dialogue_lines").select("id, scene_id, ordinal, speaker_name, character_id, text, intention, subtext, emotion, status, updated_at").eq("scene_id", focusScene.id).eq("status", "active").order("ordinal", { ascending: true }).limit(80)),
+    ]);
+  }
+
+  const items: ContextItem[] = [
+    item("project", project, project.title, { title: project.title, type: project.type, genre: project.genre, subgenre: project.subgenre, tone: project.tone, setting: project.setting,
+      time_period: project.time_period, logline: project.logline, target_runtime_minutes: project.target_runtime_minutes }),
+  ];
+  for (const s of focusScene ? [focusScene] : scenes.slice(0, 30)) {
+    const d = dna.find((x) => x.scene_id === s.id);
+    // A scene's version is its Scene DNA's (what the tools change), falling back to the scene row.
+    items.push(item("scene", { ...s, updated_at: d?.updated_at ?? s.updated_at }, `Scene ${s.number}`, { number: s.number, heading: s.heading, time_of_day: s.time_of_day,
+      dna: d ? { mood: d.mood, weather: d.weather, atmosphere: d.atmosphere, lighting_intent: d.lighting_intent, sound_intent: d.sound_intent, story_time: d.story_time, camera_energy: d.camera_energy, status: d.status } : null }));
+  }
+  for (const c of chars) {
+    items.push(item("character", c, c.name, { name: c.name, role: c.role, age: c.age, gender: c.gender, occupation: c.occupation, description: c.description,
+      looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })) }));
+  }
+  for (const l of lines) items.push(item("dialogue_line", l, `${l.speaker_name} line ${l.ordinal}`, { speaker: l.speaker_name, character_id: l.character_id, text: l.text, intention: l.intention, subtext: l.subtext, emotion: l.emotion }));
+  for (const s of shots) items.push(item("shot", s, `Shot ${s.ordinal}`, { ordinal: s.ordinal, purpose: s.purpose, size: s.size, angle: s.angle, movement: s.movement, description: s.description }));
+
+  return trimContext({
+    project: { id: P, title: project.title, genre: project.genre ?? null, tone: project.tone ?? null },
+    module: req.module,
+    focus: focusScene ? { type: "scene", id: focusScene.id, version: dna.find((x) => x.scene_id === focusScene!.id)?.updated_at ?? focusScene.updated_at ?? null, label: `Scene ${focusScene.number}` } : req.object,
+    items,
+  }, intent.mentions);
+}
+
+/** The current version of a tool's target, read the same way the context read it (for the stale check). */
+export async function currentVersion(db: SupabaseClient, projectId: string, t: { type: string; id: string }): Promise<string | null> {
+  const one = async (table: string, col: string, id: string) => (await rows(db.from(table).select("updated_at").eq(col, id).limit(1)))[0]?.updated_at ?? null;
+  switch (t.type) {
+    case "project": return one("projects", "id", projectId);
+    case "character": return one("characters", "id", t.id);
+    case "dialogue_line": return one("dialogue_lines", "id", t.id);
+    case "shot": return one("shots", "id", t.id);
+    case "scene": return (await one("scene_dna", "scene_id", t.id)) ?? one("scenes", "id", t.id);
+    default: return null;
+  }
+}

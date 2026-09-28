@@ -23,6 +23,7 @@ export function jsonSchemaOf(schema: unknown): Record<string, unknown> {
 export const anthropicReasoningAdapter: ReasoningAdapter = {
   id: "anthropic",
   name: "Anthropic Claude",
+  execution: "external",
   note: "Story understanding, drafting and field suggestions. Needs ANTHROPIC_API_KEY on the server.",
   isConfigured: (env) => !!env.ANTHROPIC_API_KEY,
   async complete<T>(req: ReasoningRequest<T>, env: Record<string, string | undefined>): Promise<ReasoningResult<T>> {
@@ -54,6 +55,7 @@ export const anthropicReasoningAdapter: ReasoningAdapter = {
       if (!parsed.success) throw new ProviderError("Claude's answer didn't match the expected shape.", res.id, true);
       return {
         data: parsed.data,
+        test_output: false,
         model: res.model,
         provider_request_id: res.id,
         usage: { input_tokens: res.usage.input_tokens, output_tokens: res.usage.output_tokens },

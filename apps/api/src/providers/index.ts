@@ -7,6 +7,7 @@ import { openaiImageAdapter } from "./image/openai/openaiImageAdapter";
 import type { ProviderAdapter } from "./types";
 
 export * from "./types";
+export * from "./reasoning";
 export { renderSketch } from "./sketch/sketchAdapter";
 
 const ADAPTERS: ProviderAdapter[] = [sketchAdapter, runwayAdapter, openaiImageAdapter];

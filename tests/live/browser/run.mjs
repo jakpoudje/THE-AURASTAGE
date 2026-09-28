@@ -325,6 +325,31 @@ await check("assets: upload an image through the file picker, tag it, add it to 
   await detail.getByRole("tab", { name: "Versions" }).click();
   await detail.getByRole("list", { name: "Versions" }).getByText(/v1 · /).waitFor();
 });
+await check("ask AuraStage: suggest a tone change, see before → after, apply; reload: kept; undo; reload: gone", async () => {
+  await page.goto(projectUrl + "/scriptwriter");
+  const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
+  const story = page.getByRole("region", { name: "Story & Creative Summary" });
+  await page.getByRole("button", { name: "Ask AuraStage" }).click();
+  await panel.getByLabel("What would you like to change?").fill("Change the tone to Tense and brooding");
+  await panel.getByRole("button", { name: "Ask", exact: true }).click();
+  // Planned by the generation worker; allow for its poll interval.
+  await panel.getByTestId("proposal-status").getByText("Suggested").waitFor({ timeout: 90000 });
+  await panel.getByTestId("change").getByRole("cell", { name: "Tense and brooding" }).waitFor();
+  const label = (await panel.getByTestId("test-output").count()) ? "test output" : "AI";
+  await panel.getByRole("button", { name: "Apply" }).click();
+  await panel.getByTestId("proposal-status").getByText("Applied").waitFor();
+  await page.goto(projectUrl + "/settings");
+  await page.reload();
+  await story.getByText("Tense and brooding").waitFor();
+  await page.getByRole("button", { name: "Ask AuraStage" }).click();
+  await panel.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Change the tone to Tense and brooding/ }).first().click();
+  await panel.getByRole("button", { name: "Undo" }).click();
+  await panel.getByTestId("proposal-status").getByText("Undone").waitFor();
+  await page.reload();
+  await story.getByText("Inherited").waitFor();
+  if (await story.getByText("Tense and brooding").count()) throw new Error("tone still shown after undo");
+  return label;
+});
 await check("help: open Help from a workspace; live status and the assistant answer; account shows this device", async () => {
   await page.goto(projectUrl + "/export");
   await page.getByText("Every Screen").waitFor();
@@ -334,7 +359,7 @@ await check("help: open Help from a workspace; live status and the assistant ans
   await status.getByText("AuraStage API").waitFor();
   const render = await status.getByTestId("status-worker:render-worker").innerText();
   await page.getByLabel("Ask the assistant").fill("How do I render an mp4?");
-  await page.getByRole("button", { name: "Ask" }).click();
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
   await page.getByTestId("assistant-answer").getByText("Rendering deliverables").waitFor();
   await page.getByRole("link", { name: "Account & security" }).click();
   await page.getByTestId("session-current").waitFor();

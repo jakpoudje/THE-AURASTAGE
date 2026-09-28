@@ -1,11 +1,14 @@
 // workers/image-worker entrypoint — consumes generation Takes from the MOS queue.
 // Env: SUPABASE_URL, SUPABASE_ANON_KEY, WORKER_TOKEN, MEDIA_* (bucket),
-//      RUNWAY_API_KEY / OPENAI_API_KEY (optional; providers without keys stay "not connected").
+//      RUNWAY_API_KEY / OPENAI_API_KEY (optional; providers without keys stay "not connected"),
+//      ANTHROPIC_API_KEY (optional; Ask AuraStage plans with the labelled test planner until it is set,
+//      unless AURA_TEST_PROVIDER=off).
 import { createClient } from "@supabase/supabase-js";
 // Provider Gateway + media storage live in apps/api (canonical, rule 7); the worker only uses them.
-import { getAdapter } from "@aurastage/api/dist/providers";
+import { getAdapter, reasoningProvider } from "@aurastage/api/dist/providers";
 import { getMedia, putMedia, takeStorageKey } from "@aurastage/api/dist/storage/media";
 import { runOnce, type Claim } from "./worker";
+import { planOnce, type PlanClaim } from "./planner";
 
 const env = process.env;
 for (const k of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "WORKER_TOKEN"]) if (!env[k]) throw new Error(`missing env ${k}`);
@@ -30,15 +33,27 @@ const deps = {
   log,
 };
 
+const plannerDeps = {
+  claim: () => rpc<PlanClaim | null>("worker_claim_ai_proposal", { p_token: token }),
+  complete: (id: string, plan: unknown, provider: string, model: string, test: boolean, req: string | null) =>
+    rpc<void>("worker_complete_ai_proposal", { p_token: token, p_id: id, p_plan: plan, p_provider: provider, p_model: model, p_test_output: test, p_request_id: req, p_cost: null }),
+  fail: (id: string, error: string) => rpc<void>("worker_fail_ai_proposal", { p_token: token, p_id: id, p_error: error }),
+  reasoner: () => reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" }),
+  env,
+  log,
+};
+
 let stopping = false;
 process.on("SIGTERM", () => (stopping = true));
 process.on("SIGINT", () => (stopping = true));
 
 (async () => {
-  log("worker.started", { providers: ["aurastage-sketch", env.RUNWAY_API_KEY ? "runway" : null, env.OPENAI_API_KEY ? "openai" : null].filter(Boolean) });
+  log("worker.started", { providers: ["aurastage-sketch", env.RUNWAY_API_KEY ? "runway" : null, env.OPENAI_API_KEY ? "openai" : null].filter(Boolean), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
   while (!stopping) {
     try {
-      const worked = await runOnce(deps);
+      // Assistant plans are short and interactive, so they go first; then one generation take.
+      const planned = await planOnce(plannerDeps);
+      const worked = (await runOnce(deps)) || planned;
       if (!worked) await new Promise((r) => setTimeout(r, 3000));
     } catch (e) {
       log("worker.error", { error: (e as Error).message });

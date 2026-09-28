@@ -17,6 +17,7 @@ API/domain service -> engine -> canonical data -> worker/provider using this tab
 | Project Settings | apps/web/src/modules/project-settings | apps/api/src/modules/settings | — (settings feed engines as inputs) | ProjectSettings / ProjectSettingsVersion |
 | Assets Library | apps/web/src/modules/assets-library | apps/api/src/modules/assets | engines/assets | Asset / AssetVersion / AssetLink |
 | Help & Support | apps/web/src/modules/help-support | apps/api/src/modules/help | engines/help | SupportTicket (+ system status from telemetry) |
+| Ask AuraStage (Intelligence layer) | apps/web/src/modules/ask-aurastage (panel in AppShell) | apps/api/src/modules/assistant (+ packages/aura-intelligence, providers/reasoning) | planning prompts in packages/aura-intelligence | AIProposal (changes go through each domain's own service) |
 | Team & Collaboration | apps/web/src/modules/team-collaboration | apps/api/src/modules/collaboration | engines/collaboration | Organization / OrgMember / ProjectMember / Invite / Comment / Task / Notification |
 
 Horizontal frontend-only workspaces (no single owned backend domain — they compose across domains):
@@ -47,6 +48,7 @@ Horizontal backend-only domains:
 | AURA-COL | Team & Collaboration (permissions, invites) |
 | AURA-HLP | Help & Support, account security |
 | AURA-SET | Project Settings |
+| AURA-AI | Ask AuraStage / Intelligence layer |
 
 Every operational error carries: trace_id, project_id, relevant object ID, engine_id/version
 (when applicable), job_id, provider_request_id (when applicable), timestamp. User-facing
@@ -80,9 +82,10 @@ Update this checklist whenever a phase completes.
   - [x] 12b Assets Library (library of every project file with the 12 SRS categories, search and filters via assetCatalogEngine 1.0.0, cards with type/version/specs/usage, detail panel with Overview/Usage/Metadata/Versions and asset comments; uploads checked by content (images, video, audio, PDF, text/CSV, .cube LUTs); Replace adds a version under a new storage key and never overwrites; usage from Audio Studio clips, render manifests and scene/character links; archive/restore; an approved mix whose recording is replaced is flagged and needs a fresh measurement before re-approval. Not built, with reason: thumbnails/proxies and vector/multimodal search need a media-processing worker; rights metadata needs a rights model)
   - [x] 12c Dashboard overview from real evidence (nine stage cards from each domain's own read model via productionOverviewEngine 1.0.0: state, real counts, the checks behind them, needs-attention list, next step; project counts and recent activity. No estimated percentages)
 - [ ] Phase 13 — Intelligence layer (owner directive 2026-09-28; audit + plan in docs/architecture/INTELLIGENCE_PLAN.md): Intelligence Core in packages/aura-intelligence, Model Gateway = apps/api/src/providers, real AI in every stage, consistency from the first frame to the last
+  - [x] 13-1 Ask AuraStage foundation (Phase 1 of the plan): Intelligence Core (intent, context with canonical ids + versions, planner prompt, Tool Registry, plan validation), reasoning gateway with Claude and the labelled built-in test planner, ai_proposals (migration 0025) planned in the generation worker, six tools through the domain services (story setup, character profile, wardrobe look per scene, dialogue performance notes, Scene DNA, shot cinematography), a panel in every workspace with field-level before → after, permission and staleness checks, Apply, Undo (refused over newer edits), and the DEVELOPMENT / TEST OUTPUT label until a Claude key is added
   - [ ] 13a Reasoning gateway (Anthropic Claude primary; OpenAI/Gemini fallback) + an AI assistant in every stage: story understanding (story bible: premise, themes, arcs, timeline, time jumps, ages), Scriptwriter from a logline (synopsis, beat sheet, scenes), intelligent character names, auto-filling every workspace's fields as proposals the user accepts or edits
-  - [ ] 13b Character bible: character sheets filled from the storyline, relationships, the scenes each character appears in, story-driven aging (age per scene), wardrobe per scene, reference image sets per age/look state used by every shot
+  - [ ] 13b Character bible (owner addition: a look panel per character — front / three-quarter / profile / back and CU/MCU/MS/full, from the script — used by storyboards, prompts and video as reference images; same for environments and props): character sheets filled from the storyline, relationships, the scenes each character appears in, story-driven aging (age per scene), wardrobe per scene, reference image sets per age/look state used by every shot
   - [ ] 13c Locations & environment bible with reference images and time-of-day variants
   - [ ] 13d Consistency-aware prompt compiler 2.0: character sheet + age + scene wardrobe + location + look, with reference images sent to providers that accept them; consistency checks with evidence
-  - [ ] 13e Voice, sound effects and music generation (ElevenLabs; a music provider with an official API) through worker jobs, placed into Audio Studio as proposals
+  - [ ] 13e Voice, sound effects and music generation (owner addition: sounds and background music detected from the script and suggested; voice types suggested from each character's profile) (ElevenLabs; a music provider with an official API) through worker jobs, placed into Audio Studio as proposals
   - [ ] 13f More video providers (Luma, Google Veo) and lip sync

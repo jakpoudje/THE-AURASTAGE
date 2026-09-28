@@ -14,10 +14,17 @@ export interface ReasoningRequest<T> {
   schema: z.ZodType<T>;
   effort?: ReasoningEffort;
   max_tokens?: number;
+  /**
+   * The structured task behind the prompt. Real models read the prompt; the labelled TestProvider reads this instead
+   * (it can't understand language), so the whole flow can be exercised without a paid API.
+   */
+  task?: { kind: "plan"; snapshot: unknown };
 }
 
 export interface ReasoningResult<T> {
   data: T;
+  /** True when a development/test backend produced this; the UI labels it DEVELOPMENT / TEST OUTPUT (rule 12). */
+  test_output: boolean;
   /** The model that actually answered (a server-side fallback can differ from the one requested). */
   model: string;
   provider_request_id: string | null;
@@ -27,6 +34,7 @@ export interface ReasoningResult<T> {
 export interface ReasoningAdapter {
   id: string;
   name: string;
+  execution: "native" | "local" | "external" | "test";
   /** Credentials present on this server (never calls out, never guesses health). */
   isConfigured(env: Record<string, string | undefined>): boolean;
   note: string;

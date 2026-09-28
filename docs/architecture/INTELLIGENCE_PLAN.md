@@ -70,6 +70,8 @@ Timeline/Version/PictureLock, Render, ProjectSettings, Comment/Task/Notification
 7. Tests: package unit tests, tool contract tests, API route tests, `ai_db.sql`, offline e2e (TestProvider), live
    smoke/browser (TestProvider until a Claude key is added).
 
+Status: Phase 1 built (see apps/api/src/modules/assistant/README.md).
+
 ## 5. Later phases (directive order)
 
 2 AuraScript (story development — `storyDevelopmentEngine` written — outline, scene generate/rewrite/expand/condense,
@@ -77,6 +79,20 @@ dialogue improvement, continuity), character/dialogue/Scene DNA assistance · 3 
 character/location reference sets and aging · 4 AuraVoice + Performance DNA · 5 AuraSFX/Foley/Ambience + SoundEvent ·
 6 AuraMusic (music plan → generation, stems) · 7 AuraVideo (GenerationPackage 2.0, reference images) · 8 Editorial and
 Export commands, cross-production automation, advanced QC.
+
+## 5a. Owner additions (2026-09-28)
+
+- **Character look panel (Casting & Characters)** — per character, an initial look set derived from the script and the
+  character profile: front / three-quarter / profile / back, and shot sizes (CU, MCU, MS, full). Stored as Assets linked
+  to the character (asset_links, migration 0024) with the wardrobe look and age stage they show. Storyboards and the
+  prompt compiler use them as reference images for every shot the character appears in, and video generation passes
+  them on when the provider accepts references. (Phase 3, with aging.)
+- **Environments and props** get the same reference sets (Location DNA in the Scene DNA domain; props as a Casting-style
+  list detected from the script). (Phase 3 / 13c.)
+- **Sounds** — sound events (SFX, foley, ambience) and background-music cues are detected from the script and Scene DNA
+  and suggested for generation in Audio Studio; the user accepts or edits each before anything is generated. (Phase 5–6.)
+- **Voices** — voice types suggested from each character's profile (age, gender, nationality, personality) and chosen per
+  character, used for every line they speak. (Phase 4, Voice DNA.)
 
 ## 6. Risks and how they are contained
 

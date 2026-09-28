@@ -763,6 +763,59 @@ http.createServer((req, res) => {
     };
     const refuse = (what) => send(403, { error: { code: "AURA-COL-403", message: `your role (${teamAccess().project_role_label}) can't administer in ${what}. Ask the project's producer for access.` } });
     if (u === "/__test/as") { T.as = b.role; if (b.email) T.email = b.email; return send(200, { ok: true }); }
+    // ---- Ask AuraStage (mirrors apps/api/src/modules/assistant; plans come from the REAL labelled test planner) ----
+    const AI = globalThis.__ai || (globalThis.__ai = { list: [] });
+    const aiLib = require(require("path").resolve(__dirname, "../../../packages/aura-intelligence/dist/index.js"));
+    const testPlanner = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/reasoning/test/testReasoningAdapter.js")).testReasoningAdapter;
+    const STORY = ["title", "logline", "genre", "subgenre", "tone", "setting", "time_period", "target_runtime_minutes"];
+    const aiTools = { updateStory: { module: "script", impact: ["Scriptwriter story setup", "Dashboard"], target: () => ({ label: project.title, get: () => project, set: (c) => (project = { ...project, ...c, updated_at: now() }) }) },
+      updateCharacter: { module: "casting", impact: ["Scene DNA (locked scenes with this character are flagged for review)", "Visual Generation prompts"], target: (i) => { const c = chars.find((x) => x.id === i.character_id); return c && { label: c.name, get: () => c, set: (ch) => Object.assign(c, ch) }; } } };
+    const aiPreview = (x) => {
+      const acc = teamAccess().modules;
+      const calls = (x.plan?.calls ?? []).map((c, index) => {
+        const input = JSON.parse(c.input_json), t = aiTools[c.tool], tg = t && t.target(input);
+        const before = tg ? Object.fromEntries(Object.keys(input.changes).map((k) => [k, tg.get()[k] ?? null])) : null;
+        return { index, tool: c.tool, reason: c.reason, module: t?.module, action: "edit", allowed: !!t && acc[t.module].includes("edit"), impact: t?.impact ?? [], object: { type: "x", id: "x", label: tg?.label ?? "" }, before, after: input.changes, stale: false, problem: tg ? null : "Not supported offline" };
+      });
+      return { calls, issues: [], impact: [...new Set(calls.flatMap((c) => c.impact))], can_apply: x.status === "proposed" && calls.length > 0 && calls.every((c) => c.allowed && !c.problem) };
+    };
+    const aiView = (x) => ({ ...x, snapshot: undefined, preview: x.status === "proposed" ? aiPreview(x) : null });
+    if (u === `/api/projects/${P}/assistant` && req.method === "POST") {
+      if (!b.text || b.text.trim().length < 3) return send(400, { error: { code: "AURA-AI-400", message: "Tell AuraStage what you'd like to change" } });
+      const intent = aiLib.classifyIntent({ module: b.module, text: b.text });
+      const items = [{ ref: { type: "project", id: P, version: project.updated_at, label: project.title }, data: Object.fromEntries(STORY.map((k) => [k, project[k] ?? null])) },
+        ...chars.map((c) => ({ ref: { type: "character", id: c.id, version: c.updated_at || null, label: c.name }, data: { name: c.name, age: c.age ?? null } }))];
+      const x = { id: crypto.randomUUID(), module: b.module, request: b.text.trim(), mode: "suggest", intent, status: "queued", provider: null, model: null, test_output: false, plan: null, results: null, error: null, created_at: now(), polls: 0,
+        snapshot: { request: { text: b.text, module: b.module, object: null }, context: { items, focus: null }, tools: Object.keys(aiTools) } };
+      AI.list.unshift(x);
+      return send(200, aiView(x));
+    }
+    if (u === `/api/projects/${P}/assistant` && req.method === "GET") return send(200, { proposals: AI.list.map((x) => ({ ...aiView(x), preview: undefined })) });
+    if ((m = u.match(/^\/api\/assistant\/proposals\/([^/]+)(?:\/(apply|reject|undo))?$/))) {
+      const x = AI.list.find((y) => y.id === m[1]); if (!x) return send(404, { error: { code: "AURA-AI-404", message: "That request wasn't found" } });
+      if (!m[2]) {
+        // The worker plans on the second look, so the panel's "Thinking…" state is exercised.
+        if (x.status === "queued" && ++x.polls >= 2) {
+          return void testPlanner.complete({ system: "", prompt: "", schema: aiLib.PlanSchema, task: { kind: "plan", snapshot: x.snapshot } }).then((r) => {
+            Object.assign(x, { status: "proposed", plan: r.data, provider: testPlanner.id, model: r.model, test_output: r.test_output });
+            send(200, aiView(x));
+          });
+        }
+        return send(200, aiView(x));
+      }
+      if (m[2] === "reject") { if (x.status !== "proposed") return send(409, { error: { code: "AURA-AI-409", message: `This request is ${x.status}` } }); x.status = "rejected"; return send(200, aiView(x)); }
+      if (m[2] === "apply") {
+        if (x.status !== "proposed") return send(409, { error: { code: "AURA-AI-409", message: `This request is ${x.status}; only a proposal can be applied.` } });
+        const p = aiPreview(x); if (!p.can_apply) return send(403, { error: { code: "AURA-AI-403", message: "Your role can't edit in this workspace." } });
+        const results = x.plan.calls.map((c, i) => { const input = JSON.parse(c.input_json), tg = aiTools[c.tool].target(input); tg.set(input.changes); return { tool: c.tool, input, object: { label: tg.label }, before: p.calls[i].before, applied: input.changes }; });
+        Object.assign(x, { status: "applied", results: { results, impact: p.impact } });
+        return send(200, aiView(x));
+      }
+      if (x.status !== "applied") return send(409, { error: { code: "AURA-AI-409", message: `This request is ${x.status}; only an applied change can be undone.` } });
+      for (const r of x.results.results) { const tg = aiTools[r.tool].target(r.input); if (Object.keys(r.applied).some((k) => JSON.stringify(tg.get()[k] ?? null) !== JSON.stringify(r.applied[k]))) return send(409, { error: { code: "AURA-AI-409", message: `${r.object.label} was changed again after this was applied, so undoing it would overwrite newer work. Change it by hand instead.` } }); }
+      for (const r of [...x.results.results].reverse()) aiTools[r.tool].target(r.input).set(r.before);
+      x.status = "undone"; return send(200, aiView(x));
+    }
     // ---- Assets Library (mirrors apps/api/src/modules/assets library routes + migration 0024; search is the real assetCatalogEngine) ----
     const CATS = cc0.ASSET_CATEGORIES;
     const astErr = (code, msg) => send(code, { error: { code: `AURA-AST-${code}`, message: msg } });
