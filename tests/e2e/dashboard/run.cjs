@@ -18,6 +18,19 @@ const STORY = "Act I: The Heist. During a highly anticipated national election, 
   let body = null;
   page.on("request", (r) => { if (r.url().endsWith("/api/projects") && r.method() === "POST") body = JSON.parse(r.postData()); });
 
+  await step("home page: headline, honest provider states, eight genres, sign-up links", async () => {
+    await page.goto(BASE + "/");
+    await page.getByRole("heading", { name: /Turn Your Ideas\s*Into Extraordinary Films/ }).waitFor();
+    const prov = page.getByRole("region", { name: "Providers" });
+    await prov.getByText("AuraStage Sketch").waitFor();
+    await prov.getByText("Built in").waitFor();
+    if (await prov.getByText(/Suno|CapCut|HeyGen/).count()) throw new Error("lists a provider with no integration");
+    if ((await page.getByRole("list", { name: "Genres" }).getByRole("listitem").count()) !== 8) throw new Error("genres");
+    if ((await page.locator("img").count()) !== 0) throw new Error("home page should not render <img> tags that can break");
+    await page.getByRole("link", { name: "Get Started Free →" }).click();
+    await page.waitForURL("**/sign-up");
+    await page.goto(BASE + "/dashboard");
+  });
   await step("long story pasted into the logline is saved as the synopsis", async () => {
     await page.getByRole("button", { name: "+ New Project" }).click();
     await page.getByPlaceholder("Project title").fill("The Abuja Covenant");

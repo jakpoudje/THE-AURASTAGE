@@ -37,7 +37,8 @@ async function check(name, fn) {
 }
 const reload = async (marker) => {
   await page.reload();
-  await page.getByText(marker).first().waitFor();
+  // Visible text only: the dashboard's project picker also contains every title as a hidden <option>.
+  await page.getByText(marker).locator("visible=true").first().waitFor();
 };
 
 const TITLE = `Live check ${new Date().toISOString().slice(0, 16)}`;
@@ -55,11 +56,11 @@ await check("create a project, reload: still listed", async () => {
   await page.getByRole("button", { name: "+ New Project" }).click();
   await page.getByPlaceholder("Project title").fill(TITLE);
   await page.getByRole("button", { name: "Create project" }).click();
-  await page.getByText(TITLE).first().waitFor();
+  await page.getByText(TITLE).locator("visible=true").first().waitFor();
   await reload(TITLE);
 });
 await check("scriptwriter: save + approve, reload: still approved", async () => {
-  await page.getByText(TITLE).first().click();
+  await page.getByRole("link", { name: new RegExp(TITLE) }).first().click();
   await page.waitForURL("**/scriptwriter");
   projectUrl = page.url().replace(/\/scriptwriter$/, "");
   await page.locator("main nav button", { hasText: "Edit & Refine" }).click();
