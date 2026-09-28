@@ -48,6 +48,9 @@ begin
   begin perform public.record_audio_measurement(s.id, jsonb_build_object('session_revision', gen_random_uuid(), 'integrated_lufs', -23, 'duration_seconds', 8, 'clip_count', 3, 'engine_version', '1.0.0'));
     insert into r values ('stale measurement refused', 'NO');
   exception when others then insert into r values ('stale measurement refused', sqlerrm); end;
+  begin perform public.record_audio_measurement(s.id, jsonb_build_object('session_revision', 'an-old-revision', 'integrated_lufs', -23, 'duration_seconds', 8, 'clip_count', 3, 'engine_version', '1.0.0'));
+    insert into r values ('non-uuid revision refused as 409', 'NO');
+  exception when others then insert into r values ('non-uuid revision refused as 409', sqlerrm); end;
   begin perform public.approve_audio_session(p, sc); insert into r values ('approve needs a measurement', 'NO');
   exception when others then insert into r values ('approve needs a measurement', sqlerrm); end;
   select revision into rev from public.audio_sessions where id = s.id;
@@ -83,6 +86,7 @@ rollback;
 -- re-spot keeps recordings                         | dx:t:asset,fx:cue   (regression: first version also re-added a cue for the recorded line)
 -- emptied track removed                            | dx:t,fx
 -- stale measurement refused                        | AURA-AUD-409: the mix changed since it was measured — measure again
+-- non-uuid revision refused as 409                 | AURA-AUD-409: the mix changed since it was measured — measure again   (regression: was 22P02 -> API 500; fixed in 0016)
 -- approve needs a measurement                      | AURA-AUD-412: measure the mix loudness after your last change
 -- approve v1 snapshots tracks, clips, measurement  | approved / v1 / 2 clips / -23.4
 -- edit reopens draft with a new revision           | draft / revision changed: true

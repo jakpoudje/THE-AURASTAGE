@@ -66,7 +66,7 @@ await check("api health", async () => {
   assert(r.status === 200 && j.status === "ok", `health ${r.status}`);
   return `phase ${j.phase}`;
 });
-for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual"]) {
+for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio"]) {
   await check(`web ${path}`, async () => {
     const r = await fetch(WEB + path);
     assert(r.status === 200, `status ${r.status}`);
@@ -295,7 +295,8 @@ await check("visual: approve the take; unconnected providers are refused plainly
   }
   assert(ws.scenes[0].shots[0].approved_take_id === takeId, "approval not persisted");
 });
-// ---- Audio Studio (Phase 8). The real loudness render/measure runs in the browser check (live-browser). ----
+// ---- Audio Studio (Phase 8). The measurement posted here only exercises the API contract (revision check,
+// approval gate); the real render + BS.1770-4 measurement runs in the browser check (live-browser). ----
 function toneWav(seconds = 1, sr = 48000) {
   const n = sr * seconds, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
   const w = (o: number, t: string) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
