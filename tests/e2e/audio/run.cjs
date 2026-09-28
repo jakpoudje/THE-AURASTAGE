@@ -67,10 +67,9 @@ async function api(method, p, body) {
     await page.getByRole("tablist", { name: "Scenes" }).waitFor();
     await page.getByText("Spot this scene to lay out dialogue").waitFor();
   });
-  await step("generators are honestly shown as not connected", async () => {
-    const list = page.getByRole("list", { name: "Audio generators" });
-    await list.getByText("AI dialogue / voice (TTS)").waitFor();
-    if ((await list.getByText(/not connected/i).count()) < 1) throw new Error("no not-connected state");
+  await step("generators are shown honestly: built-in sound ready and free; voice not built yet", async () => {
+    await page.getByTestId("generator-aurastage-synth").getByText("built in · free").waitFor();
+    await page.getByTestId("generator-voice").getByText("not built yet", { exact: true }).waitFor();
   });
   await step("spot audio from the approved shot plan: dialogue, ambience and score cues; survives reload", async () => {
     await page.getByRole("button", { name: "Spot audio from the shot plan" }).click();
@@ -151,6 +150,32 @@ async function api(method, p, body) {
     if (await page.getByRole("button", { name: /Clip Tunde.*You came/i }).count()) throw new Error("dialogue cue duplicated after re-spot");
   });
 
+  await step("generate the scene's planned sounds with the built-in synthesiser; listen; use one on its cue; reload: kept, and it's in the Assets Library", async () => {
+    await page.getByRole("button", { name: "Generate all planned sounds for this scene" }).click();
+    await page.getByText(/Generating \d+ planned sounds? with the built-in synthesiser/).waitFor();
+    await page.getByRole("button", { name: /Clip Score/ }).click();
+    const gen = page.getByRole("region", { name: "Generate this sound" });
+    await gen.getByTestId("generation").getByText("Ready").waitFor({ timeout: 20000 });
+    await gen.getByTestId("generation").getByText(/Built-in synthesis · (tense minor pulse|neutral pad|slow minor pad|warm major sevenths|bright major progression|dark drone|driving minor ostinato)/).waitFor();
+    await gen.getByRole("button", { name: "▶ Listen" }).click();
+    await gen.getByLabel("Generated sound").waitFor();
+    await gen.getByRole("button", { name: "Use this" }).click();
+    await page.getByText("Clip saved.").waitFor();
+    await gen.getByText("In use").waitFor();
+    await reload();
+    await page.getByRole("button", { name: /Clip Score/ }).click();
+    await page.getByRole("region", { name: "Generate this sound" }).getByText("In use").waitFor();
+    const lib = await api("GET", `/api/projects/${P}/library`);
+    if (!lib.assets.some((a) => /^Score — /.test(a.name))) throw new Error("generated score not in the Assets Library");
+    await page.getByRole("button", { name: "Generate all planned sounds for this scene" }).click();
+    await page.getByText(/Nothing new to generate|already generated/).waitFor();
+  });
+  await step("a dialogue cue offers no fake voice generator", async () => {
+    await page.getByRole("button", { name: "Clip tunde-line" }).click();
+    if (await page.getByRole("region", { name: "Generate this sound" }).count()) throw new Error("dialogue clip offered generation");
+    const r = await api("POST", `/api/projects/${P}/audio/scenes/${s1}/generate`, { kind: "voice", description: "You came.", duration_seconds: 2 });
+    if (r.error?.message !== "No voice generator is connected yet.") throw new Error(JSON.stringify(r));
+  });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();
   console.log(failed ? `${failed} FAILED` : "ALL PASSED");

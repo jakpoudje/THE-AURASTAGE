@@ -35,6 +35,17 @@ and new version, and the "Loudness measured after the last change" check fails u
 the mix is measured again. Approval then goes through as normal (the database wrapper
 of `approve_audio_session` checks the same rule).
 
+## Generating sound (migration 0026)
+`audio.generation.ts`: generate a sound for a planned cue (`POST .../scenes/:sceneId/generate`) or for every planned
+ambience / effect / Foley / score cue of a scene that has no recording and no generation yet (`.../generate-cues`).
+Only backends from the Provider Gateway's audio side that can make that kind of sound AND are configured are used —
+today AuraStage's built-in synthesiser (`aurastage-synth`, `proceduralAudioEngine` 1.0.0: native, free, placeholder
+quality, every layer explained). Voice isn't built yet and is refused with 412, never faked. `request_audio_generation`
+is gated `audio:generate`; the generation worker makes the WAV, stores it privately and the Assets domain registers it
+(`app_private.register_generated_asset`) tagged `generated`, linked to the scene, with provenance (provider, model,
+engine version, seed). Using it on a cue is the person's choice ("Use this" = the normal clip save), so nothing is
+placed or replaced automatically (rule 11).
+
 ## Downstream consumers
 Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 
@@ -43,9 +54,11 @@ Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 - `engines/audio/loudnessMeterEngine` — ITU-R BS.1770-4 / EBU R128 (integrated, true peak, LRA). Runs in the browser on the rendered mix.
 
 ## API endpoints
-- `GET  /api/projects/:id/audio` — scenes with approved plans, session, tracks, clips, latest measurement, readiness predicates, recordings, generator status (all `not_connected`)
+- `GET  /api/projects/:id/audio` — scenes with approved plans, session, tracks, clips, latest measurement, readiness predicates, recordings, generators from evidence (built-in sound ready; voice not built yet), and each scene's generations
 - `POST /api/projects/:id/audio/scenes/:sceneId/spot` — 412 unless the shot plan is approved and current
 - `POST /api/projects/:id/audio/scenes/:sceneId/approve` — 412 with the failing blocking predicates
+- `POST /api/projects/:id/audio/scenes/:sceneId/generate` — `{ clip_id?, kind, description, duration_seconds, provider?, seed? }`; 412 when no backend can make it
+- `POST /api/projects/:id/audio/scenes/:sceneId/generate-cues` — `{ requested, skipped }`
 - `PATCH /api/audio-tracks/:id` — `UpdateAudioTrackInput`
 - `POST /api/audio-sessions/:id/clips`, `PATCH|DELETE /api/audio-clips/:id` — `SaveAudioClipInput`
 - `POST /api/audio-sessions/:id/measurements` — `LoudnessMeasurementInput`
@@ -56,13 +69,13 @@ Recommended: −23 LUFS ±1, true peak ≤ −1 dBTP, planned FX/BG/MX cues fill
 
 ## Events emitted
 `AudioSessionSpotted`, `AudioTrackUpdated`, `AudioClipSaved`, `AudioClipDeleted`,
-`AudioMixMeasured`, `AudioSessionApproved`, `UpstreamVersionChanged` (audit_events).
+`AudioMixMeasured`, `AudioSessionApproved`, `UpstreamVersionChanged`, `AudioGenerationRequested`, `AudioGenerated` (audit_events).
 
 ## Permissions
 Project members read (RLS); editors write (checked inside every function).
 
 ## Tests
-`tests/routes.test.ts`, `tests/integration/audio_db.sql`, `tests/e2e/audio/run.cjs`.
+`tests/routes.test.ts`, `tests/generation.test.ts`, `tests/integration/audio_db.sql`, `tests/integration/audio_gen_db.sql`, `tests/e2e/audio/run.cjs`.
 
 ## Known operational error codes
-AURA-AUD-002 invalid input · 403 no access · 404 not found · 409 mix changed while measuring · 412 not ready (plan not approved, readiness failing) · 500.
+AURA-AUD-002 invalid input · 429 too many generations in a minute · 403 no access · 404 not found · 409 mix changed while measuring · 412 not ready (plan not approved, readiness failing) · 500.

@@ -1,7 +1,7 @@
 // Thin client for the Audio Studio + Assets APIs. No logic here.
 import type { AudioClip, AudioTrack, SaveAudioClipInput, UpdateAudioTrackInput, LoudnessMeasurementInput } from "@aurastage/contracts";
 import { apiDelete, apiGet, apiGetBytes, apiPatch, apiPost, apiUpload } from "@/lib/apiClient";
-import type { AudioAsset, AudioMeasurement, AudioWorkspace } from "../types";
+import type { AudioAsset, AudioGeneration, AudioMeasurement, AudioWorkspace } from "../types";
 
 export const audioApi = {
   getWorkspace: (projectId: string) => apiGet<AudioWorkspace>(`/api/projects/${projectId}/audio`),
@@ -19,5 +19,9 @@ export const audioApi = {
       file,
       file.type || "audio/wav"
     ),
+  generate: (projectId: string, sceneId: string, body: { clip_id: string | null; kind: AudioGeneration["kind"]; description: string; duration_seconds: number }) =>
+    apiPost<AudioGeneration>(`/api/projects/${projectId}/audio/scenes/${sceneId}/generate`, body),
+  generateCues: (projectId: string, sceneId: string) =>
+    apiPost<{ requested: AudioGeneration[]; skipped: string[] }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/generate-cues`, {}),
   assetBytes: (assetId: string) => apiGetBytes(`/api/assets/${assetId}/content`),
 };

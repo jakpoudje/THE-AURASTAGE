@@ -657,6 +657,33 @@ await check("overview: every stage reports real counts and its checks; flagged s
   assert(o.stages.every((s: any) => (s.done === null) === (s.total === null) || s.id === "export"), "counts are paired");
   return o.stages.map((s: any) => `${s.number}:${s.state}`).join(" ");
 });
+// ---- Built-in sound: generate the scene's planned ambience/effects/score in the worker, real WAV in the Assets Library ----
+await check("audio: built-in generation makes real WAVs for the planned cues; a voice is refused (not built); use one on its cue", async () => {
+  const ws0 = await api("GET", `/api/projects/${projectId}/audio`);
+  assert(ws0.generators.some((g: any) => g.id === "aurastage-synth" && g.state === "configured") && ws0.generators.some((g: any) => g.id === "voice" && g.state === "not_connected"), "generators");
+  const r = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate-cues`, {});
+  assert(r.requested.length >= 1 && r.requested.every((g: any) => g.provider === "aurastage-synth" && g.execution === "native"), JSON.stringify(r).slice(0, 300));
+  await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { kind: "voice", description: "You came.", duration_seconds: 2 }, [412]);
+  let sc: any;
+  for (let i = 0; i < 40; i++) {
+    sc = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1);
+    if (sc.generations.filter((g: any) => r.requested.some((q: any) => q.id === g.id)).every((g: any) => g.status === "succeeded" || g.status === "failed")) break;
+    await Bun.sleep(1500);
+  }
+  const done = sc.generations.filter((g: any) => r.requested.some((q: any) => q.id === g.id));
+  assert(done.every((g: any) => g.status === "succeeded" && g.asset_id && g.layers.length), JSON.stringify(done.map((g: any) => [g.status, g.error])));
+  const g = done[0];
+  const bytes = new Uint8Array(await (await fetch(`${API}/api/assets/${g.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
+  const txt = new TextDecoder().decode(bytes.slice(0, 12));
+  assert(txt.startsWith("RIFF") && txt.endsWith("WAVE") && bytes.length > 44 + 48000, `not a real WAV (${bytes.length} bytes)`);
+  const lib = await api("GET", `/api/projects/${projectId}/library?q=generated`);
+  assert(lib.assets.some((a: any) => a.id === g.asset_id), "generated file not in the Assets Library");
+  const clip = await api("PATCH", `/api/audio-clips/${g.clip_id}`, { asset_id: g.asset_id });
+  assert(clip.kind === "asset" && clip.asset_id === g.asset_id, "not placed");
+  const again = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate-cues`, {});
+  assert(!again.requested.some((x: any) => x.clip_id === g.clip_id), "regenerated a cue that already has a sound");
+  return `${done.length} sound(s): ${done.map((x: any) => `${x.kind} [${x.layers.map((l: any) => l.name).join(", ")}]`).join("; ")}`;
+});
 // ---- Phase 13-1: Ask AuraStage (plans in the generation worker; test planner until a Claude key is set) ----
 async function planned(tok: string, id: string) {
   for (let i = 0; i < 60; i++) {

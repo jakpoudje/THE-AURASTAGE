@@ -4,7 +4,7 @@
 // Dialogue (lines), Casting (names) and Assets (audio) read-only; writes only
 // via the migration-0015 functions.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AudioConflictError, AudioNotFoundError, AudioNotReadyError, AudioValidationError } from "./audio.validator";
+import { AudioBusyError, AudioConflictError, AudioNotFoundError, AudioNotReadyError, AudioValidationError } from "./audio.validator";
 import { AudioForbiddenError } from "./audio.permissions";
 import { colForbiddenMessage } from "../../infrastructure/permissions";
 
@@ -13,6 +13,7 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   const msg = error.message ?? "";
   const text = msg.replace(/^AURA-AUD-\d+:\s*/, "");
   if (msg.startsWith("AURA-AUD-409")) return new AudioConflictError(text);
+  if (msg.startsWith("AURA-AUD-429")) return new AudioBusyError(text);
   if (msg.startsWith("AURA-AUD-412")) return new AudioNotReadyError(text);
   if (msg.startsWith("AURA-AUD-404")) return new AudioNotFoundError(text);
   if (msg.startsWith("AURA-AUD-403") || error.code === "42501") return new AudioForbiddenError(colForbiddenMessage(error));
@@ -60,3 +61,12 @@ export const deleteClip = (db: SupabaseClient, id: string) => rpc(db, "delete_au
 export const recordMeasurement = (db: SupabaseClient, sessionId: string, m: Row) => rpc(db, "record_audio_measurement", { p_session_id: sessionId, p_m: m });
 export const approve = (db: SupabaseClient, projectId: string, sceneId: string) => rpc(db, "approve_audio_session", { p_project_id: projectId, p_scene_id: sceneId });
 export const setReview = (db: SupabaseClient, id: string, state: string, reason: string | null) => rpc(db, "set_audio_review", { p_session_id: id, p_state: state, p_reason: reason });
+
+// ---- Generation (migration 0026): requests only; the worker makes the file and the Assets domain registers it ----
+export const listGenerations = (db: SupabaseClient, p: string) =>
+  rows(db.from("audio_generations").select("id, scene_id, clip_id, kind, description, duration_seconds, provider, model, execution, seed, status, asset_id, result, error, created_at, completed_at")
+    .eq("project_id", p).order("created_at", { ascending: false }).limit(300));
+export const requestGeneration = (db: SupabaseClient, a: { project: string; scene: string; clip: string | null; kind: string; description: string; duration: number; mood: string[];
+  provider: string; model: string; execution: string; seed: number; engineVersion: string }) =>
+  rpc<Row>(db, "request_audio_generation", { p_project: a.project, p_scene: a.scene, p_clip: a.clip, p_kind: a.kind, p_description: a.description, p_duration: a.duration,
+    p_mood: a.mood, p_provider: a.provider, p_model: a.model, p_execution: a.execution, p_seed: a.seed, p_params: {}, p_engine_version: a.engineVersion });

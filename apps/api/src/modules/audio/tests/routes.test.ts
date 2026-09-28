@@ -25,7 +25,7 @@ function fakeDb(rows: Record<string, Row[]>, rpcImpl: (fn: string, a: Row) => { 
   const from = (t: string) => {
     const f: [string, unknown][] = [];
     const res = () => (rows[t] ?? []).filter((r) => f.every(([k, v]) => r[k] === v));
-    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), order: () => q,
+    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), order: () => q, limit: () => q,
       maybeSingle: async () => ({ data: res()[0] ?? null, error: null }), then: (ok: any) => ok({ data: res(), error: null }) };
     return q;
   };
@@ -105,7 +105,9 @@ describe("Audio Studio routes", () => {
     const ws = (await (await app(fake)).inject({ method: "GET", url: `/api/projects/${P}/audio` })).json();
     expect(fake.calls[0]).toMatchObject({ fn: "set_audio_review", args: { p_state: "stale" } });
     expect(ws.scenes[0].session.review_reason).toMatch(/Your recordings are kept/);
-    expect(ws.generators.every((g: Row) => g.state === "not_connected")).toBe(true);
+    // Built-in sound is always available; voice isn't built yet and says so (never a fake "connected").
+    expect(ws.generators.find((g: Row) => g.id === "aurastage-synth")).toMatchObject({ state: "configured", execution: "native" });
+    expect(ws.generators.find((g: Row) => g.id === "voice")).toMatchObject({ state: "not_connected" });
     expect(ws.target).toMatchObject({ integrated_lufs: -23 });
   });
 

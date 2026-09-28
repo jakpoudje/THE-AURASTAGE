@@ -22,13 +22,7 @@ import { AudioNotReadyError, validateClipPatch, validateMeasurement, validateTra
 export const SPOTTING_ENGINE_VERSION = audioSpotting.ENGINE_VERSION;
 type Row = Record<string, any>;
 
-/** AI generators the SRS lists; none is connected yet, and we say so. */
-const GENERATORS = [
-  { id: "voice", label: "AI dialogue / voice (TTS)", note: "Needs a voice provider (e.g. OpenAI or ElevenLabs key)." },
-  { id: "music", label: "Music assistant", note: "Needs a music provider key." },
-  { id: "sfx", label: "Foley & SFX generation", note: "Needs a sound-effects provider key." },
-  { id: "cleanup", label: "Dialogue clean-up / stem separation", note: "Needs an audio-processing provider key." },
-].map((g) => ({ ...g, state: "not_connected" as const }));
+import { generatorsFor, toGenerationDTO } from "./audio.generation";
 
 function reviewFor(session: Row, plan: Row | undefined, versionNumber: number | null, replaced: string | null = null) {
   if (!plan || plan.approved_version_id !== session.shot_plan_version_id) {
@@ -74,10 +68,10 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
   await refreshAudioReview(db, projectId);
   const standard = (await readProjectSettings(db, projectId)).settings.technical.loudness_standard;
-  const [scenes, plans, versions, sessions, tracks, clips, measurements, sessionVersions, assets] = await Promise.all([
+  const [scenes, plans, versions, sessions, tracks, clips, measurements, sessionVersions, assets, generations] = await Promise.all([
     repo.listScenes(db, projectId), repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId), repo.listSessions(db, projectId),
     repo.listTracks(db, projectId), repo.listClips(db, projectId), repo.listMeasurements(db, projectId), repo.listVersions(db, projectId),
-    repo.listAudioAssets(db, projectId),
+    repo.listAudioAssets(db, projectId), repo.listGenerations(db, projectId),
   ]);
   const assetTimes = await repo.listAssetVersionTimes(db, projectId);
   const out = [];
@@ -108,11 +102,12 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
       measurement: toMeasurementDTO(m),
       readiness: ready?.readiness ?? [],
       ready_for_approval: ready?.ready ?? false,
+      generations: generations.filter((g) => g.scene_id === scene.id).map(toGenerationDTO),
     });
   }
   return {
     target: { ...loudnessTarget(standard), standard },
-    generators: GENERATORS,
+    generators: generatorsFor(),
     assets: assets.map((a) => ({ id: a.id, name: a.name, duration_seconds: a.metadata?.duration_seconds ?? null, media_type: a.metadata?.media_type ?? null, created_at: a.created_at })),
     scenes: out,
     summary: { scenes: out.length, spotted: out.filter((s) => s.session).length, approved: out.filter((s) => s.session?.status === "approved" && s.session.review_state === "current").length },

@@ -15,6 +15,9 @@ export class AudioNotFoundError extends Error {
 export class AudioConflictError extends Error {
   code = "AURA-AUD-409";
 }
+export class AudioBusyError extends Error {
+  code = "AURA-AUD-429";
+}
 export class AudioNotReadyError extends Error {
   code = "AURA-AUD-412";
   constructor(message: string, public issues?: unknown) {

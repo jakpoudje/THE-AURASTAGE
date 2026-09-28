@@ -84,18 +84,33 @@ export function DeliveryPanel({
   );
 }
 
-export function GeneratorsPanel({ generators }: { generators: AudioWorkspace["generators"] }) {
+const STATE: Record<string, { dot: string; text: string }> = {
+  configured: { dot: "text-emerald-400", text: "ready" },
+  not_configured: { dot: "text-white/30", text: "add a key to connect" },
+  not_connected: { dot: "text-white/30", text: "not built yet" },
+};
+export function GeneratorsPanel({ generators, canGenerate, busy, onGenerateCues }: {
+  generators: AudioWorkspace["generators"]; canGenerate: boolean; busy: boolean; onGenerateCues: (() => void) | null;
+}) {
   return (
     <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
       <h3 className="font-display text-lg">Tools & generators</h3>
       <ul className="mt-2 space-y-2 text-sm" aria-label="Audio generators">
         {generators.map((g) => (
-          <li key={g.id}>
-            <span className="text-white/30">●</span> {g.label} <span className="text-[11px] text-white/40">not connected</span>
+          <li key={g.id} data-testid={`generator-${g.id}`}>
+            <span className={STATE[g.state]?.dot ?? "text-white/30"}>●</span> {g.label}{" "}
+            <span className="text-[11px] text-white/40">{g.execution === "native" && g.state === "configured" ? "built in · free" : STATE[g.state]?.text ?? g.state}</span>
             <span className="block text-[11px] text-white/35">{g.note}</span>
           </li>
         ))}
       </ul>
+      {onGenerateCues && (
+        <button onClick={onGenerateCues} disabled={busy || !canGenerate} title={canGenerate ? undefined : "Your role can't generate audio"}
+          className="mt-3 w-full rounded-md border border-aura-gold/60 px-3 py-1.5 text-xs text-aura-gold disabled:opacity-40">
+          Generate all planned sounds for this scene
+        </button>
+      )}
+      <p className="mt-2 text-[11px] text-white/35">Ambience, effects, Foley and score cues come from the script and Scene DNA. Generated sounds go to the Assets Library; you choose where to use them.</p>
     </div>
   );
 }

@@ -5,10 +5,11 @@
 //      unless AURA_TEST_PROVIDER=off).
 import { createClient } from "@supabase/supabase-js";
 // Provider Gateway + media storage live in apps/api (canonical, rule 7); the worker only uses them.
-import { getAdapter, reasoningProvider } from "@aurastage/api/dist/providers";
+import { getAdapter, getAudioAdapter, reasoningProvider } from "@aurastage/api/dist/providers";
 import { getMedia, putMedia, takeStorageKey } from "@aurastage/api/dist/storage/media";
 import { runOnce, type Claim } from "./worker";
 import { planOnce, type PlanClaim } from "./planner";
+import { audioOnce, type AudioClaim } from "./audio";
 
 const env = process.env;
 for (const k of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "WORKER_TOKEN"]) if (!env[k]) throw new Error(`missing env ${k}`);
@@ -43,6 +44,17 @@ const plannerDeps = {
   log,
 };
 
+const audioDeps = {
+  claim: () => rpc<AudioClaim | null>("worker_claim_audio_generation", { p_token: token }),
+  complete: (id: string, key: string, checksum: string, metadata: Record<string, unknown>, result: Record<string, unknown>, req: string | null, cost: number | null) =>
+    rpc<string>("worker_complete_audio_generation", { p_token: token, p_id: id, p_storage_key: key, p_checksum: checksum, p_metadata: metadata, p_result: result, p_request_id: req, p_cost: cost }),
+  fail: (id: string, error: string, req: string | null) => rpc<void>("worker_fail_audio_generation", { p_token: token, p_id: id, p_error: error, p_request_id: req }),
+  getAudioAdapter,
+  put: (k: string, b: Uint8Array, ct: string) => putMedia(k, b, ct),
+  env,
+  log,
+};
+
 let stopping = false;
 process.on("SIGTERM", () => (stopping = true));
 process.on("SIGINT", () => (stopping = true));
@@ -53,7 +65,8 @@ process.on("SIGINT", () => (stopping = true));
     try {
       // Assistant plans are short and interactive, so they go first; then one generation take.
       const planned = await planOnce(plannerDeps);
-      const worked = (await runOnce(deps)) || planned;
+      const sounded = await audioOnce(audioDeps);
+      const worked = (await runOnce(deps)) || planned || sounded;
       if (!worked) await new Promise((r) => setTimeout(r, 3000));
     } catch (e) {
       log("worker.error", { error: (e as Error).message });

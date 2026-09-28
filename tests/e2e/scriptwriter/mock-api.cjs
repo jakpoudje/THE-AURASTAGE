@@ -466,6 +466,45 @@ http.createServer((req, res) => {
       else if (plan.status !== "approved" || plan.review_state !== "current") { s.review_state = "review_required"; s.review_reason = "The shot plan has edits that aren't approved yet."; }
       else { s.review_state = "current"; s.review_reason = null; }
     };
+    // Audio generation (mirrors apps/api/src/modules/audio/audio.generation + migration 0026). The "worker" step runs the REAL
+    // built-in synthesiser adapter the first time a queued request is read back.
+    const agen = require(require("path").resolve(__dirname, "../../../apps/api/dist/modules/audio/audio.generation.js"));
+    const aprov = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/audio/index.js"));
+    const agens = globalThis.__agens || (globalThis.__agens = []);
+    const agenWork = (g) => {
+      if (g.status === "queued" && g._polls++ >= 1) {
+        g.status = "running";
+        aprov.getAudioAdapter(g.provider).generate({ kind: g.kind, model: g.model, description: g.description, duration_seconds: g.duration_seconds, mood: [], seed: g.seed, params: {} }, {}).then((r) => {
+          const a = { id: crypto.randomUUID(), project_id: P, type: "audio", name: `${g.kind[0].toUpperCase()}${g.kind.slice(1)} — ${g.description.slice(0, 150)}`, bytes: Buffer.from(r.bytes), media_type: r.media_type, duration_seconds: r.duration_seconds, created_at: now(), tags: ["generated"] };
+          assets.push(a); Object.assign(g, { status: "succeeded", asset_id: a.id, layers: r.detail.layers, completed_at: now() });
+        });
+      }
+      const { _polls, ...out } = g; return out;
+    };
+    const agenReq = (sceneId, body) => {
+      const kinds = { ambience: 1, fx: 1, foley: 1, score: 1 };
+      if (body.kind === "voice") return { err: [412, "No voice generator is connected yet."] };
+      if (!kinds[body.kind] || !body.description || !(body.duration_seconds > 0)) return { err: [400, "Invalid audio input"] };
+      const who = (globalThis.__team || { as: "owner" }).as; // the team state is defined further down
+      if (who !== "owner" && who !== "producer") return { err: [403, "your role can't generate in Audio Studio. Ask the project's producer for access."] };
+      const g = { id: crypto.randomUUID(), scene_id: sceneId, clip_id: body.clip_id ?? null, kind: body.kind, description: String(body.description).slice(0, 500), duration_seconds: Math.min(300, body.duration_seconds),
+        provider: "aurastage-synth", model: "synth-1", execution: "native", seed: 7, status: "queued", asset_id: null, error: null, layers: [], created_at: now(), completed_at: null, _polls: 0 };
+      agens.unshift(g); return { g };
+    };
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/audio\/scenes\/([^/]+)\/generate$/)) && req.method === "POST") {
+      const r = agenReq(m[1], b); if (r.err) return aerr(r.err[0], r.err[1]); return send(200, agenWork(r.g));
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/audio\/scenes\/([^/]+)\/generate-cues$/)) && req.method === "POST") {
+      const s = asessions.find((x) => x.scene_id === m[1]); if (!s) return aerr(412, "Spot this scene first — the cues come from its approved shot plan.");
+      const requested = [], skipped = [];
+      for (const c of aclips.filter((x) => x.session_id === s.id && x.kind === "cue")) {
+        const t = atracks.find((x) => x.id === c.track_id); const kind = t && agen.FAMILY_KIND[t.family];
+        if (!kind || kind === "voice") continue;
+        if (agens.some((g) => g.clip_id === c.id && g.status !== "failed")) { skipped.push(c.label); continue; }
+        const r = agenReq(m[1], { clip_id: c.id, kind, description: c.label, duration_seconds: c.duration_seconds }); if (r.err) return aerr(r.err[0], r.err[1]); requested.push(agenWork(r.g));
+      }
+      return send(200, { requested, skipped });
+    }
     if (u === `/api/projects/${P}/audio` && req.method === "GET") {
       const out = [];
       for (const scene of scenes) {
@@ -479,10 +518,11 @@ http.createServer((req, res) => {
           plan: pv ? { version_id: pv.id, version_number: pv.version_number, usable: plan.status === "approved" && plan.review_state === "current" } : null,
           session: s ? { id: s.id, status: s.status, review_state: s.review_state, review_reason: s.review_reason, revision: s.revision, scene_seconds: s.scene_seconds,
             approved_version_number: s.approved_version_id ? aversions.find((v) => v.id === s.approved_version_id).version_number : null } : null,
-          tracks: st, clips: sc.map(clipDTO), measurement: me, readiness: r ? r.readiness : [], ready_for_approval: r ? r.ready : false });
+          tracks: st, clips: sc.map(clipDTO), measurement: me, readiness: r ? r.readiness : [], ready_for_approval: r ? r.ready : false,
+          generations: agens.filter((g) => g.scene_id === scene.id).map((g) => agenWork(g)) });
       }
       return send(200, { target: { ...cc0.loudnessTarget(ST.settings.technical.loudness_standard), standard: ST.settings.technical.loudness_standard },
-        generators: [{ id: "voice", label: "AI dialogue / voice (TTS)", note: "Needs a voice provider (e.g. OpenAI or ElevenLabs key).", state: "not_connected" }, { id: "music", label: "Music assistant", note: "Needs a music provider key.", state: "not_connected" }],
+        generators: agen.generatorsFor({}),
         assets: assets.map((a) => ({ id: a.id, name: a.name, duration_seconds: a.duration_seconds, media_type: a.media_type, created_at: a.created_at })),
         scenes: out, summary: { scenes: out.length, spotted: out.filter((x) => x.session).length, approved: out.filter((x) => x.session && x.session.status === "approved" && x.session.review_state === "current").length } });
     }

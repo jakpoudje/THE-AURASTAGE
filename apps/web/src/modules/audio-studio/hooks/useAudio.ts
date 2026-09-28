@@ -11,10 +11,10 @@ import type { Project, SaveAudioClipInput, UpdateAudioTrackInput } from "@aurast
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet } from "@/lib/apiClient";
 import { audioApi } from "../api/audioApi";
-import type { AudioScene, AudioWorkspace } from "../types";
+import type { AudioGeneration, AudioScene, AudioWorkspace } from "../types";
 import { encodeWav, loadAsset, measure, probeFile, renderMix, type Bus } from "../state/mixEngine";
 
-type Busy = null | "spot" | "save" | "upload" | "measure" | "approve" | "export";
+type Busy = null | "spot" | "save" | "upload" | "measure" | "approve" | "export" | "generate";
 
 export function useAudio(projectId: string) {
   const router = useRouter();
@@ -66,6 +66,14 @@ export function useAudio(projectId: string) {
         .catch(() => alive.current && setError("A recording could not be loaded for playback."));
     }
   }, [ws, buffers]);
+
+  // Generation runs in the worker: check back every 2 s while anything is waiting or being made.
+  const waiting = ws?.scenes.some((sc) => sc.generations?.some((g) => g.status === "queued" || g.status === "running")) ?? false;
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(() => reload().catch(() => null), 2000);
+    return () => clearInterval(t);
+  }, [waiting, reload]);
 
   async function run<T>(kind: Busy, fn: () => Promise<T>, message: (r: T) => string | null) {
     setBusy(kind);
@@ -124,6 +132,13 @@ export function useAudio(projectId: string) {
         },
         (m) => `Measured the rendered mix: ${m.integrated_lufs === null ? "silent" : `${m.integrated_lufs.toFixed(1)} LUFS`}${m.true_peak_dbtp === null ? "" : `, true peak ${m.true_peak_dbtp.toFixed(1)} dBTP`}.`
       ),
+    generate: (sceneId: string, body: { clip_id: string | null; kind: AudioGeneration["kind"]; description: string; duration_seconds: number }) =>
+      run("generate", () => audioApi.generate(projectId, sceneId, body), () => "Generating — it will appear here and in the Assets Library when it's ready."),
+    generateCues: (sceneId: string) =>
+      run("generate", () => audioApi.generateCues(projectId, sceneId), (r) =>
+        r.requested.length
+          ? `Generating ${r.requested.length} planned sound${r.requested.length === 1 ? "" : "s"} with the built-in synthesiser${r.skipped.length ? ` (${r.skipped.length} already generated or not supported)` : ""}. Nothing is placed until you choose “Use this”.`
+          : "Nothing new to generate — every ambience, effect and score cue already has a generated sound or a recording."),
     approve: (sceneId: string) => run("approve", () => audioApi.approve(projectId, sceneId), (r) => `Scene mix approved as version ${r.version_number}.`),
     exportStem: async (s: AudioScene, bus?: Bus) => {
       setBusy("export");

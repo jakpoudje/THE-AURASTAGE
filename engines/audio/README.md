@@ -8,3 +8,5 @@ Planned (SRS): `foleyRecommendationEngine`, `adrConformEngine`, `mixRoutingEngin
 
 Each engine has its own folder (see `_template/`) with `index.ts`, `engine.ts`,
 `input.schema.ts`, `output.schema.ts`, `rules.ts`, `validator.ts`, `version.ts`, `tests/`.
+
+- `proceduralAudioEngine` 1.0.0 — AuraStage's built-in sound: deterministic synthesis of ambience (room tone, rain, wind, sea, traffic, birds, night insects, crowd, thunder), effects/Foley (footsteps, knocks, door slam, thunder, gunshot, glass, phone, engine, typing, paper, breath, impact) and score (key, mode and tempo from the mood). Lists every layer it used and why; peaks at −3 dBFS. Placeholder quality by design — never presented as a recording or AI.

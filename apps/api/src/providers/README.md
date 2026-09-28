@@ -35,3 +35,10 @@ only reads the registry for statuses and models.
 
 reasoning (LLM suggestions), voice, speech-to-text, lip-sync, music, repair/upscale
 adapters — added with their phases (Audio Studio etc.).
+
+## Reasoning and sound (Phase 13)
+- `reasoning/` — Claude (`ANTHROPIC_API_KEY`, model `claude-opus-5-5`) and the labelled test planner. Structured-output
+  schemas are sent with supported keywords only; limits go into descriptions and answers are validated with zod.
+- `audio/` — `AudioAdapter` contract (ambience, fx, foley, score, voice). `aurastage-synth` is native (free, always
+  configured) and never makes voices. `audioBackendsFor(kind, env)` only returns backends that can make that kind AND
+  are configured. Paid sound/voice providers will be added here.

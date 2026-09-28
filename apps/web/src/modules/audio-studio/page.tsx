@@ -8,6 +8,7 @@
 // Canonical backend authority: apps/api/src/modules/audio (+ assets for recordings)
 // Engines: engines/audio (spotting on the server, loudness meter in the browser)
 
+import { can, useProjectAccess } from "@/lib/useProjectAccess";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -24,6 +25,8 @@ const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart
 export default function AudioStudioPage() {
   const { id } = useParams<{ id: string }>();
   const d = useAudio(id);
+  const access = useProjectAccess(id);
+  const canGenerate = can(access, "audio", "generate");
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [clipId, setClipId] = useState<string | null>(null);
   const [pps, setPps] = useState(60);
@@ -214,6 +217,9 @@ export default function AudioStudioPage() {
                         onSave={(p) => d.updateClip(clip.id, p)}
                         onDelete={async () => (await d.deleteClip(clip.id)) && setClipId(null)}
                         onUpload={(file) => d.upload(file, { clipId: clip.id })}
+                        generations={s.generations.filter((g) => g.clip_id === clip.id)}
+                        canGenerate={canGenerate}
+                        onGenerate={(body) => d.generate(s.scene.id, body)}
                       />
                     )}
                     <Mixer tracks={s.tracks} player={player} busy={d.busy !== null} onChange={(tid, p) => d.updateTrack(tid, p)} />
@@ -229,7 +235,7 @@ export default function AudioStudioPage() {
                 {s.session && (
                   <DeliveryPanel s={s} target={ws.target} busy={d.busy} onMeasure={() => d.measure(s)} onApprove={() => d.approve(s.scene.id)} onExport={(bus) => d.exportStem(s, bus)} />
                 )}
-                <GeneratorsPanel generators={ws.generators} />
+                <GeneratorsPanel generators={ws.generators} canGenerate={canGenerate} busy={d.busy !== null} onGenerateCues={s.session ? () => d.generateCues(s.scene.id) : null} />
               </div>
             </div>
           </>
