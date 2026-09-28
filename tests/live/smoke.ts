@@ -515,7 +515,7 @@ await check("settings: preview the impact, save a version; a stale save is refus
   assert(["Visual style", "Monthly paid takes", "Required deliverables", "Credits"].every((l) => labels.includes(l)), labels.join(","));
   assert(/compiled shot prompt/.test(imp.impact.find((i: any) => i.label === "Visual style").effect), "style impact should count compiled prompts");
   const saved = await api("PUT", `/api/projects/${projectId}/settings`, { base_revision: st.revision, settings: next });
-  assert(saved.version_number === 1 && saved.revision > st.revision, `v${saved.version_number}`);
+  assert(saved.version_number === 1 && typeof saved.revision === "string" && saved.revision !== st.revision, `v${saved.version_number} revision changed: ${saved.revision !== st.revision}`);
   await api("PUT", `/api/projects/${projectId}/settings`, { base_revision: st.revision, settings: { ...next, production: { ...next.production, director: "Overwriter" } } }, [409]);
   const again = await api("GET", `/api/projects/${projectId}/settings`);
   assert(again.settings.production.director === "Live Check Director" && again.versions.length === 1, "overwritten or not persisted");
