@@ -70,7 +70,7 @@ await check("api health", async () => {
   assert(r.status === 200 && j.status === "ok", `health ${r.status}`);
   return `phase ${j.phase}`;
 });
-for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio", "/projects/00000000-0000-4000-8000-000000000000/editorial", "/projects/00000000-0000-4000-8000-000000000000/export", "/projects/00000000-0000-4000-8000-000000000000/team", "/invite"]) {
+for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio", "/projects/00000000-0000-4000-8000-000000000000/editorial", "/projects/00000000-0000-4000-8000-000000000000/export", "/projects/00000000-0000-4000-8000-000000000000/team", "/invite", "/help", "/account"]) {
   await check(`web ${path}`, async () => {
     const r = await fetch(WEB + path);
     assert(r.status === 200, `status ${r.status}`);
@@ -640,6 +640,53 @@ await check("team: removing the person from the project removes their access", a
   await apiAs(token2, "GET", `/api/projects/${projectId}/script`, undefined, [403, 404]);
   const t = await api("GET", `/api/projects/${projectId}/team`);
   assert(!t.members.some((m: any) => m.user_id === user2), "still listed");
+});
+// ---- Phase 11c: Help & Support, account security, hardening ----
+await check("help: system status reports live worker check-ins and a database ping", async () => {
+  const st = await api("GET", "/api/help/status");
+  const by = Object.fromEntries(st.checks.map((c: any) => [c.id, c]));
+  assert(by.database?.state === "operational", `database ${JSON.stringify(by.database)}`);
+  for (const w of ["worker:generation-worker", "worker:render-worker"]) assert(by[w] && by[w].state !== "down", `${w} ${JSON.stringify(by[w])}`);
+  assert(st.providers.some((p: any) => p.id === "aurastage-sketch" && p.state === "configured"), "sketch provider");
+  return st.checks.map((c: any) => `${c.id}:${c.state}`).join(", ");
+});
+await check("help: the assistant answers from the guides with this project's diagnostics", async () => {
+  const a = await api("POST", "/api/help/assistant", { question: "How do I render an mp4?", project_id: projectId, module: "delivery" });
+  assert(a.guides[0]?.id === "export" && /No AI model/.test(a.note), JSON.stringify(a).slice(0, 200));
+  const d = await api("GET", `/api/projects/${projectId}/diagnostics`);
+  assert(Array.isArray(d.findings) && d.facts && typeof d.facts.review_required === "object", "diagnostics shape");
+  return `${d.findings.length} findings`;
+});
+await check("help: a ticket with consented diagnostics is saved; without consent none are kept; close it", async () => {
+  const t1 = await api("POST", "/api/help/tickets", { subject: "Live check ticket", body: "Testing tickets.", project_id: projectId, module: "delivery", include_diagnostics: true });
+  await api("POST", "/api/help/tickets", { subject: "Live check no diag", body: "No diagnostics please.", project_id: projectId, include_diagnostics: false });
+  const list = await api("GET", "/api/help/tickets");
+  const a = list.tickets.find((t: any) => t.id === t1.id), b = list.tickets.find((t: any) => t.subject === "Live check no diag");
+  assert(a?.consent_diagnostics && a.diagnostics?.engine_version && b && b.diagnostics === null, "consent handling");
+  await api("POST", `/api/help/tickets/${t1.id}/close`, {});
+  const other = await apiAs(token2, "GET", "/api/help/tickets");
+  assert(!other.tickets.some((t: any) => t.id === t1.id), "another person can see my ticket");
+});
+await check("security: signing out other devices ends that session for the API", async () => {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST", headers: { apikey: ANON, "Content-Type": "application/json" },
+    body: JSON.stringify({ email: env("SMOKE_EMAIL"), password: env("SMOKE_PASSWORD") }),
+  });
+  const other = (await r.json()).access_token as string;
+  await apiAs(other, "GET", "/api/notifications");
+  const before = await api("GET", "/api/account/sessions");
+  assert(before.sessions.length >= 2 && before.sessions.filter((s: any) => s.current).length === 1, `sessions ${before.sessions.length}`);
+  const out = await api("POST", "/api/account/sessions/revoke", {});
+  assert(out.signed_out >= 1, "nothing signed out");
+  await apiAs(other, "GET", "/api/notifications", undefined, [401]);
+  await api("GET", "/api/notifications");
+  return `${out.signed_out} other session(s) signed out`;
+});
+await check("security: API and web send protective headers", async () => {
+  const a = await fetch(API + "/api/notifications", { headers: { Authorization: `Bearer ${token}` } });
+  assert(a.headers.get("x-content-type-options") === "nosniff" && a.headers.get("x-frame-options") === "DENY", "api headers");
+  const w = await fetch(WEB + "/help");
+  assert(w.headers.get("x-frame-options") === "DENY", "web headers");
 });
 await check("security: other project ids are refused", async () => {
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/characters`, undefined, [403]);

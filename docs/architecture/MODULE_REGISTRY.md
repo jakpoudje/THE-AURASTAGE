@@ -15,6 +15,7 @@ API/domain service -> engine -> canonical data -> worker/provider using this tab
 | Editorial & Timeline | apps/web/src/modules/editorial-timeline | apps/api/src/modules/editorial | engines/editorial | AssemblyTimeline / PictureLock |
 | Export & Deliver | apps/web/src/modules/export-deliver | apps/api/src/modules/rendering | engines/rendering | RenderManifest / Deliverable |
 | Assets Library | apps/web/src/modules/assets-library | apps/api/src/modules/assets | engines/assets | Asset / AssetVersion |
+| Help & Support | apps/web/src/modules/help-support | apps/api/src/modules/help | engines/help | SupportTicket (+ system status from telemetry) |
 | Team & Collaboration | apps/web/src/modules/team-collaboration | apps/api/src/modules/collaboration | engines/collaboration | Organization / OrgMember / ProjectMember / Invite / Comment / Task / Notification |
 
 Horizontal frontend-only workspaces (no single owned backend domain — they compose across domains):
@@ -44,6 +45,7 @@ Horizontal backend-only domains:
 | AURA-AST | Assets |
 | AURA-MOS | Orchestration |
 | AURA-COL | Team & Collaboration (permissions, invites) |
+| AURA-HLP | Help & Support, account security |
 
 Every operational error carries: trace_id, project_id, relevant object ID, engine_id/version
 (when applicable), job_id, provider_request_id (when applicable), timestamp. User-facing
@@ -62,10 +64,11 @@ messages must be safe; diagnostic detail belongs in authorized logs only.
 - [x] Phase 8 — Audio Studio (sessions spotted from the approved shot plan + locked Scene DNA + Dialogue with evidence per cue; Assets Library audio upload to the private bucket; multitrack timeline with waveforms, clip editing, mixer with pan/gain/mute/solo and meters; ITU-R BS.1770-4 loudness of the actually rendered mix tied to the saved revision; readiness predicates; approve as immutable versions; WAV export of mix and DX/FX/BG/MX stems; plan changes mark sessions stale/review_required, recordings kept. Waiting on the owner: a voice/music/SFX provider key for AI generation. Deferred: ADR conform, stem separation)
 - [x] Phase 9 — Editorial & Timeline (first assembly from approved takes over each scene's approved shot timing with the approved scene mix on A1; offline slugs for shots without a take; NLE edits — insert, overwrite, trim, ripple, roll, slip, slide, blade, lift, extract, move — with sync lock; per-clip grade preview; editorial QC with timecodes; named and automatic versions; Picture Lock as an immutable version, breaking it needs confirmation and records the impact; upstream changes flag the timeline and Conform swaps sources without changing the cut; CMX 3600 EDL export. Deferred: titles/subtitles, transitions, multi-cam, colour scopes, VFX conform, AI-assisted assembly)
 - [x] Phase 10 — Export & Deliver (deliverables only from the current Picture Lock with an immutable, checksummed RenderManifest naming every source; versioned delivery profiles — Streaming Master (H.264 1080p24 + AAC + SRT), Review Copy (watermark, burned-in timecode), Mezzanine ProRes 422 HQ master, Audio Package (mix, DX/FX/BG/MX stems, M&E), Subtitles (SRT + WebVTT), EDL; renders run in the render worker (ffmpeg) through MOS jobs with progress and cancel; final QC per file (format, frame rate, exact duration, loudness via ffmpeg ebur128, SHA-256, subtitle read-back); signed downloads; deliverables from a broken lock are marked out of date, files kept. Not available (with reasons): DCP, 4K HDR, MXF broadcast, social vertical. Deferred: localisation, external delivery destinations, multipart uploads > 5 GB)
-- [ ] Phase 11 — Collaboration/Help hardening, scale, security, studio integrations
+- [x] Phase 11 — Collaboration/Help hardening, scale, security, studio integrations
   - [x] 11a Team & permissions (studio roles; the SRS film roles per project with module × action permissions and extra grants; invite links (hashed, single-use, email-bound, 14 days); every user-callable write goes through `gate_write` in the database and every read is project-scoped; plain-language refusals; audit events carry their project. Deferred with reason: object-level scope (one scene/shot) needs per-object ACLs in every domain; SSO/MFA need an identity provider plan)
   - [x] 11b Comments (version-aware, Editorial timecode anchors, mentions, replies, resolve), notifications (bell), tasks and review requests, activity feed from the audit trail (activityFeedEngine). Deferred with reason: email/push delivery of notifications needs an email provider; comments on individual objects inside workspaces (a line, a shot) beyond Editorial's timecode need per-module anchors
-  - [ ] 11c Help & Support (real system/provider status, guides, permission-bound assistant, tickets) and account security
+  - [x] 11c Help & Support (system and provider status from worker heartbeats, database pings and job outcomes; written guides with search; the AuraStage Assistant answering from the guides and the project's permission-safe diagnostics; support tickets with consented diagnostics and a staff inbox) and account security (devices/sessions with sign-out, password change, per-person API rate limits, security headers on API and web)
+  - Deferred with reason: an AI model for the assistant needs a reasoning-provider key (OPENAI/Anthropic) through the Provider Gateway; SSO/MFA need an identity-provider plan; GPU scheduling and multi-region disaster recovery need paid infrastructure beyond Railway's single region; email delivery of notifications and tickets needs an email provider; load testing at studio scale needs a staging environment
 
 **Permission rule (since 11a):** every new user-callable write function must start with
 `perform public.gate_write(<project>, '<module>', '<action>')`. `tests/integration/team_db.sql` lists any that don't.

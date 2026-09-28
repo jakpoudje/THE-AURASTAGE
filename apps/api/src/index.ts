@@ -7,6 +7,7 @@ import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { registerAuth } from "./infrastructure/auth";
+import { registerProtection } from "./infrastructure/rateLimit";
 import { registerProjectsRoutes } from "./modules/projects/projects.controller";
 import { registerCollaborationRoutes } from "./modules/collaboration/collaboration.controller";
 import { registerScreenplayRoutes } from "./modules/screenplay/screenplay.controller";
@@ -19,6 +20,7 @@ import { registerAssetsRoutes } from "./modules/assets/assets.controller";
 import { registerAudioRoutes } from "./modules/audio/audio.controller";
 import { registerEditorialRoutes } from "./modules/editorial/editorial.controller";
 import { registerRenderingRoutes } from "./modules/rendering/rendering.controller";
+import { registerHelpRoutes } from "./modules/help/help.controller";
 
 const app = Fastify({ logger: true });
 
@@ -30,11 +32,12 @@ async function main() {
   app.get("/health", async () => ({
     status: "ok",
     service: "aurastage-api",
-    phase: 10,
+    phase: 11,
     timestamp: new Date().toISOString(),
   }));
 
   await registerAuth(app);
+  await registerProtection(app);
   await registerProjectsRoutes(app);
   await registerCollaborationRoutes(app);
   await registerScreenplayRoutes(app);
@@ -47,6 +50,7 @@ async function main() {
   await registerAudioRoutes(app);
   await registerEditorialRoutes(app);
   await registerRenderingRoutes(app);
+  await registerHelpRoutes(app);
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });

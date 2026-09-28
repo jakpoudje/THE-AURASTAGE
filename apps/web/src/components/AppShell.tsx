@@ -31,7 +31,7 @@ const SECONDARY: { key: string; label: string; path?: string }[] = [
   { key: "settings", label: "Project Settings" },
   { key: "team", label: "Team & Collaboration", path: "team" },
   { key: "assets", label: "Assets Library" },
-  { key: "help", label: "Help & Support" },
+  { key: "help", label: "Help & Support", path: "help" },
 ];
 
 type StageKey = (typeof STAGES)[number]["key"];
@@ -122,7 +122,7 @@ export function AppShell({
             item.path && project ? (
               <Link
                 key={item.key}
-                href={`/projects/${project.id}/${item.path}`}
+                href={item.key === "help" ? `/help?project=${project.id}&module=${commentModule}` : `/projects/${project.id}/${item.path}`}
                 className={
                   item.key === active ? "block rounded-md bg-aura-gold/15 px-3 py-2 text-aura-gold" : "block rounded-md px-3 py-2 text-white/70 hover:bg-white/5"
                 }

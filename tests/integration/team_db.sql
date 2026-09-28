@@ -137,7 +137,9 @@ where n.nspname = 'public' and p.prosecdef and has_function_privilege('authentic
     'can_view_project','project_can','project_access','project_team','org_team','set_org_member_role','remove_org_member',
     'revoke_invite','invite_preview','accept_invite',
     -- 0021: read-only lists, and marking one's own notifications read
-    'list_comments','list_tasks','project_activity','mark_notifications_read');
+    'list_comments','list_tasks','project_activity','mark_notifications_read',
+    -- 0022: platform status (aggregates), one's own tickets and sessions (not project writes)
+    'platform_status','is_platform_staff','create_ticket','reply_ticket','close_ticket','list_tickets','my_sessions','revoke_sessions');
 insert into r(step, ok) values ('bodies are not callable directly',
   (select has_function_privilege('authenticated', 'app_private.save_script_version(uuid,uuid,text,jsonb,text,text)', 'execute')::text));
 

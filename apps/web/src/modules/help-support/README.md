@@ -1,40 +1,11 @@
-# Help Support (frontend module)
+# Help & Support (web)
 
-## Purpose
-Horizontal workspace: Help Support.
+Routes: `/help` (opened from a workspace as `/help?project=<id>&module=<module>`) and `/account`.
 
-## Canonical owner
-Composes across multiple domain services; owns no canonical object itself.
+- Guides for every workspace with search, and troubleshooting for the error codes the app shows.
+- System and provider status exactly as the server measured it, with the evidence on each line.
+- AuraStage Assistant: answers from the guides and the current project's status; links straight to the workspace.
+- Support tickets: optional diagnostics (previewed before sending), replies, close.
+- Account & security: devices you're signed in on, sign out others, change password.
 
-## Inputs / reads
-TODO — fill in as the module is built (Build Guide §12 requires this to stay current).
-
-## Outputs / writes
-TODO
-
-## Upstream dependencies
-TODO
-
-## Downstream consumers
-TODO
-
-## Relevant engines
-N/A
-
-## API endpoints
-TODO
-
-## Database objects
-TODO
-
-## Events emitted / consumed
-TODO
-
-## Permissions
-TODO
-
-## Tests
-See ./tests
-
-## Known operational error codes
-TODO
+Backend: `apps/api/src/modules/help`. Tests: `tests/e2e/help/run.cjs`.

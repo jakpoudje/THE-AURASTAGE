@@ -265,6 +265,23 @@ await check("comments: pin a comment to the timeline's timecode in Editorial; re
   await drawer.getByRole("tab", { name: "resolved" }).click();
   await drawer.getByText("Live check: trim the head of this shot.").waitFor();
 });
+await check("help: open Help from a workspace; live status and the assistant answer; account shows this device", async () => {
+  await page.goto(projectUrl + "/export");
+  await page.getByText("Every Screen").waitFor();
+  await page.getByRole("link", { name: "Help & Support" }).click();
+  await page.getByText("Every Step").waitFor();
+  const status = page.getByRole("list", { name: "System status" });
+  await status.getByText("AuraStage API").waitFor();
+  const render = await status.getByTestId("status-worker:render-worker").innerText();
+  await page.getByLabel("Ask the assistant").fill("How do I render an mp4?");
+  await page.getByRole("button", { name: "Ask" }).click();
+  await page.getByTestId("assistant-answer").getByText("Rendering deliverables").waitFor();
+  await page.getByRole("link", { name: "Account & security" }).click();
+  await page.getByTestId("session-current").waitFor();
+  await page.reload();
+  await page.getByTestId("session-current").waitFor();
+  return render.replace(/\s+/g, " ");
+});
 await check("dashboard after reload still shows the project", async () => {
   await page.goto(WEB + "/dashboard");
   await reload(TITLE);

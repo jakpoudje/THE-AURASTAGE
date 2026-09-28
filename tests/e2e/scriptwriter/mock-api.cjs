@@ -799,6 +799,43 @@ http.createServer((req, res) => {
     if (u === "/api/notifications") { const mine = C.notes.filter((n) => n.user_id === ME).reverse(); return send(200, { unread: mine.filter((n) => !n.read_at).length, items: mine }); }
     if (u === "/api/notifications/read") { C.notes.forEach((n) => { if (n.user_id === ME && !n.read_at && (!b.ids || b.ids.includes(n.id))) n.read_at = now(); }); return send(200, { marked: 1 }); }
     if (u === `/api/projects/${P}/activity`) return send(200, eng.activityFeedEngine({ events: [...C.events].reverse() }));
+    // ---- Help & Support + account (mirrors apps/api/src/modules/help + migration 0022) ----
+    const H = globalThis.__help || (globalThis.__help = { tickets: [], sessions: [
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1", created_at: now(), last_active_at: now(), user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/140 Safari/537", ip: "203.0.113.5", current: true },
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", created_at: now(), last_active_at: now(), user_agent: "Mozilla/5.0 (iPhone) Safari/604", ip: "198.51.100.7", current: false },
+    ] });
+    const facts = { failed_jobs: [{ engine_id: "rendering.render", code: "AURA-EXP-500", at: now() }], review_required: { shot_plans: 1 } };
+    if (u === "/api/help/status") return send(200, { checked_at: now(), checks: [
+      { id: "api", label: "AuraStage API", state: "operational", evidence: "answered this request · up 3 min" },
+      { id: "database", label: "Database", state: "operational", evidence: "query answered in 12 ms" },
+      { id: "media", label: "Media storage", state: "not_configured", evidence: "no media bucket configured on the server" },
+      { id: "worker:render-worker", label: "Render worker", state: "down", evidence: "last checked in 9 min ago" },
+    ], jobs_24h: [{ engine_id: "rendering.render", completed: 2, failed: 1, cancelled: 0, running: 0, queued: 0, oldest_queued_seconds: null }],
+      providers: [{ id: "aurastage-sketch", name: "AuraStage Sketch", state: "configured", capabilities: ["image"] }, { id: "runway", name: "Runway", state: "not_configured", capabilities: ["video"] }],
+      not_connected: [{ id: "voice", name: "Voice / dialogue generation", note: "Not connected yet — needs a voice provider account" }] });
+    if (u === "/api/help/guides") return send(200, { guides: eng.GUIDES, troubleshooting: eng.TROUBLESHOOTING });
+    if (u === "/api/help/assistant") {
+      const k = eng.knowledgeRetrievalEngine({ query: b.question, module: b.module ?? null, limit: 3 });
+      return send(200, { mode: "guides", note: "Answers come from the AuraStage guides and your project's own status. No AI model is connected to the assistant yet.",
+        guides: k.guides, troubleshooting: k.troubles, findings: b.project_id ? eng.supportDiagnosticEngine(facts).findings : [] });
+    }
+    if (u === `/api/projects/${P}/diagnostics`) return send(200, eng.supportDiagnosticEngine(facts));
+    if (u === "/api/help/tickets" && req.method === "GET") return send(200, { staff: false, tickets: [...H.tickets].reverse() });
+    if (u === "/api/help/tickets" && req.method === "POST") {
+      if (!b.subject || b.subject.trim().length < 3) return send(400, { error: { code: "AURA-HLP-400", message: "Give the ticket a short subject" } });
+      const t = { id: crypto.randomUUID(), user_email: "you@aurastage.invalid", project_id: b.project_id, module: b.module, subject: b.subject.trim(), status: "open",
+        consent_diagnostics: !!b.include_diagnostics, diagnostics: b.include_diagnostics ? eng.supportDiagnosticEngine(facts) : null, created_at: now(), updated_at: now(),
+        messages: [{ id: crypto.randomUUID(), from_staff: false, body: b.body.trim(), created_at: now() }] };
+      H.tickets.push(t); return send(200, { id: t.id });
+    }
+    if ((m = u.match(/^\/api\/help\/tickets\/([^/]+)\/(reply|close)$/))) {
+      const t = H.tickets.find((x) => x.id === m[1]);
+      if (m[2] === "close") t.status = "closed"; else { t.messages.push({ id: crypto.randomUUID(), from_staff: false, body: b.body, created_at: now() }); t.status = "open"; }
+      return send(200, { ok: true });
+    }
+    if (u === "/__test/staff-reply") { const t = H.tickets[H.tickets.length - 1]; t.messages.push({ id: crypto.randomUUID(), from_staff: true, body: b.body, created_at: now() }); t.status = "answered"; return send(200, { ok: true }); }
+    if (u === "/api/account/sessions") return send(200, { sessions: H.sessions });
+    if (u === "/api/account/sessions/revoke") { const before = H.sessions.length; H.sessions = H.sessions.filter((x) => x.current || (b.session_id && x.id !== b.session_id)); return send(200, { signed_out: before - H.sessions.length }); }
     if ((m = u.match(/^\/media\/([^/]+)\/([^/]+)$/))) {
       const file = pathx.join(STORE, m[1], m[2]);
       if (!fsx.existsSync(file)) return send(404, { error: { code: "AURA-X-404", message: "no such file" } });
