@@ -7,8 +7,12 @@
 // yet are shown but not clickable, so nothing pretends to work.
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import type { PermissionModule, Project } from "@aurastage/contracts";
 import { can, roleLabel, useProjectAccess } from "@/lib/useProjectAccess";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+import { CommentsDrawer, type CommentContext } from "@/modules/team-collaboration/components/CommentsDrawer";
+import { NotificationBell } from "@/modules/team-collaboration/components/NotificationBell";
 
 export const STAGES = [
   { key: "scriptwriter", label: "Scriptwriter", path: "scriptwriter" },
@@ -48,15 +52,34 @@ export function AppShell({
   active,
   actions,
   children,
+  comments,
 }: {
   project: Project | null;
   active: ActiveKey;
   actions?: React.ReactNode;
   children: React.ReactNode;
+  /** What comments in this workspace are about (defaults to the workspace itself). */
+  comments?: Partial<CommentContext>;
 }) {
   const access = useProjectAccess(project?.id);
   const role = roleLabel(access);
   const stageModule = active in STAGE_MODULE ? STAGE_MODULE[active as StageKey] : null;
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [me, setMe] = useState<string | null>(null);
+  useEffect(() => {
+    getSupabaseClient().auth.getSession().then(({ data }) => setMe(data.session?.user.id ?? null));
+    // A notification link opens the comment it's about (?comment=<id>).
+    const c = new URLSearchParams(window.location.search).get("comment");
+    if (c && /^[0-9a-f-]{36}$/.test(c)) {
+      setHighlight(c);
+      setCommentsOpen(true);
+    }
+  }, []);
+  const commentModule: PermissionModule = active in STAGE_MODULE ? STAGE_MODULE[active as StageKey] : "team";
+  const commentContext: CommentContext | null = project
+    ? { module: commentModule, objectType: "Workspace", objectId: project.id, objectLabel: "this workspace", ...comments } as CommentContext
+    : null;
   const viewOnly =
     !!access && !!stageModule && !["create", "edit", "generate", "approve", "lock"].some((a) => can(access, stageModule, a as never));
   return (
@@ -160,6 +183,12 @@ export function AppShell({
                 {role}
               </Link>
             )}
+            {commentContext && (
+              <button onClick={() => setCommentsOpen((o) => !o)} className="rounded-md border border-aura-border px-3 py-2 text-sm" aria-expanded={commentsOpen}>
+                Comments
+              </button>
+            )}
+            <NotificationBell />
             {actions}
           </div>
         </header>
@@ -169,6 +198,16 @@ export function AppShell({
           </div>
         )}
         <main>{children}</main>
+        {commentsOpen && commentContext && project && (
+          <CommentsDrawer
+            projectId={project.id}
+            context={commentContext}
+            me={me}
+            canEditHere={can(access, commentContext.module, "edit")}
+            highlight={highlight}
+            onClose={() => setCommentsOpen(false)}
+          />
+        )}
       </div>
     </div>
   );

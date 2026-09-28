@@ -16,6 +16,8 @@ import { PeopleTable } from "./components/PeopleTable";
 import { InvitePanel, OpenInvites } from "./components/InvitePanel";
 import { RoleGuide } from "./components/RoleGuide";
 import { StudioPanel } from "./components/StudioPanel";
+import { ReviewQueue } from "./components/ReviewQueue";
+import { ActivityFeed } from "./components/ActivityFeed";
 
 export default function TeamCollaborationPage() {
   const { id } = useParams<{ id: string }>();
@@ -63,6 +65,7 @@ export default function TeamCollaborationPage() {
             {team.can_manage_studio && t.studio && (
               <StudioPanel studio={t.studio} me={t.me} myRole={a.org_role} busy={t.busy} onRole={t.setStudioRole} onRemove={t.removeFromStudio} />
             )}
+            <ReviewQueue projectId={id} members={team.members} me={t.me} />
             <RoleGuide roles={team.roles} />
           </div>
           <div className="space-y-4">
@@ -71,6 +74,7 @@ export default function TeamCollaborationPage() {
                 onInvite={t.invite} onClearLink={t.clearLink} />
             )}
             <OpenInvites invites={team.invites} roles={team.roles} busy={t.busy} onRevoke={t.revokeInvite} />
+            <ActivityFeed projectId={id} />
           </div>
         </div>
       </div>

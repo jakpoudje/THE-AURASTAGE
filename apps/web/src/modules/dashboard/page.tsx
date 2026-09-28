@@ -9,9 +9,11 @@ import Link from "next/link";
 import { useDashboardData } from "./hooks/useDashboardData";
 import { NewProjectForm } from "./components/NewProjectForm";
 import { ProjectList } from "./components/ProjectList";
+import { MyTasks } from "@/modules/team-collaboration/components/ReviewQueue";
+import { NotificationBell } from "@/modules/team-collaboration/components/NotificationBell";
 
 export default function DashboardPage() {
-  const { org, role, memberships, projects, loading, error, createProject, switchOrg, signOut } = useDashboardData();
+  const { org, role, memberships, projects, loading, error, createProject, switchOrg, signOut, me } = useDashboardData();
 
   if (loading) {
     return <div className="p-12 text-center text-white/50">Loading your studio…</div>;
@@ -57,9 +59,12 @@ export default function DashboardPage() {
             </label>
           )}
         </div>
-        <button onClick={signOut} className="rounded-md border border-aura-border px-4 py-2 text-sm">
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          <NotificationBell />
+          <button onClick={signOut} className="rounded-md border border-aura-border px-4 py-2 text-sm">
+            Sign out
+          </button>
+        </div>
       </header>
 
       <div className="mb-6">
@@ -72,7 +77,10 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <ProjectList projects={projects} />
+      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+        <ProjectList projects={projects} />
+        <MyTasks me={me} />
+      </div>
     </div>
   );
 }

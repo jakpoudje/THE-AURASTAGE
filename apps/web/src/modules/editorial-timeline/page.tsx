@@ -130,6 +130,14 @@ export default function EditorialPage() {
     <AppShell
       project={d.project}
       active="editorial"
+      comments={{
+        objectType: "Timeline",
+        objectId: t?.id ?? id,
+        objectVersion: t?.revision ?? null,
+        objectLabel: "the timeline",
+        anchor: { frame, timecode: tc(frame, fps) },
+        onJump: (a) => typeof a.frame === "number" && seek(a.frame),
+      }}
       actions={
         <>
           <Link href={`/projects/${id}/audio`} className="rounded-md border border-aura-border px-4 py-2 text-sm">

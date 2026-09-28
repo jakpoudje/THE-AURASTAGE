@@ -23,11 +23,12 @@ function handleError(err: unknown, reply: FastifyReply) {
 }
 
 type Params = { id: string; userId: string };
+type Query = Record<string, string | undefined>;
 const route =
-  <T>(fn: (a: { params: Params; body: unknown; db: SupabaseClient; userId: string }) => Promise<T>) =>
+  <T>(fn: (a: { params: Params; query: Query; body: unknown; db: SupabaseClient; userId: string }) => Promise<T>) =>
   async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      return reply.send(await fn({ params: request.params as Params, body: request.body, db: request.db, userId: request.userId }));
+      return reply.send(await fn({ params: request.params as Params, query: (request.query ?? {}) as Query, body: request.body, db: request.db, userId: request.userId }));
     } catch (err) {
       return handleError(err, reply);
     }
@@ -53,4 +54,18 @@ export async function registerCollaborationRoutes(app: FastifyInstance) {
   app.delete("/api/invites/:id", route(({ params, db }) => svc.revokeInvite(db, params.id)));
   app.post("/api/invites/preview", route(({ body, db }) => svc.previewInvite(db, body)));
   app.post("/api/invites/accept", route(({ body, db }) => svc.acceptInvite(db, body)));
+
+  // Comments (version-aware, optional timecode anchor), tasks/review requests, notifications, activity
+  app.get("/api/projects/:id/comments", route(({ params, query, db }) => svc.listComments(db, params.id, query)));
+  app.post("/api/projects/:id/comments", route(({ params, body, db }) => svc.addComment(db, params.id, body)));
+  app.post("/api/comments/:id/resolve", route(({ params, body, db }) => svc.resolveComment(db, params.id, body)));
+  app.patch("/api/comments/:id", route(({ params, body, db }) => svc.editComment(db, params.id, body)));
+  app.delete("/api/comments/:id", route(({ params, db }) => svc.deleteComment(db, params.id)));
+  app.get("/api/projects/:id/tasks", route(({ params, db }) => svc.listTasks(db, params.id)));
+  app.post("/api/projects/:id/tasks", route(({ params, body, db }) => svc.createTask(db, params.id, body)));
+  app.get("/api/tasks/mine", route(({ db }) => svc.listTasks(db, null)));
+  app.patch("/api/tasks/:id", route(({ params, body, db }) => svc.setTaskStatus(db, params.id, body)));
+  app.get("/api/notifications", route(({ db }) => svc.listNotifications(db)));
+  app.post("/api/notifications/read", route(({ body, db }) => svc.markNotificationsRead(db, body)));
+  app.get("/api/projects/:id/activity", route(({ params, query, db }) => svc.projectActivity(db, params.id, query)));
 }

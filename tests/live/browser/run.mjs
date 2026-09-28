@@ -243,6 +243,28 @@ await check("team: invite someone as Editor, get a private link; reload: the inv
   await reload(marker);
   if (await page.getByTestId("invite-invitee.live@aurastage.invalid").count()) throw new Error("invite still listed after reload");
 });
+await check("comments: pin a comment to the timeline's timecode in Editorial; reload: still there; resolve it; reload: resolved", async () => {
+  const marker = "Perfect Your Film";
+  await page.goto(projectUrl + "/editorial");
+  await page.getByText(marker).first().waitFor();
+  const drawer = page.getByRole("complementary", { name: "Comments" });
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  await drawer.getByLabel("Write a comment").fill("Live check: trim the head of this shot.");
+  await drawer.getByRole("button", { name: "Comment", exact: true }).click();
+  await drawer.getByText("Live check: trim the head of this shot.").waitFor();
+  await drawer.getByRole("button", { name: /^⏱ / }).first().waitFor();
+  await page.reload();
+  await page.getByText(marker).first().waitFor();
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  await drawer.getByText("Live check: trim the head of this shot.").waitFor();
+  await drawer.getByRole("button", { name: "Resolve" }).first().click();
+  await drawer.getByText("No open comments here.").waitFor();
+  await page.reload();
+  await page.getByText(marker).first().waitFor();
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  await drawer.getByRole("tab", { name: "resolved" }).click();
+  await drawer.getByText("Live check: trim the head of this shot.").waitFor();
+});
 await check("dashboard after reload still shows the project", async () => {
   await page.goto(WEB + "/dashboard");
   await reload(TITLE);

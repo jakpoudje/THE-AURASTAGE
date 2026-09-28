@@ -3,6 +3,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CreateInviteInputSchema, InviteTokenInputSchema, SetOrgRoleInputSchema, SetProjectMemberInputSchema } from "@aurastage/contracts";
+import { CreateCommentInputSchema, CreateTaskInputSchema, TaskStatusSchema, CommentSchema, NotificationSchema, TaskSchema } from "@aurastage/contracts";
+import { activityFeedEngine } from "@aurastage/engines";
+import { z } from "zod";
 import * as repo from "./collaboration.repository";
 import { toAccessDTO, toInviteDTO, toInvitePreviewDTO, toMemberDTO, toMembershipDTOs, toOrganizationDTO, toRoleDTO } from "./collaboration.mapper";
 import { CollaborationNotFoundError, parse, slugify, validateCreateOrganizationInput } from "./collaboration.validator";
@@ -122,4 +125,68 @@ export async function setOrgRole(db: SupabaseClient, orgId: string, userId: stri
 export async function removeOrgMember(db: SupabaseClient, orgId: string, userId: string) {
   await repo.removeOrgMember(db, id(orgId, "Studio"), id(userId, "Person"));
   return { ok: true };
+}
+
+// ---- 11b: comments, tasks, notifications, activity ----
+
+export async function listComments(db: SupabaseClient, projectId: string, q: Record<string, string | undefined>) {
+  const objectId = q.object_id && UUID.test(q.object_id) ? q.object_id : null;
+  const rows = await repo.listComments(db, id(projectId, "Project"), { module: q.module ?? null, objectType: q.object_type ?? null, objectId });
+  return rows.map((r) => CommentSchema.parse(r));
+}
+
+export async function addComment(db: SupabaseClient, projectId: string, payload: unknown) {
+  const input = parse(CreateCommentInputSchema, payload);
+  const c = await repo.addComment(db, id(projectId, "Project"), input);
+  return { id: c.id as string };
+}
+
+export async function resolveComment(db: SupabaseClient, commentId: string, payload: unknown) {
+  const { resolved } = parse(z.object({ resolved: z.boolean() }).strict(), payload);
+  await repo.resolveComment(db, id(commentId, "Comment"), resolved);
+  return { ok: true };
+}
+
+export async function editComment(db: SupabaseClient, commentId: string, payload: unknown) {
+  const { body } = parse(z.object({ body: z.string().trim().min(1, "Write something first").max(4000) }).strict(), payload);
+  await repo.editComment(db, id(commentId, "Comment"), body, false);
+  return { ok: true };
+}
+
+export async function deleteComment(db: SupabaseClient, commentId: string) {
+  await repo.editComment(db, id(commentId, "Comment"), null, true);
+  return { ok: true };
+}
+
+export async function listTasks(db: SupabaseClient, projectId: string | null) {
+  const rows = await repo.listTasks(db, projectId ? id(projectId, "Project") : null, projectId === null);
+  return rows.map((r) => TaskSchema.parse(r));
+}
+
+export async function createTask(db: SupabaseClient, projectId: string, payload: unknown) {
+  const input = parse(CreateTaskInputSchema, payload);
+  const t = await repo.createTask(db, id(projectId, "Project"), input);
+  return { id: t.id as string };
+}
+
+export async function setTaskStatus(db: SupabaseClient, taskId: string, payload: unknown) {
+  const { status } = parse(z.object({ status: TaskStatusSchema }).strict(), payload);
+  await repo.setTaskStatus(db, id(taskId, "Task"), status);
+  return { ok: true };
+}
+
+export async function listNotifications(db: SupabaseClient) {
+  const [items, unread] = await Promise.all([repo.listNotifications(db, 30), repo.countUnread(db)]);
+  return { unread, items: items.map((n) => NotificationSchema.parse(n)) };
+}
+
+export async function markNotificationsRead(db: SupabaseClient, payload: unknown) {
+  const { ids } = parse(z.object({ ids: z.array(z.string().uuid()).max(100).nullable().default(null) }).strict(), payload);
+  return { marked: await repo.markRead(db, ids) };
+}
+
+export async function projectActivity(db: SupabaseClient, projectId: string, q: Record<string, string | undefined>) {
+  const before = q.before && !Number.isNaN(Date.parse(q.before)) ? new Date(q.before).toISOString() : null;
+  const events = await repo.projectActivity(db, id(projectId, "Project"), before, 50);
+  return activityFeedEngine({ events: events.map((e) => ({ ...e, metadata: e.metadata ?? {} })) as never });
 }

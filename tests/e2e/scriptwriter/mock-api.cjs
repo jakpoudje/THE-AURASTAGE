@@ -679,7 +679,8 @@ http.createServer((req, res) => {
     }
     if ((m = u.match(/^\/api\/renders\/([^/]+)\/manifest$/))) { const r = renders.find((x) => x.id === m[1]); return send(200, { manifest_sha256: r.manifest_sha256, manifest: r.manifest }); }
     // ---- Team & Collaboration (mirrors apps/api/src/modules/collaboration + migration 0019 semantics) ----
-    // The signed-in test user is "u1". POST /__test/as { role } switches them between the studio owner and a project role.
+    const ME = "99999999-9999-4999-8999-999999999999", ADA = "88888888-8888-4888-8888-888888888888";
+    //  POST /__test/as { role } switches them between the studio owner and a project role.
     const T = globalThis.__team || (globalThis.__team = {
       as: "owner", email: "you@aurastage.invalid",
       roles: [
@@ -689,7 +690,7 @@ http.createServer((req, res) => {
         { id: "editor", label: "Editor", department: "Post", description: "Cuts the film.", permissions: { editorial: ["create", "edit"], delivery: ["create"] }, sort: 15 },
         { id: "reviewer", label: "Reviewer", department: "Review", description: "Views everything and leaves comments.", permissions: {}, sort: 19 },
       ],
-      people: [{ user_id: "u2", email: "ada@aurastage.invalid", org_role: "member", project_role: "writer", grants: [], source: "project", joined_at: now(), last_sign_in_at: null }],
+      people: [{ user_id: ADA, email: "ada@aurastage.invalid", org_role: "member", project_role: "writer", grants: [], source: "project", joined_at: now(), last_sign_in_at: null }],
       invites: [],
     });
     const MODS = ["script", "casting", "dialogue", "scene_dna", "shots", "generation", "audio", "editorial", "delivery", "assets", "settings", "team"];
@@ -699,7 +700,7 @@ http.createServer((req, res) => {
       const modules = Object.fromEntries(MODS.map((mo) => [mo, ACTS.filter((a) => owner || a === "view" || a === "comment" || (r.permissions["*"] || []).includes(a) || (r.permissions[mo] || []).includes(a))]));
       return { project_id: P, org_id: ORG, org_role: owner ? "owner" : "member", project_role: owner ? null : T.as, project_role_label: owner ? null : r.label, grants: [], source: owner ? "organization" : "project", modules };
     };
-    const me = () => ({ user_id: "u1", email: T.email, org_role: T.as === "owner" ? "owner" : "member", project_role: T.as === "owner" ? null : T.as, grants: [], source: T.as === "owner" ? "organization" : "project", joined_at: now(), last_sign_in_at: now() });
+    const me = () => ({ user_id: ME, email: T.email, org_role: T.as === "owner" ? "owner" : "member", project_role: T.as === "owner" ? null : T.as, grants: [], source: T.as === "owner" ? "organization" : "project", joined_at: now(), last_sign_in_at: now() });
     const teamView = () => {
       const a = teamAccess(), manage = a.modules.team.includes("administer");
       return { project: { id: P, title: project.title, org_id: ORG }, access: a, can_manage: manage, can_manage_studio: T.as === "owner", roles: T.roles, members: [me(), ...T.people], invites: manage ? T.invites.filter((i) => !i.accepted_at && !i.revoked_at) : [] };
@@ -742,6 +743,62 @@ http.createServer((req, res) => {
       inv.accepted_at = now(); T.as = inv.project_role || "owner";
       return send(200, { org_id: ORG, project_id: inv.project_id });
     }
+    // ---- Comments, tasks, notifications, activity (mirrors migration 0021) ----
+    const C = globalThis.__collab || (globalThis.__collab = { comments: [], tasks: [], notes: [], events: [] });
+    const people = () => [me(), ...T.people];
+    const emailOf = (id) => people().find((x) => x.user_id === id)?.email ?? null;
+    const MLABEL = { script: "Scriptwriter", editorial: "Editorial & Timeline", team: "Team & Collaboration" };
+    const PATHS = { script: "scriptwriter", editorial: "editorial", team: "team" };
+    const event = (action, metadata, actor = ME) => C.events.push({ id: crypto.randomUUID(), action, object_type: "Comment", object_id: null, metadata, actor_email: emailOf(actor), created_at: now() });
+    const cview = (c) => ({ ...c, mention_emails: c.mentions.map(emailOf).filter(Boolean), author_email: emailOf(c.created_by), resolved_by_email: c.resolved_by ? emailOf(c.resolved_by) : null });
+    const addC = (by, x) => {
+      const parent = x.parent_id ? C.comments.find((c) => c.id === x.parent_id) : null;
+      const c = { id: crypto.randomUUID(), parent_id: x.parent_id ?? null, module: parent?.module ?? x.module, object_type: parent?.object_type ?? x.object_type, object_id: parent?.object_id ?? x.object_id,
+        object_version: x.object_version ?? parent?.object_version ?? null, anchor: x.anchor ?? {}, body: x.body.trim(), mentions: [...new Set(x.mentions ?? [])], created_by: by,
+        created_at: now(), edited_at: null, resolved_at: null, resolved_by: null, deleted_at: null };
+      C.comments.push(c);
+      for (const uid of c.mentions) if (uid !== by) C.notes.push({ id: crypto.randomUUID(), user_id: uid, project_id: P, kind: "mention", title: `${emailOf(by)} mentioned you in ${MLABEL[c.module] ?? c.module}`, body: c.body, link: `/projects/${P}/${PATHS[c.module] ?? "team"}?comment=${c.parent_id ?? c.id}`, created_at: now(), read_at: null });
+      event(c.parent_id ? "CommentReplied" : "CommentAdded", { module: c.module, anchor: c.anchor }, by);
+      return c;
+    };
+    if (u === "/__test/ada-mentions-you") { addC(ADA, { module: "script", object_type: "Workspace", object_id: P, body: "Can you check scene 1?", mentions: [ME] }); return send(200, { ok: true }); }
+    if (u === `/api/projects/${P}/comments` && req.method === "GET") {
+      const q = new URL(req.url, "http://x").searchParams;
+      return send(200, C.comments.filter((c) => (!q.get("module") || c.module === q.get("module")) && (!q.get("object_type") || c.object_type === q.get("object_type")) && (!q.get("object_id") || c.object_id === q.get("object_id"))).map(cview));
+    }
+    if (u === `/api/projects/${P}/comments` && req.method === "POST") {
+      const cc = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));
+      const r = cc.CreateCommentInputSchema.safeParse(b);
+      if (!r.success) return send(400, { error: { code: "AURA-COL-400", message: r.error.issues[0].message } });
+      return send(200, { id: addC(ME, r.data).id });
+    }
+    if ((m = u.match(/^\/api\/comments\/([^/]+)\/resolve$/))) {
+      const c = C.comments.find((x) => x.id === m[1]); Object.assign(c, { resolved_at: b.resolved ? now() : null, resolved_by: b.resolved ? ME : null });
+      event(b.resolved ? "CommentResolved" : "CommentReopened", { module: c.module }); return send(200, { ok: true });
+    }
+    if ((m = u.match(/^\/api\/comments\/([^/]+)$/))) {
+      const c = C.comments.find((x) => x.id === m[1]);
+      if (req.method === "DELETE") Object.assign(c, { deleted_at: now(), body: "(deleted)" }); else Object.assign(c, { body: b.body.trim(), edited_at: now() });
+      return send(200, { ok: true });
+    }
+    const tview = (t) => ({ ...t, project_title: project.title, assignee_email: t.assignee ? emailOf(t.assignee) : null, creator_email: emailOf(t.created_by) });
+    if (u === `/api/projects/${P}/tasks` && req.method === "GET") return send(200, C.tasks.map(tview));
+    if (u === "/api/tasks/mine") return send(200, C.tasks.filter((t) => t.assignee === ME).map(tview));
+    if (u === `/api/projects/${P}/tasks` && req.method === "POST") {
+      const cc = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));
+      const r = cc.CreateTaskInputSchema.safeParse(b);
+      if (!r.success) return send(400, { error: { code: "AURA-COL-400", message: r.error.issues[0].message } });
+      const t = { id: crypto.randomUUID(), project_id: P, module: r.data.module, object_type: r.data.object_type ?? null, object_id: r.data.object_id ?? null, kind: r.data.kind, title: r.data.title,
+        assignee: r.data.assignee ?? null, status: "open", due_date: r.data.due_date ?? null, created_by: ME, created_at: now(), completed_at: null };
+      C.tasks.push(t); event(t.kind === "review" ? "ReviewRequested" : "TaskCreated", { module: t.module, title: t.title }); return send(200, { id: t.id });
+    }
+    if ((m = u.match(/^\/api\/tasks\/([^/]+)$/)) && req.method === "PATCH") {
+      const t = C.tasks.find((x) => x.id === m[1]); Object.assign(t, { status: b.status, completed_at: b.status === "done" ? now() : null });
+      event("TaskStatusChanged", { status: b.status, title: t.title }); return send(200, { ok: true });
+    }
+    if (u === "/api/notifications") { const mine = C.notes.filter((n) => n.user_id === ME).reverse(); return send(200, { unread: mine.filter((n) => !n.read_at).length, items: mine }); }
+    if (u === "/api/notifications/read") { C.notes.forEach((n) => { if (n.user_id === ME && !n.read_at && (!b.ids || b.ids.includes(n.id))) n.read_at = now(); }); return send(200, { marked: 1 }); }
+    if (u === `/api/projects/${P}/activity`) return send(200, eng.activityFeedEngine({ events: [...C.events].reverse() }));
     if ((m = u.match(/^\/media\/([^/]+)\/([^/]+)$/))) {
       const file = pathx.join(STORE, m[1], m[2]);
       if (!fsx.existsSync(file)) return send(404, { error: { code: "AURA-X-404", message: "no such file" } });

@@ -14,6 +14,7 @@ export function useDashboardData() {
   const router = useRouter();
   const [org, setOrg] = useState<Organization | null>(null);
   const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [me, setMe] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +33,7 @@ export function useDashboardData() {
         router.replace("/sign-in");
         return;
       }
+      setMe(data.session.user.id);
       try {
         const email = data.session.user.email ?? "My Studio";
         const bootstrapped = await apiPost<Organization>("/api/organizations/bootstrap", {
@@ -88,5 +90,5 @@ export function useDashboardData() {
     router.replace("/");
   }
 
-  return { org, role, memberships, projects, loading, error, createProject, switchOrg, signOut };
+  return { org, role, memberships, projects, loading, error, createProject, switchOrg, signOut, me };
 }

@@ -136,3 +136,106 @@ export const SetProjectMemberInputSchema = z
 export type SetProjectMemberInput = z.infer<typeof SetProjectMemberInputSchema>;
 
 export const SetOrgRoleInputSchema = z.object({ role: OrgRoleSchema }).strict();
+
+// ---- Phase 11b: comments, mentions, notifications, tasks, activity ----
+
+export const CommentAnchorSchema = z
+  .object({
+    frame: z.number().int().nonnegative().optional(),
+    timecode: z.string().max(20).optional(),
+    label: z.string().max(120).optional(),
+  })
+  .strict();
+export type CommentAnchor = z.infer<typeof CommentAnchorSchema>;
+
+export const CreateCommentInputSchema = z
+  .object({
+    module: PermissionModuleSchema,
+    object_type: z.string().regex(/^[A-Za-z]{2,40}$/),
+    object_id: z.string().uuid(),
+    object_version: z.string().max(80).nullable().optional(),
+    anchor: CommentAnchorSchema.default({}),
+    body: z.string().trim().min(1, "Write something first").max(4000),
+    parent_id: z.string().uuid().nullable().optional(),
+    mentions: z.array(z.string().uuid()).max(20).default([]),
+  })
+  .strict();
+export type CreateCommentInput = z.infer<typeof CreateCommentInputSchema>;
+
+export const CommentSchema = z.object({
+  id: z.string().uuid(),
+  parent_id: z.string().uuid().nullable(),
+  module: z.string(),
+  object_type: z.string(),
+  object_id: z.string().uuid(),
+  object_version: z.string().nullable(),
+  anchor: z.record(z.unknown()),
+  body: z.string(),
+  mentions: z.array(z.string()),
+  mention_emails: z.array(z.string()),
+  created_by: z.string().uuid().nullable(),
+  author_email: z.string().nullable(),
+  created_at: z.string(),
+  edited_at: z.string().nullable(),
+  resolved_at: z.string().nullable(),
+  resolved_by_email: z.string().nullable(),
+  deleted_at: z.string().nullable(),
+});
+export type Comment = z.infer<typeof CommentSchema>;
+
+export const TaskStatusSchema = z.enum(["open", "in_progress", "done", "cancelled"]);
+export const CreateTaskInputSchema = z
+  .object({
+    module: PermissionModuleSchema,
+    object_type: z.string().regex(/^[A-Za-z]{2,40}$/).nullable().optional(),
+    object_id: z.string().uuid().nullable().optional(),
+    kind: z.enum(["task", "review"]).default("task"),
+    title: z.string().trim().min(1, "Give the task a title").max(200),
+    assignee: z.string().uuid().nullable().optional(),
+    due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-10-01").nullable().optional(),
+  })
+  .strict();
+export type CreateTaskInput = z.infer<typeof CreateTaskInputSchema>;
+
+export const TaskSchema = z.object({
+  id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  project_title: z.string(),
+  module: z.string(),
+  object_type: z.string().nullable(),
+  object_id: z.string().uuid().nullable(),
+  kind: z.enum(["task", "review"]),
+  title: z.string(),
+  assignee: z.string().uuid().nullable(),
+  assignee_email: z.string().nullable(),
+  status: TaskStatusSchema,
+  due_date: z.string().nullable(),
+  created_by: z.string().uuid().nullable(),
+  creator_email: z.string().nullable(),
+  created_at: z.string(),
+  completed_at: z.string().nullable(),
+});
+export type Task = z.infer<typeof TaskSchema>;
+
+export const NotificationSchema = z.object({
+  id: z.string().uuid(),
+  project_id: z.string().uuid().nullable(),
+  kind: z.enum(["mention", "reply", "task_assigned", "review_requested", "task_done"]),
+  title: z.string(),
+  body: z.string().nullable(),
+  link: z.string().nullable(),
+  created_at: z.string(),
+  read_at: z.string().nullable(),
+});
+export type Notification = z.infer<typeof NotificationSchema>;
+
+export const ActivityItemSchema = z.object({
+  id: z.string().uuid(),
+  action: z.string(),
+  summary: z.string(),
+  object_type: z.string(),
+  object_id: z.string().uuid().nullable(),
+  actor_email: z.string().nullable(),
+  created_at: z.string(),
+});
+export type ActivityItem = z.infer<typeof ActivityItemSchema>;

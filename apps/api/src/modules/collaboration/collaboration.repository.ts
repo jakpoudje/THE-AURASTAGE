@@ -77,3 +77,34 @@ export const createInvite = (db: SupabaseClient, orgId: string, i: { email: stri
 export const revokeInvite = (db: SupabaseClient, inviteId: string) => rpc<void>(db, "revoke_invite", { p_invite: inviteId });
 export const invitePreview = (db: SupabaseClient, token: string) => rpc<Row>(db, "invite_preview", { p_token: token });
 export const acceptInvite = (db: SupabaseClient, token: string) => rpc<{ org_id: string; project_id: string | null }>(db, "accept_invite", { p_token: token });
+
+// ---- 11b: comments, tasks, notifications, activity (migration 0021) ----
+export const listComments = (db: SupabaseClient, projectId: string, f: { module?: string | null; objectType?: string | null; objectId?: string | null }) =>
+  rpc<Row[]>(db, "list_comments", { p_project: projectId, p_module: f.module ?? null, p_object_type: f.objectType ?? null, p_object_id: f.objectId ?? null });
+export const addComment = (db: SupabaseClient, projectId: string, c: Row) =>
+  rpc<Row>(db, "add_comment", {
+    p_project: projectId, p_module: c.module, p_object_type: c.object_type, p_object_id: c.object_id, p_object_version: c.object_version ?? null,
+    p_anchor: c.anchor ?? {}, p_body: c.body, p_parent: c.parent_id ?? null, p_mentions: c.mentions ?? [],
+  });
+export const resolveComment = (db: SupabaseClient, id: string, resolved: boolean) => rpc<Row>(db, "resolve_comment", { p_comment: id, p_resolved: resolved });
+export const editComment = (db: SupabaseClient, id: string, body: string | null, del: boolean) =>
+  rpc<Row>(db, "edit_comment", { p_comment: id, p_body: body, p_delete: del });
+export const getComment = async (db: SupabaseClient, id: string) =>
+  (await rows(db.from("comments").select("id, project_id").eq("id", id)))[0] ?? null;
+export const listTasks = (db: SupabaseClient, projectId: string | null, mine: boolean) => rpc<Row[]>(db, "list_tasks", { p_project: projectId, p_mine: mine });
+export const createTask = (db: SupabaseClient, projectId: string, t: Row) =>
+  rpc<Row>(db, "create_task", {
+    p_project: projectId, p_module: t.module, p_object_type: t.object_type ?? null, p_object_id: t.object_id ?? null, p_kind: t.kind,
+    p_title: t.title, p_assignee: t.assignee ?? null, p_due: t.due_date ?? null,
+  });
+export const setTaskStatus = (db: SupabaseClient, id: string, status: string) => rpc<Row>(db, "set_task_status", { p_task: id, p_status: status });
+export const listNotifications = (db: SupabaseClient, limit: number) =>
+  rows(db.from("notifications").select("id, project_id, kind, title, body, link, created_at, read_at").order("created_at", { ascending: false }).limit(limit));
+export const countUnread = async (db: SupabaseClient) => {
+  const { count, error } = await db.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null);
+  if (error) throw mapDbError(error);
+  return count ?? 0;
+};
+export const markRead = (db: SupabaseClient, ids: string[] | null) => rpc<number>(db, "mark_notifications_read", { p_ids: ids });
+export const projectActivity = (db: SupabaseClient, projectId: string, before: string | null, limit: number) =>
+  rpc<Row[]>(db, "project_activity", { p_project: projectId, p_before: before, p_limit: limit });

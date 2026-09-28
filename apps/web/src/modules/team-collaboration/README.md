@@ -12,4 +12,12 @@ Route: `/projects/[id]/team` (sidebar → Team & Collaboration) and `/invite#<to
 - The shell shows your role on every page and a **View only** note in workspaces your role can't change
   (`lib/useProjectAccess.ts`). The database is the authority; refusals come back with a plain-language reason.
 
-Backend: `apps/api/src/modules/collaboration`. Tests: `tests/e2e/team/run.cjs`.
+- **Comments** (every workspace, top bar → Comments): threads on what the page shows, with @mentions, replies,
+  resolve/reopen, edit/delete your own, and *Request review*. In Editorial a comment can be pinned to the playhead's
+  timecode and clicking ⏱ jumps there. Comments made on an older version say so and are never moved. A notification
+  link (`?comment=<id>`) opens the drawer at that thread.
+- **Notifications** (bell in every workspace and on the dashboard): mentions, replies, review requests, assigned and
+  finished tasks — read from the server, marked read when opened.
+- **Tasks & reviews** and **Recent activity** on the Team page; **My tasks** on the dashboard.
+
+Backend: `apps/api/src/modules/collaboration`. Tests: `tests/e2e/team/run.cjs`, `tests/e2e/comments/run.cjs`.

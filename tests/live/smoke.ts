@@ -582,6 +582,59 @@ await check("team: an extra 'script:approve' permission is saved and applies", a
   const a = await apiAs(token2, "GET", `/api/projects/${projectId}/access`);
   assert(a.modules.script.includes("approve"), "grant not applied");
 });
+let ownerId = "";
+await check("comments: the Writer comments on the script and mentions the owner; the owner is notified with a link", async () => {
+  const t = await api("GET", `/api/projects/${projectId}/team`);
+  ownerId = t.members.find((m: any) => m.org_role === "owner").user_id;
+  const s = await apiAs(token2, "GET", `/api/projects/${projectId}/script`);
+  const c = await apiAs(token2, "POST", `/api/projects/${projectId}/comments`, {
+    module: "script", object_type: "Workspace", object_id: projectId, object_version: s.current_version.id, body: "Scene 1 needs a stronger button.", mentions: [ownerId],
+  });
+  (globalThis as any).commentId = c.id;
+  const n = await api("GET", "/api/notifications");
+  const hit = n.items.find((x: any) => x.kind === "mention" && x.link?.includes(c.id));
+  assert(n.unread >= 1 && hit, `notifications ${JSON.stringify(n).slice(0, 200)}`);
+  return hit.title;
+});
+await check("comments: the owner replies and resolves; the Writer hears about the reply; re-read keeps it", async () => {
+  const id = (globalThis as any).commentId;
+  await api("POST", `/api/projects/${projectId}/comments`, { module: "script", object_type: "Workspace", object_id: projectId, body: "Agreed.", parent_id: id });
+  await api("POST", `/api/comments/${id}/resolve`, { resolved: true });
+  const list = await apiAs(token2, "GET", `/api/projects/${projectId}/comments?module=script&object_type=Workspace&object_id=${projectId}`);
+  const root = list.find((c: any) => c.id === id);
+  assert(root.resolved_at && list.some((c: any) => c.parent_id === id && c.body === "Agreed."), "thread not kept");
+  const n2 = await apiAs(token2, "GET", "/api/notifications");
+  assert(n2.items.some((x: any) => x.kind === "reply"), "no reply notification");
+});
+await check("comments: a timecode comment on the timeline keeps its anchor; the Writer can't resolve it", async () => {
+  const ed = await api("GET", `/api/projects/${projectId}/editorial`);
+  const tid = ed.timeline?.id ?? projectId;
+  const c = await api("POST", `/api/projects/${projectId}/comments`, {
+    module: "editorial", object_type: "Timeline", object_id: tid, object_version: ed.timeline?.revision ?? null, anchor: { frame: 48, timecode: "00:00:02:00" }, body: "Trim here",
+  });
+  const list = await apiAs(token2, "GET", `/api/projects/${projectId}/comments?module=editorial&object_type=Timeline&object_id=${tid}`);
+  assert(list.find((x: any) => x.id === c.id)?.anchor?.timecode === "00:00:02:00", "anchor lost");
+  const r = await apiAs(token2, "POST", `/api/comments/${c.id}/resolve`, { resolved: true }, [403]);
+  assert(/can't edit in Editorial/.test(r.error.message), r.error.message);
+});
+await check("tasks: the owner asks the Writer for a review; it's in their tasks; done notifies the owner", async () => {
+  const t = await api("POST", `/api/projects/${projectId}/tasks`, { module: "script", kind: "review", title: "Review scene 1", assignee: user2, due_date: "2030-01-01" });
+  const mine = await apiAs(token2, "GET", "/api/tasks/mine");
+  assert(mine.some((x: any) => x.id === t.id && x.status === "open"), "not in writer's tasks");
+  const n = await apiAs(token2, "GET", "/api/notifications");
+  assert(n.items.some((x: any) => x.kind === "review_requested"), "no review notification");
+  await apiAs(token2, "PATCH", `/api/tasks/${t.id}`, { status: "done" });
+  const n2 = await api("GET", "/api/notifications");
+  assert(n2.items.some((x: any) => x.kind === "task_done"), "owner not told");
+  await api("POST", "/api/notifications/read", {});
+  assert((await api("GET", "/api/notifications")).unread === 0, "still unread");
+});
+await check("activity: the project's audit trail reads in plain language", async () => {
+  const a = await api("GET", `/api/projects/${projectId}/activity`);
+  const lines = a.items.map((i: any) => i.summary);
+  assert(lines.some((l: string) => l === "commented in Editorial & Timeline at 00:00:02:00") && lines.some((l: string) => l.startsWith("asked for a review")), lines.slice(0, 8).join(" | "));
+  return `${a.items.length} events`;
+});
 await check("team: removing the person from the project removes their access", async () => {
   await api("DELETE", `/api/projects/${projectId}/team/members/${user2}`);
   await apiAs(token2, "GET", `/api/projects/${projectId}/script`, undefined, [403, 404]);

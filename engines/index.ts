@@ -9,3 +9,4 @@ export * from "./generation";
 export * from "./audio";
 export * from "./editorial";
 export * from "./rendering";
+export * from "./collaboration";
