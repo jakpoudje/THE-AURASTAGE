@@ -131,4 +131,13 @@ describe("Export & Deliver routes", () => {
     rows.renders = [];
     expect((await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/renders/${R1}/cancel` })).statusCode).toBe(403);
   });
+
+  // Phase 11: a role without the delivery permission gets the gate's reason, not "not accessible".
+  it("shows the permission gate's reason when a role can't deliver", async () => {
+    rows.renders = [{ id: R1, project_id: P }];
+    const fake = fakeDb(rows, () => ({ error: { code: "42501", message: "AURA-COL-403: your role (Reviewer) can't create in Export & Deliver. Ask the project's producer for access." } }));
+    const res = await (await app(fake)).inject({ method: "POST", url: `/api/renders/${R1}/cancel` });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toEqual({ code: "AURA-EXP-403", message: "your role (Reviewer) can't create in Export & Deliver. Ask the project's producer for access." });
+  });
 });

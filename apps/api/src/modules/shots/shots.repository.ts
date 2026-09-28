@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ShotConflictError, ShotNotFoundError, ShotNotReadyError, ShotValidationError } from "./shots.validator";
 import { ShotForbiddenError } from "./shots.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 type Row = Record<string, any>;
 
@@ -14,7 +15,7 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   if (msg.startsWith("AURA-SHOT-409")) return new ShotConflictError(text);
   if (msg.startsWith("AURA-SHOT-412")) return new ShotNotReadyError(text);
   if (msg.startsWith("AURA-SHOT-404")) return new ShotNotFoundError(text);
-  if (msg.startsWith("AURA-SHOT-403") || error.code === "42501") return new ShotForbiddenError();
+  if (msg.startsWith("AURA-SHOT-403") || error.code === "42501") return new ShotForbiddenError(colForbiddenMessage(error));
   if (error.code === "23514" || msg.startsWith("AURA-SHOT-400")) {
     return new ShotValidationError([], /shots_interval/.test(msg) ? "A shot can't end before it starts" : "That value isn't allowed");
   }

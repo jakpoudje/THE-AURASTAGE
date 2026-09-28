@@ -94,5 +94,5 @@ rollback;
 -- shot plan edit blocks approval                   | AURA-AUD-412: the shot plan changed since this audio was spotted — re-spot first
 -- audit                                            | AssetRegistered,AudioClipSaved,AudioMixMeasured,AudioSessionApproved,AudioSessionSpotted,AudioTrackUpdated
 -- outsider sees                                    | 0
--- outsider delete blocked                          | AURA-AUD-403: not allowed to change this project's audio
--- outsider asset blocked                           | AURA-AST-403: not allowed to add assets to this project
+-- outsider delete blocked                          | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)
+-- outsider asset blocked                           | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)

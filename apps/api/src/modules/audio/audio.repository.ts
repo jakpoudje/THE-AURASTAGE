@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AudioConflictError, AudioNotFoundError, AudioNotReadyError, AudioValidationError } from "./audio.validator";
 import { AudioForbiddenError } from "./audio.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 type Row = Record<string, any>;
 function mapDbError(error: { message?: string; code?: string }): Error {
@@ -14,7 +15,7 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   if (msg.startsWith("AURA-AUD-409")) return new AudioConflictError(text);
   if (msg.startsWith("AURA-AUD-412")) return new AudioNotReadyError(text);
   if (msg.startsWith("AURA-AUD-404")) return new AudioNotFoundError(text);
-  if (msg.startsWith("AURA-AUD-403") || error.code === "42501") return new AudioForbiddenError();
+  if (msg.startsWith("AURA-AUD-403") || error.code === "42501") return new AudioForbiddenError(colForbiddenMessage(error));
   if (msg.startsWith("AURA-AUD-400") || error.code === "23514") return new AudioValidationError([], text || "That value isn't allowed");
   return Object.assign(new Error(msg || "Database error"), { cause: error });
 }

@@ -74,5 +74,5 @@ rollback;
 -- stale sync refused       | AURA-CHR-409: the approved script changed; reload and sync again
 -- mos job + audit          | 2 jobs; CharacterMerged,CharactersSynced,CharacterUnmerged,CharacterUpdated
 -- outsider sees            | 0
--- outsider edit blocked    | AURA-CHR-403: not allowed to change this project's characters
+-- outsider edit blocked    | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)
 -- direct insert blocked    | new row violates row-level security policy for table "characters"

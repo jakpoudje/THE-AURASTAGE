@@ -52,5 +52,5 @@ rollback;
 -- looks after merge                  | Field outfit | Field outfit (Tunde (dup))
 -- relationships after merge          | 1 / Partner
 -- deletes                            | 1 looks, 0 rels
--- outsider create blocked            | AURA-CHR-403: not allowed to change this project's characters
+-- outsider create blocked            | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)
 -- outsider sees looks                | 0

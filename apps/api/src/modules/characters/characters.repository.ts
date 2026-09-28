@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CharacterConflictError, CharacterNotFoundError, CharacterValidationError } from "./characters.validator";
 import { CharacterForbiddenError } from "./characters.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 export function mapDbError(error: { message?: string; code?: string }): Error {
   const msg = error.message ?? "";
@@ -12,7 +13,7 @@ export function mapDbError(error: { message?: string; code?: string }): Error {
   if (msg.startsWith("AURA-CHR-409")) return new CharacterConflictError(text);
   if (msg.startsWith("AURA-CHR-404")) return new CharacterNotFoundError(text);
   if (msg.startsWith("AURA-CHR-400")) return new CharacterValidationError([], text);
-  if (msg.startsWith("AURA-CHR-403") || error.code === "42501") return new CharacterForbiddenError();
+  if (msg.startsWith("AURA-CHR-403") || error.code === "42501") return new CharacterForbiddenError(colForbiddenMessage(error));
   return Object.assign(new Error(msg || "Database error"), { cause: error });
 }
 

@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SceneDnaConflictError, SceneDnaNotFoundError, SceneDnaValidationError } from "./sceneDna.validator";
 import { SceneDnaForbiddenError } from "./sceneDna.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 type Row = Record<string, any>;
 
@@ -13,7 +14,7 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   const text = msg.replace(/^AURA-SDNA-\d+:\s*/, "");
   if (msg.startsWith("AURA-SDNA-409")) return new SceneDnaConflictError(text);
   if (msg.startsWith("AURA-SDNA-404")) return new SceneDnaNotFoundError(text);
-  if (msg.startsWith("AURA-SDNA-403") || error.code === "42501") return new SceneDnaForbiddenError();
+  if (msg.startsWith("AURA-SDNA-403") || error.code === "42501") return new SceneDnaForbiddenError(colForbiddenMessage(error));
   if (error.code === "23514" || msg.startsWith("AURA-SDNA-400")) return new SceneDnaValidationError([], "That value isn't allowed");
   return Object.assign(new Error(msg || "Database error"), { cause: error });
 }

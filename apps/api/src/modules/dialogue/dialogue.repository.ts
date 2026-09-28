@@ -5,13 +5,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DialogueConflictError, DialogueNotFoundError, DialogueValidationError } from "./dialogue.validator";
 import { DialogueForbiddenError } from "./dialogue.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 function mapDbError(error: { message?: string; code?: string }): Error {
   const msg = error.message ?? "";
   const text = msg.replace(/^AURA-DLG-\d+:\s*/, "");
   if (msg.startsWith("AURA-DLG-409")) return new DialogueConflictError(text);
   if (msg.startsWith("AURA-DLG-404")) return new DialogueNotFoundError(text);
-  if (msg.startsWith("AURA-DLG-403") || error.code === "42501") return new DialogueForbiddenError();
+  if (msg.startsWith("AURA-DLG-403") || error.code === "42501") return new DialogueForbiddenError(colForbiddenMessage(error));
   if (error.code === "23514") return new DialogueValidationError([], "That value isn't allowed");
   return Object.assign(new Error(msg || "Database error"), { cause: error });
 }

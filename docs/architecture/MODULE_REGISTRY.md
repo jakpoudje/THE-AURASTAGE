@@ -15,6 +15,7 @@ API/domain service -> engine -> canonical data -> worker/provider using this tab
 | Editorial & Timeline | apps/web/src/modules/editorial-timeline | apps/api/src/modules/editorial | engines/editorial | AssemblyTimeline / PictureLock |
 | Export & Deliver | apps/web/src/modules/export-deliver | apps/api/src/modules/rendering | engines/rendering | RenderManifest / Deliverable |
 | Assets Library | apps/web/src/modules/assets-library | apps/api/src/modules/assets | engines/assets | Asset / AssetVersion |
+| Team & Collaboration | apps/web/src/modules/team-collaboration | apps/api/src/modules/collaboration | (database: migration 0019) | Organization / OrgMember / ProjectMember / Invite |
 
 Horizontal frontend-only workspaces (no single owned backend domain — they compose across domains):
 - apps/web/src/modules/home
@@ -42,6 +43,7 @@ Horizontal backend-only domains:
 | AURA-EXP | Export |
 | AURA-AST | Assets |
 | AURA-MOS | Orchestration |
+| AURA-COL | Team & Collaboration (permissions, invites) |
 
 Every operational error carries: trace_id, project_id, relevant object ID, engine_id/version
 (when applicable), job_id, provider_request_id (when applicable), timestamp. User-facing
@@ -61,5 +63,11 @@ messages must be safe; diagnostic detail belongs in authorized logs only.
 - [x] Phase 9 — Editorial & Timeline (first assembly from approved takes over each scene's approved shot timing with the approved scene mix on A1; offline slugs for shots without a take; NLE edits — insert, overwrite, trim, ripple, roll, slip, slide, blade, lift, extract, move — with sync lock; per-clip grade preview; editorial QC with timecodes; named and automatic versions; Picture Lock as an immutable version, breaking it needs confirmation and records the impact; upstream changes flag the timeline and Conform swaps sources without changing the cut; CMX 3600 EDL export. Deferred: titles/subtitles, transitions, multi-cam, colour scopes, VFX conform, AI-assisted assembly)
 - [x] Phase 10 — Export & Deliver (deliverables only from the current Picture Lock with an immutable, checksummed RenderManifest naming every source; versioned delivery profiles — Streaming Master (H.264 1080p24 + AAC + SRT), Review Copy (watermark, burned-in timecode), Mezzanine ProRes 422 HQ master, Audio Package (mix, DX/FX/BG/MX stems, M&E), Subtitles (SRT + WebVTT), EDL; renders run in the render worker (ffmpeg) through MOS jobs with progress and cancel; final QC per file (format, frame rate, exact duration, loudness via ffmpeg ebur128, SHA-256, subtitle read-back); signed downloads; deliverables from a broken lock are marked out of date, files kept. Not available (with reasons): DCP, 4K HDR, MXF broadcast, social vertical. Deferred: localisation, external delivery destinations, multipart uploads > 5 GB)
 - [ ] Phase 11 — Collaboration/Help hardening, scale, security, studio integrations
+  - [x] 11a Team & permissions (studio roles; the SRS film roles per project with module × action permissions and extra grants; invite links (hashed, single-use, email-bound, 14 days); every user-callable write goes through `gate_write` in the database and every read is project-scoped; plain-language refusals; audit events carry their project. Deferred with reason: object-level scope (one scene/shot) needs per-object ACLs in every domain; SSO/MFA need an identity provider plan)
+  - [ ] 11b Comments, mentions, notifications, review tasks, activity feed
+  - [ ] 11c Help & Support (real system/provider status, guides, permission-bound assistant, tickets) and account security
+
+**Permission rule (since 11a):** every new user-callable write function must start with
+`perform public.gate_write(<project>, '<module>', '<action>')`. `tests/integration/team_db.sql` lists any that don't.
 
 Update this checklist whenever a phase completes.

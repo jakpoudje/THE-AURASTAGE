@@ -68,4 +68,4 @@ rollback;
 -- regenerate from v2 (confirmed)         | current / 1 shots / versions kept 1
 -- audit + jobs                           | ShotAdded,ShotDeleted,ShotMoved,ShotPlanApproved,ShotPlanGenerated,ShotUpdated | jobs 3
 -- outsider sees                          | 0
--- outsider add blocked                   | AURA-SHOT-403: not allowed to change this project's shots
+-- outsider add blocked                   | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)

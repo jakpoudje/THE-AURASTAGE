@@ -105,5 +105,5 @@ rollback;
 -- review flag                          | review_required / cut untouched true
 -- audit                                | PictureLockBroken,PictureLocked,TimelineEdited,TimelineVersionSaved,UpstreamVersionChanged
 -- outsider sees                        | 0
--- outsider edit blocked                | AURA-EDT-403: not allowed to edit this project's timeline
--- outsider lock blocked                | AURA-EDT-403: not allowed to edit this project's timeline
+-- outsider edit blocked                | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)
+-- outsider lock blocked                | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)

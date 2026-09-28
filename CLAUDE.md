@@ -37,6 +37,11 @@ scene-dna API -> participant resolver -> character extraction/entity resolution 
 canonical Scene/Character relationships -> Scene DNA engine. Inspect the first failing
 boundary; do not rewrite all layers.
 
+## Permissions convention (Phase 11)
+
+Every user-callable write function starts with `perform public.gate_write(<project>, '<module>', '<action>')`
+(migration 0019); reads are project-scoped by RLS. See `apps/api/src/modules/collaboration/README.md`.
+
 ## Build order
 
 Phase 0 (this scaffold) -> 1 Project+Assets+permissions+audit+MOS foundation -> 2 Scriptwriter ->

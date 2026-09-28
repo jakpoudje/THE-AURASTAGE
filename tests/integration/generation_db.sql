@@ -96,4 +96,4 @@ rollback;
 --   (regression: first run allowed takes after the plan was edited back to draft; fixed in 0013 request_takes)
 -- audit                                    | GenerationPackageCompiled,TakeApproved,TakeFailed,TakeGenerated,TakesRequested
 -- outsider sees                            | 0
--- outsider approval blocked                | AURA-GEN-403: not allowed to generate in this project
+-- outsider approval blocked                | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)

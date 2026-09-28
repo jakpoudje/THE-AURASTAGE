@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { GenerationConflictError, GenerationNotFoundError, GenerationNotReadyError, GenerationValidationError } from "./generation.validator";
 import { GenerationForbiddenError } from "./generation.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 type Row = Record<string, any>;
 
@@ -14,7 +15,7 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   if (msg.startsWith("AURA-GEN-409")) return new GenerationConflictError(text);
   if (msg.startsWith("AURA-GEN-412")) return new GenerationNotReadyError(text);
   if (msg.startsWith("AURA-GEN-404")) return new GenerationNotFoundError(text);
-  if (msg.startsWith("AURA-GEN-403") || error.code === "42501") return new GenerationForbiddenError();
+  if (msg.startsWith("AURA-GEN-403") || error.code === "42501") return new GenerationForbiddenError(colForbiddenMessage(error));
   if (msg.startsWith("AURA-GEN-400") || error.code === "23514") return new GenerationValidationError([], text || "That value isn't allowed");
   return Object.assign(new Error(msg || "Database error"), { cause: error });
 }

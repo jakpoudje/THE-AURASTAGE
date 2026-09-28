@@ -60,4 +60,4 @@ rollback;
 -- audit + mos job                    | SceneDNAApproved,SceneDNAUpdated,UpstreamVersionChanged | jobs 2
 -- cut scene cannot be approved       | AURA-SDNA-409: this scene is no longer in the approved script
 -- outsider sees                      | 0
--- outsider edit blocked              | AURA-SDNA-403: not allowed to change this project's Scene DNA
+-- outsider edit blocked              | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)

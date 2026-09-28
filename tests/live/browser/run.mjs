@@ -225,6 +225,24 @@ await check("export: render the Streaming Master from the lock; QC passed; reloa
   await page.getByLabel("Preview").waitFor();
   return `master ${(b.length / 1024).toFixed(0)} KB`;
 });
+await check("team: invite someone as Editor, get a private link; reload: the invite waits; cancel it; reload: gone", async () => {
+  const marker = "Make Films";
+  await page.goto(projectUrl + "/team");
+  await page.getByText(marker).waitFor();
+  await page.getByTestId("my-access").getByText("Your role: Studio owner").waitFor();
+  await page.getByLabel("Email").fill("invitee.live@aurastage.invalid");
+  await page.getByLabel("Role on this project").selectOption("editor");
+  await page.getByRole("button", { name: "Create invite link" }).click();
+  const link = await page.getByLabel("Invite link").inputValue();
+  if (!/\/invite#[0-9a-f]{48}$/.test(link)) throw new Error("bad invite link");
+  await reload(marker);
+  const row = page.getByTestId("invite-invitee.live@aurastage.invalid");
+  await row.getByText(/Editor · expires/).waitFor();
+  await row.getByRole("button", { name: "Cancel invite" }).click();
+  await page.getByRole("status").getByText(/cancelled/).waitFor();
+  await reload(marker);
+  if (await page.getByTestId("invite-invitee.live@aurastage.invalid").count()) throw new Error("invite still listed after reload");
+});
 await check("dashboard after reload still shows the project", async () => {
   await page.goto(WEB + "/dashboard");
   await reload(TITLE);

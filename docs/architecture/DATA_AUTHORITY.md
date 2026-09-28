@@ -6,6 +6,7 @@ character, scene, shot or technical truth.
 | Entity | Canonical owner | Purpose |
 |---|---|---|
 | Organization | Collaboration | Tenant/studio boundary |
+| OrgMember / ProjectMember / ProjectRole / Invite | Collaboration | Who may do what (migration 0019); enforced by `gate_write` and project-scoped RLS |
 | Project | Project Settings + Scriptwriter-owned story fields | Production root |
 | Script / Act / Sequence / Scene | Scriptwriter | Versioned screenplay + narrative hierarchy |
 | Character | Casting | Canonical identity |

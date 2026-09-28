@@ -1,7 +1,8 @@
 // Live signed-in smoke test (CLAUDE.md Working agreement, rule 4).
 // Runs as the Railway Function "live-smoke" in the aurastage project (Bun), because
 // Claude Code cloud sessions cannot reach *.railway.app / *.supabase.co directly.
-// Env: SUPABASE_URL, SUPABASE_ANON_KEY, API_URL, WEB_URL, SMOKE_EMAIL, SMOKE_PASSWORD
+// Env: SUPABASE_URL, SUPABASE_ANON_KEY, API_URL, WEB_URL, SMOKE_EMAIL, SMOKE_PASSWORD,
+//      SMOKE2_EMAIL, SMOKE2_PASSWORD (a second throwaway account for the Team & permissions checks)
 // The throwaway account is created and deleted around each run (see tests/live/README.md).
 // Output: one JSON line per check, then a SUMMARY line. Never prints tokens or passwords.
 
@@ -31,9 +32,12 @@ function assert(cond: unknown, msg: string): asserts cond {
 
 let token = "";
 async function api<T = any>(method: string, path: string, body?: unknown, expect = [200, 201]): Promise<T> {
+  return apiAs<T>(token, method, path, body, expect);
+}
+async function apiAs<T = any>(tok: string, method: string, path: string, body?: unknown, expect = [200, 201]): Promise<T> {
   const res = await fetch(API + path, {
     method,
-    headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+    headers: { Authorization: `Bearer ${tok}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
@@ -66,7 +70,7 @@ await check("api health", async () => {
   assert(r.status === 200 && j.status === "ok", `health ${r.status}`);
   return `phase ${j.phase}`;
 });
-for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio", "/projects/00000000-0000-4000-8000-000000000000/editorial", "/projects/00000000-0000-4000-8000-000000000000/export"]) {
+for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio", "/projects/00000000-0000-4000-8000-000000000000/editorial", "/projects/00000000-0000-4000-8000-000000000000/export", "/projects/00000000-0000-4000-8000-000000000000/team", "/invite"]) {
   await check(`web ${path}`, async () => {
     const r = await fetch(WEB + path);
     assert(r.status === 200, `status ${r.status}`);
@@ -524,6 +528,65 @@ await check("persistence: everything still there on re-read", async () => {
     api("GET", `/api/projects/${projectId}/characters`),
   ]);
   assert(p.tone === "Tense" && s.current_version.id === v1 && c.characters.find((x: any) => x.id === tundeId).status === "approved", "mismatch");
+});
+
+// ---- Phase 11: Team & permissions, with a second throwaway account ----
+let token2 = "", user2 = "";
+await check("team: owner invites a second person as Writer; only the hash is stored", async () => {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST", headers: { apikey: ANON, "Content-Type": "application/json" },
+    body: JSON.stringify({ email: env("SMOKE2_EMAIL"), password: env("SMOKE2_PASSWORD") }),
+  });
+  const j = await r.json();
+  assert(j.access_token, `second sign-in failed: ${r.status}`);
+  token2 = j.access_token;
+  user2 = j.user.id;
+  const inv = await api("POST", `/api/organizations/${orgId}/invites`, { email: env("SMOKE2_EMAIL").toUpperCase(), project_id: projectId, project_role: "writer" });
+  assert(/^[0-9a-f]{48}$/.test(inv.token) && inv.invite.email === env("SMOKE2_EMAIL").toLowerCase(), "invite shape");
+  (globalThis as any).inviteToken = inv.token;
+});
+await check("team: before accepting, the second person can't see the project", async () => {
+  await apiAs(token2, "GET", `/api/projects/${projectId}/script`, undefined, [403, 404]);
+});
+await check("team: the invitee previews and accepts; access is Writer", async () => {
+  const t = (globalThis as any).inviteToken;
+  const pv = await apiAs(token2, "POST", "/api/invites/preview", { token: t });
+  assert(pv.status === "pending" && pv.email_matches === true && pv.project_role_label === "Writer", JSON.stringify(pv));
+  await apiAs(token2, "POST", "/api/invites/accept", { token: t });
+  const a = await apiAs(token2, "GET", `/api/projects/${projectId}/access`);
+  assert(a.project_role === "writer" && a.modules.script.includes("edit") && !a.modules.script.includes("approve"), JSON.stringify(a.modules.script));
+  assert(!a.modules.editorial.includes("edit"), "writer should not edit the timeline");
+});
+await check("team: a Writer reads the script but can't approve it (plain-language 403)", async () => {
+  const s = await apiAs(token2, "GET", `/api/projects/${projectId}/script`);
+  assert(s.current_version?.id, "writer can't read the script");
+  const r = await apiAs(token2, "POST", `/api/projects/${projectId}/script/approve`, { version_id: s.current_version.id }, [403]);
+  assert(/your role \(Writer\) can't approve in Scriptwriter/.test(r.error.message), r.error.message);
+  return r.error.message;
+});
+await check("team: a Writer can't lock the picture or start projects", async () => {
+  const ed = await apiAs(token2, "GET", `/api/projects/${projectId}/editorial`);
+  const r = await apiAs(token2, "POST", `/api/projects/${projectId}/editorial/lock`, { base_revision: ed.timeline?.revision ?? null }, [403, 409, 412]);
+  assert(r.error.code.endsWith("403") || /lock/i.test(r.error.message), r.error.message);
+  const p = await apiAs(token2, "POST", "/api/projects", { org_id: orgId, title: "Not allowed" }, [403]);
+  assert(/owners, admins and producers/.test(p.error.message), p.error.message);
+});
+await check("team: the team page lists both; the Writer can't manage it", async () => {
+  const t2 = await apiAs(token2, "GET", `/api/projects/${projectId}/team`);
+  assert(t2.can_manage === false && t2.invites.length === 0 && t2.members.length === 2, JSON.stringify({ m: t2.members.length, c: t2.can_manage }));
+  await apiAs(token2, "POST", `/api/projects/${projectId}/team/members`, { user_id: user2, role: "producer" }, [403]);
+});
+await check("team: an extra 'script:approve' permission is saved and applies", async () => {
+  const t = await api("POST", `/api/projects/${projectId}/team/members`, { user_id: user2, role: "writer", grants: ["script:approve"] });
+  assert(t.members.find((m: any) => m.user_id === user2).grants.includes("script:approve"), "grant not saved");
+  const a = await apiAs(token2, "GET", `/api/projects/${projectId}/access`);
+  assert(a.modules.script.includes("approve"), "grant not applied");
+});
+await check("team: removing the person from the project removes their access", async () => {
+  await api("DELETE", `/api/projects/${projectId}/team/members/${user2}`);
+  await apiAs(token2, "GET", `/api/projects/${projectId}/script`, undefined, [403, 404]);
+  const t = await api("GET", `/api/projects/${projectId}/team`);
+  assert(!t.members.some((m: any) => m.user_id === user2), "still listed");
 });
 await check("security: other project ids are refused", async () => {
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/characters`, undefined, [403]);

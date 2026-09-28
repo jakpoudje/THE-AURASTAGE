@@ -678,6 +678,70 @@ http.createServer((req, res) => {
       return send(200, { status: r.status, cancel_requested: r.cancel_requested });
     }
     if ((m = u.match(/^\/api\/renders\/([^/]+)\/manifest$/))) { const r = renders.find((x) => x.id === m[1]); return send(200, { manifest_sha256: r.manifest_sha256, manifest: r.manifest }); }
+    // ---- Team & Collaboration (mirrors apps/api/src/modules/collaboration + migration 0019 semantics) ----
+    // The signed-in test user is "u1". POST /__test/as { role } switches them between the studio owner and a project role.
+    const T = globalThis.__team || (globalThis.__team = {
+      as: "owner", email: "you@aurastage.invalid",
+      roles: [
+        { id: "producer", label: "Producer", department: "Production", description: "Runs the project.", permissions: { "*": ["view", "comment", "create", "edit", "generate", "approve", "lock", "administer"] }, sort: 1 },
+        { id: "director", label: "Director", department: "Creative", description: "Approves and locks.", permissions: { script: ["approve"], scene_dna: ["edit", "lock"], editorial: ["create", "edit", "lock"] }, sort: 2 },
+        { id: "writer", label: "Writer", department: "Story", description: "Writes and revises the screenplay.", permissions: { script: ["create", "edit"], dialogue: ["edit"] }, sort: 3 },
+        { id: "editor", label: "Editor", department: "Post", description: "Cuts the film.", permissions: { editorial: ["create", "edit"], delivery: ["create"] }, sort: 15 },
+        { id: "reviewer", label: "Reviewer", department: "Review", description: "Views everything and leaves comments.", permissions: {}, sort: 19 },
+      ],
+      people: [{ user_id: "u2", email: "ada@aurastage.invalid", org_role: "member", project_role: "writer", grants: [], source: "project", joined_at: now(), last_sign_in_at: null }],
+      invites: [],
+    });
+    const MODS = ["script", "casting", "dialogue", "scene_dna", "shots", "generation", "audio", "editorial", "delivery", "assets", "settings", "team"];
+    const ACTS = ["view", "comment", "create", "edit", "generate", "approve", "lock", "administer"];
+    const teamAccess = () => {
+      const owner = T.as === "owner", r = T.roles.find((x) => x.id === T.as);
+      const modules = Object.fromEntries(MODS.map((mo) => [mo, ACTS.filter((a) => owner || a === "view" || a === "comment" || (r.permissions["*"] || []).includes(a) || (r.permissions[mo] || []).includes(a))]));
+      return { project_id: P, org_id: ORG, org_role: owner ? "owner" : "member", project_role: owner ? null : T.as, project_role_label: owner ? null : r.label, grants: [], source: owner ? "organization" : "project", modules };
+    };
+    const me = () => ({ user_id: "u1", email: T.email, org_role: T.as === "owner" ? "owner" : "member", project_role: T.as === "owner" ? null : T.as, grants: [], source: T.as === "owner" ? "organization" : "project", joined_at: now(), last_sign_in_at: now() });
+    const teamView = () => {
+      const a = teamAccess(), manage = a.modules.team.includes("administer");
+      return { project: { id: P, title: project.title, org_id: ORG }, access: a, can_manage: manage, can_manage_studio: T.as === "owner", roles: T.roles, members: [me(), ...T.people], invites: manage ? T.invites.filter((i) => !i.accepted_at && !i.revoked_at) : [] };
+    };
+    const refuse = (what) => send(403, { error: { code: "AURA-COL-403", message: `your role (${teamAccess().project_role_label}) can't administer in ${what}. Ask the project's producer for access.` } });
+    if (u === "/__test/as") { T.as = b.role; if (b.email) T.email = b.email; return send(200, { ok: true }); }
+    if (u === "/api/organizations" && req.method === "GET") return send(200, [{ org_id: ORG, role: T.as === "owner" ? "owner" : "member", organization: { id: ORG, name: "Test Studio", slug: "t", created_at: now() } }]);
+    if (u === `/api/projects/${P}/access`) return send(200, teamAccess());
+    if (u === `/api/projects/${P}/team`) return send(200, teamView());
+    if (u === `/api/projects/${P}/team/members` && req.method === "POST") {
+      if (!teamAccess().modules.team.includes("administer")) return refuse("Team & Collaboration");
+      const pr = T.people.find((x) => x.user_id === b.user_id); Object.assign(pr, { project_role: b.role, grants: b.grants || [] }); return send(200, teamView());
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/team\/members\/([^/]+)$/)) && req.method === "DELETE") {
+      if (!teamAccess().modules.team.includes("administer")) return refuse("Team & Collaboration");
+      T.people = T.people.filter((x) => x.user_id !== m[1]); return send(200, { ok: true });
+    }
+    if (u === `/api/organizations/${ORG}/team`) return send(200, { members: [me(), ...T.people].map((x) => ({ user_id: x.user_id, email: x.email, org_role: x.org_role, projects: x.org_role === "member" ? 1 : 0, joined_at: x.joined_at, last_sign_in_at: x.last_sign_in_at })), invites: T.invites.filter((i) => !i.accepted_at && !i.revoked_at && !i.project_id), projects: [{ id: P, title: project.title }] });
+    if ((m = u.match(/^\/api\/organizations\/[^/]+\/members\/([^/]+)$/))) {
+      const pr = T.people.find((x) => x.user_id === m[1]);
+      if (req.method === "DELETE") { T.people = T.people.filter((x) => x.user_id !== m[1]); return send(200, { ok: true }); }
+      pr.org_role = b.role; if (b.role !== "member") Object.assign(pr, { source: "organization", project_role: null }); return send(200, {});
+    }
+    if (u === `/api/organizations/${ORG}/invites`) {
+      const c = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));
+      const r = c.CreateInviteInputSchema.safeParse(b);
+      if (!r.success) return send(400, { error: { code: "AURA-COL-400", message: r.error.issues[0].message } });
+      const token = crypto.randomBytes(24).toString("hex");
+      const inv = { id: crypto.randomUUID(), org_id: ORG, project_id: r.data.project_id ?? null, email: r.data.email, org_role: r.data.org_role, project_role: r.data.project_role ?? null, grants: r.data.grants, created_at: now(), expires_at: new Date(Date.now() + 14 * 864e5).toISOString(), accepted_at: null, revoked_at: null, token };
+      T.invites.forEach((i) => { if (i.email === inv.email && !i.accepted_at) i.revoked_at = now(); });
+      T.invites.push(inv); const { token: _t, ...pub } = inv; return send(200, { invite: pub, token });
+    }
+    if ((m = u.match(/^\/api\/invites\/([0-9a-f-]{36})$/)) && req.method === "DELETE") { T.invites.find((i) => i.id === m[1]).revoked_at = now(); return send(200, { ok: true }); }
+    if (u === "/api/invites/preview" || u === "/api/invites/accept") {
+      const inv = T.invites.find((i) => i.token === b.token);
+      if (!inv) return send(404, { error: { code: "AURA-COL-404", message: "this invite link isn't valid" } });
+      const status = inv.accepted_at ? "accepted" : inv.revoked_at ? "revoked" : "pending";
+      if (u.endsWith("preview")) return send(200, { status, email: inv.email, org_role: inv.org_role, project_role: inv.project_role, project_role_label: T.roles.find((r) => r.id === inv.project_role)?.label ?? null, organization: "Test Studio", project: inv.project_id ? project.title : null, project_id: inv.project_id, invited_by: "owner@aurastage.invalid", expires_at: inv.expires_at, email_matches: inv.email === T.email });
+      if (inv.email !== T.email) return send(403, { error: { code: "AURA-COL-403", message: `this invite is for ${inv.email}. Sign in with that email to accept it.` } });
+      inv.accepted_at = now(); T.as = inv.project_role || "owner";
+      return send(200, { org_id: ORG, project_id: inv.project_id });
+    }
     if ((m = u.match(/^\/media\/([^/]+)\/([^/]+)$/))) {
       const file = pathx.join(STORE, m[1], m[2]);
       if (!fsx.existsSync(file)) return send(404, { error: { code: "AURA-X-404", message: "no such file" } });

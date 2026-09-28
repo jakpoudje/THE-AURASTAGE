@@ -7,7 +7,8 @@
 // yet are shown but not clickable, so nothing pretends to work.
 
 import Link from "next/link";
-import type { Project } from "@aurastage/contracts";
+import type { PermissionModule, Project } from "@aurastage/contracts";
+import { can, roleLabel, useProjectAccess } from "@/lib/useProjectAccess";
 
 export const STAGES = [
   { key: "scriptwriter", label: "Scriptwriter", path: "scriptwriter" },
@@ -21,9 +22,22 @@ export const STAGES = [
   { key: "export", label: "Export & Deliver", path: "export" },
 ] as const;
 
-const SECONDARY = ["Project Settings", "Team & Collaboration", "Assets Library", "Help & Support"];
+// Built secondary workspaces link to their page; the rest are shown but not clickable.
+const SECONDARY: { key: string; label: string; path?: string }[] = [
+  { key: "settings", label: "Project Settings" },
+  { key: "team", label: "Team & Collaboration", path: "team" },
+  { key: "assets", label: "Assets Library" },
+  { key: "help", label: "Help & Support" },
+];
 
 type StageKey = (typeof STAGES)[number]["key"];
+type ActiveKey = StageKey | "team";
+
+// Which permission module each stage writes to (database permission gate, migration 0019).
+const STAGE_MODULE: Record<StageKey, PermissionModule> = {
+  scriptwriter: "script", casting: "casting", dialogue: "dialogue", "scene-dna": "scene_dna", storyboard: "shots",
+  visual: "generation", audio: "audio", editorial: "editorial", export: "delivery",
+};
 
 function stageHref(projectId: string | undefined, stage: (typeof STAGES)[number]) {
   return projectId && "path" in stage ? `/projects/${projectId}/${stage.path}` : null;
@@ -36,10 +50,15 @@ export function AppShell({
   children,
 }: {
   project: Project | null;
-  active: StageKey;
+  active: ActiveKey;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const access = useProjectAccess(project?.id);
+  const role = roleLabel(access);
+  const stageModule = active in STAGE_MODULE ? STAGE_MODULE[active as StageKey] : null;
+  const viewOnly =
+    !!access && !!stageModule && !["create", "edit", "generate", "approve", "lock"].some((a) => can(access, stageModule, a as never));
   return (
     <div className="flex min-h-screen">
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-aura-border bg-aura-panel lg:flex">
@@ -76,12 +95,24 @@ export function AppShell({
             );
           })}
           <div className="my-3 border-t border-aura-border" />
-          {SECONDARY.map((label) => (
-            <span key={label} className="flex items-center justify-between rounded-md px-3 py-2 text-white/30" title="Not built yet">
-              {label}
-              <span className="text-[9px] uppercase tracking-wider">Soon</span>
-            </span>
-          ))}
+          {SECONDARY.map((item) =>
+            item.path && project ? (
+              <Link
+                key={item.key}
+                href={`/projects/${project.id}/${item.path}`}
+                className={
+                  item.key === active ? "block rounded-md bg-aura-gold/15 px-3 py-2 text-aura-gold" : "block rounded-md px-3 py-2 text-white/70 hover:bg-white/5"
+                }
+              >
+                {item.label}
+              </Link>
+            ) : (
+              <span key={item.key} className="flex items-center justify-between rounded-md px-3 py-2 text-white/30" title="Not built yet">
+                {item.label}
+                <span className="text-[9px] uppercase tracking-wider">Soon</span>
+              </span>
+            )
+          )}
         </nav>
         {project && (
           <div className="m-3 rounded-lg border border-aura-border bg-black/30 p-3">
@@ -122,8 +153,21 @@ export function AppShell({
               );
             })}
           </ol>
-          <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {role && project && (
+              <Link href={`/projects/${project.id}/team`} title="Your role on this project" data-testid="role-chip"
+                className="rounded-full border border-aura-gold/40 px-3 py-1 text-[11px] text-aura-gold">
+                {role}
+              </Link>
+            )}
+            {actions}
+          </div>
         </header>
+        {viewOnly && (
+          <div role="note" data-testid="view-only" className="border-b border-aura-gold/30 bg-aura-gold/10 px-6 py-2 text-xs text-aura-gold">
+            View only — as {role} you can look around and comment here, but not change things. Ask the project&apos;s producer if you need more access.
+          </div>
+        )}
         <main>{children}</main>
       </div>
     </div>

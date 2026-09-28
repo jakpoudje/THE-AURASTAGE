@@ -3,6 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AssetValidationError } from "./assets.validator";
 import { AssetForbiddenError } from "./assets.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 type Row = Record<string, any>;
 export async function registerAsset(db: SupabaseClient, a: { projectId: string; type: string; name: string; path: string; checksum: string; metadata: Row }) {
@@ -11,7 +12,7 @@ export async function registerAsset(db: SupabaseClient, a: { projectId: string; 
   });
   if (error) {
     const msg = error.message ?? "";
-    if (msg.startsWith("AURA-AST-403") || error.code === "42501") throw new AssetForbiddenError();
+    if (msg.startsWith("AURA-AST-403") || error.code === "42501") throw new AssetForbiddenError(colForbiddenMessage(error));
     if (msg.startsWith("AURA-AST-400")) throw new AssetValidationError(msg.replace(/^AURA-AST-\d+:\s*/, ""));
     throw Object.assign(new Error(msg || "Database error"), { cause: error });
   }

@@ -64,4 +64,4 @@ rollback;
 -- approve scene         | 3 lines; approved,approved,approved
 -- audit                 | DialogueLineApproved,DialogueLineUpdated,DialogueSynced,SceneDialogueApproved
 -- outsider sees         | 0
--- outsider edit blocked | AURA-DLG-403: not allowed to change this project's dialogue
+-- outsider edit blocked | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)

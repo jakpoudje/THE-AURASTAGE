@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { EditorialConflictError, EditorialLockedError, EditorialNotFoundError, EditorialNotReadyError, EditorialValidationError } from "./editorial.validator";
 import { EditorialForbiddenError } from "./editorial.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 type Row = Record<string, any>;
 function mapDbError(error: { message?: string; code?: string }): Error {
@@ -14,7 +15,7 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   if (msg.startsWith("AURA-EDT-412")) return new EditorialNotReadyError(text);
   if (msg.startsWith("AURA-EDT-423")) return new EditorialLockedError(text, []);
   if (msg.startsWith("AURA-EDT-404")) return new EditorialNotFoundError(text);
-  if (msg.startsWith("AURA-EDT-403") || error.code === "42501") return new EditorialForbiddenError();
+  if (msg.startsWith("AURA-EDT-403") || error.code === "42501") return new EditorialForbiddenError(colForbiddenMessage(error));
   if (msg.startsWith("AURA-EDT-400")) return new EditorialValidationError([], text);
   if (error.code === "23503") return new EditorialValidationError([], "A clip refers to a take or mix that doesn't exist in this project");
   if (error.code === "23514") return new EditorialValidationError([], "A clip runs past the end of its media");

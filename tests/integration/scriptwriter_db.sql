@@ -53,5 +53,5 @@ rollback;
 -- after v2                     | 1:active:review_required:true,2:omitted:review_required:false
 -- audit                        | ProjectCreated,ScriptApproved,ScriptApproved,ScriptVersionSaved,ScriptVersionSaved
 -- outsider sees scenes         | 0
--- outsider save blocked        | AURA-SCR-403: not allowed to edit this project
+-- outsider save blocked        | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)
 -- direct scene insert blocked  | new row violates row-level security policy for table "scenes"

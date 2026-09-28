@@ -7,9 +7,13 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import type { NewProjectInput } from "../components/NewProjectForm";
 
+type Membership = { org_id: string; role: "owner" | "admin" | "producer" | "member"; organization: Organization };
+const ORG_KEY = "aura.org";
+
 export function useDashboardData() {
   const router = useRouter();
   const [org, setOrg] = useState<Organization | null>(null);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,9 +37,19 @@ export function useDashboardData() {
         const bootstrapped = await apiPost<Organization>("/api/organizations/bootstrap", {
           name: `${email.split("@")[0]}'s Studio`,
         });
+        // People invited to other studios belong to several: remember the last one chosen.
+        const mine = await apiGet<Membership[]>("/api/organizations");
         if (cancelled) return;
-        setOrg(bootstrapped);
-        await refreshProjects(bootstrapped.id);
+        let saved: string | null = null;
+        try {
+          saved = localStorage.getItem(ORG_KEY);
+        } catch {
+          saved = null;
+        }
+        const chosen = mine.find((m) => m.org_id === saved)?.organization ?? bootstrapped;
+        setMemberships(mine);
+        setOrg(chosen);
+        await refreshProjects(chosen.id);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load dashboard");
       } finally {
@@ -49,6 +63,20 @@ export function useDashboardData() {
     };
   }, [router, refreshProjects]);
 
+  async function switchOrg(orgId: string) {
+    const m = memberships.find((x) => x.org_id === orgId);
+    if (!m) return;
+    try {
+      localStorage.setItem(ORG_KEY, orgId);
+    } catch {
+      /* per-browser convenience only */
+    }
+    setOrg(m.organization);
+    await refreshProjects(orgId);
+  }
+
+  const role = memberships.find((m) => m.org_id === org?.id)?.role ?? null;
+
   async function createProject(input: NewProjectInput) {
     if (!org) return;
     await apiPost("/api/projects", { org_id: org.id, ...input });
@@ -60,5 +88,5 @@ export function useDashboardData() {
     router.replace("/");
   }
 
-  return { org, projects, loading, error, createProject, signOut };
+  return { org, role, memberships, projects, loading, error, createProject, switchOrg, signOut };
 }

@@ -110,5 +110,5 @@ rollback;
 -- stale flag keeps files                    | stale / 1 file
 -- audit                                     | RenderCancelled,RenderCancelRequested,RenderCompleted,RenderRequested,UpstreamVersionChanged
 -- outsider sees                             | 0
--- outsider render blocked                   | AURA-EXP-403: not allowed to deliver this project
--- outsider cancel blocked                   | AURA-EXP-403: not allowed to deliver this project
+-- outsider render blocked                   | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)
+-- outsider cancel blocked                   | AURA-COL-403: you don't have access to this project (permission gate, migration 0019)

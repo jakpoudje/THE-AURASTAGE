@@ -12,12 +12,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ScreenplayElement } from "@aurastage/contracts";
 import { ScriptConflictError, ScriptNotFoundError } from "./screenplay.validator";
 import { ScriptForbiddenError } from "./screenplay.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 function mapDbError(error: { message?: string; code?: string }): Error {
   const msg = error.message ?? "";
   if (msg.startsWith("AURA-SCR-409")) return new ScriptConflictError();
   if (msg.startsWith("AURA-SCR-404")) return new ScriptNotFoundError(msg.replace(/^AURA-SCR-404:\s*/, ""));
-  if (msg.startsWith("AURA-SCR-403") || error.code === "42501") return new ScriptForbiddenError();
+  if (msg.startsWith("AURA-SCR-403") || error.code === "42501") return new ScriptForbiddenError(colForbiddenMessage(error));
   return Object.assign(new Error(msg || "Database error"), { cause: error });
 }
 

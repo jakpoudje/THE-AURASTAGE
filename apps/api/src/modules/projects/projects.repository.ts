@@ -10,6 +10,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CreateProjectInput, UpdateProjectInput } from "@aurastage/contracts";
+import { ForbiddenError } from "./projects.permissions";
 
 const TABLE = "projects";
 
@@ -35,12 +36,16 @@ export async function insertProject(db: SupabaseClient, input: CreateProjectInpu
     .insert({ ...input, created_by: createdBy })
     .select("*")
     .single();
+  // Since migration 0019 only studio owners, admins and producers may create projects (RLS).
+  if (error?.code === "42501") throw new ForbiddenError("Only the studio's owners, admins and producers can create projects");
   if (error) throw error;
   return data;
 }
 
 export async function updateProject(db: SupabaseClient, id: string, input: UpdateProjectInput) {
   const { data, error } = await db.from(TABLE).update(input).eq("id", id).select("*").single();
+  // RLS (project_can(settings, edit)) hides the row from people who can't edit it: no row comes back.
+  if (error?.code === "PGRST116" || error?.code === "42501") throw new ForbiddenError("Your role can't change this project's settings");
   if (error) throw error;
   return data;
 }

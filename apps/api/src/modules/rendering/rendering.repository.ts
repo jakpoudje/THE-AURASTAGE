@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { RenderingConflictError, RenderingNotFoundError, RenderingNotReadyError, RenderingValidationError } from "./rendering.validator";
 import { RenderingForbiddenError } from "./rendering.permissions";
+import { colForbiddenMessage } from "../../infrastructure/permissions";
 
 type Row = Record<string, any>;
 function mapDbError(error: { message?: string; code?: string }): Error {
@@ -14,7 +15,7 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   if (msg.startsWith("AURA-EXP-409")) return new RenderingConflictError(text);
   if (msg.startsWith("AURA-EXP-412")) return new RenderingNotReadyError(text);
   if (msg.startsWith("AURA-EXP-404")) return new RenderingNotFoundError(text);
-  if (msg.startsWith("AURA-EXP-403") || error.code === "42501") return new RenderingForbiddenError();
+  if (msg.startsWith("AURA-EXP-403") || error.code === "42501") return new RenderingForbiddenError(colForbiddenMessage(error));
   if (msg.startsWith("AURA-EXP-400")) return new RenderingValidationError([], text);
   return Object.assign(new Error(msg || "Database error"), { cause: error });
 }

@@ -20,6 +20,12 @@ function friendly(message: string, mode: Mode): { text: string; action?: "sign-i
   return { text: mode === "forgot" ? "We couldn't send the reset email. Please try again." : message };
 }
 
+/** Where to go after signing in: a same-site path from ?next= (e.g. an invite link), else the dashboard. */
+function nextPath() {
+  const n = new URLSearchParams(window.location.search).get("next");
+  return n && n.startsWith("/") && !n.startsWith("//") ? n : "/dashboard";
+}
+
 export function AuthForm({ mode: initialMode }: { mode: "sign-in" | "sign-up" }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -34,7 +40,7 @@ export function AuthForm({ mode: initialMode }: { mode: "sign-in" | "sign-up" })
     getSupabaseClient()
       .auth.getSession()
       .then(({ data }) => {
-        if (data.session) router.replace("/dashboard");
+        if (data.session) router.replace(nextPath());
       });
   }, [router]);
 
@@ -59,14 +65,18 @@ export function AuthForm({ mode: initialMode }: { mode: "sign-in" | "sign-up" })
         // Supabase returns a user with no identities when the email is already registered (and hides it).
         if (data.user && (data.user.identities?.length ?? 0) === 0) throw new Error("User already registered");
         if (!data.session) {
-          setInfo("Account created. Check your email for a confirmation link, then sign in.");
+          setInfo(
+            nextPath() === "/dashboard"
+              ? "Account created. Check your email for a confirmation link, then sign in."
+              : "Account created. Check your email for a confirmation link, then open your invite link again."
+          );
           return;
         }
       } else {
         const { error: err } = await client.auth.signInWithPassword({ email, password });
         if (err) throw err;
       }
-      router.push("/dashboard");
+      router.push(nextPath());
       router.refresh();
     } catch (err) {
       setError(friendly(err instanceof Error ? err.message : "Something went wrong", mode));
@@ -79,7 +89,7 @@ export function AuthForm({ mode: initialMode }: { mode: "sign-in" | "sign-up" })
     setMode(m);
     setError(null);
     setInfo(null);
-    if (m !== "forgot") window.history.replaceState(null, "", m === "sign-up" ? "/sign-up" : "/sign-in");
+    if (m !== "forgot") window.history.replaceState(null, "", (m === "sign-up" ? "/sign-up" : "/sign-in") + window.location.search);
   };
 
   const title = mode === "sign-up" ? "Create your account" : mode === "forgot" ? "Reset your password" : "Welcome back";
