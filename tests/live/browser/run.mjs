@@ -17,6 +17,8 @@ const page = await (await browser.newContext({ viewport: { width: 1440, height: 
 page.setDefaultTimeout(30000);
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(e.message));
+const consoleErrors = [];
+page.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && consoleErrors.push(m.text().slice(0, 300)));
 page.on("dialog", (d) => d.accept());
 
 async function check(name, fn) {
@@ -25,7 +27,10 @@ async function check(name, fn) {
     results.push({ check: name, ok: true });
     console.log(JSON.stringify({ check: name, ok: true, detail }));
   } catch (e) {
-    const detail = (e instanceof Error ? e.message : String(e)).split("\n")[0];
+    let detail = (e instanceof Error ? e.message : String(e)).split("\n")[0];
+    // Diagnostics: what the page actually showed, and any console errors (React logs render errors there).
+    const text = await page.locator("body").innerText({ timeout: 3000 }).catch(() => "");
+    detail += ` | page: ${text.replace(/\s+/g, " ").slice(0, 300)}${consoleErrors.length ? ` | console: ${consoleErrors.slice(-2).join(" || ")}` : ""}`;
     results.push({ check: name, ok: false });
     console.log(JSON.stringify({ check: name, ok: false, detail, url: page.url() }));
   }
