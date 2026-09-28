@@ -340,7 +340,10 @@ await check("dashboard after reload still shows the project, with its production
   await page.goto(WEB + "/dashboard");
   await reload(TITLE);
   const script = page.getByTestId("stage-scriptwriter");
-  await script.getByText(/Version \d+ approved/).waitFor();
+  await script.waitFor();
+  await script.getByText(/Version \d+ approved/).waitFor({ timeout: 15000 }).catch(async () => {
+    throw new Error("scriptwriter card says: " + (await script.innerText()).replace(/\s+/g, " ").slice(0, 200));
+  });
   await script.getByRole("button", { name: "Why?" }).click();
   await script.getByText(/A version is approved/).waitFor();
   return await page.getByTestId("stages-complete").innerText();
