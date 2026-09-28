@@ -291,7 +291,7 @@ await check("settings: open Project Settings from the sidebar, review and save; 
   await page.goto(projectUrl + "/export");
   await page.getByRole("list", { name: "Presets" }).getByRole("button", { name: /Streaming Master/ }).first().getByText("Required").waitFor();
 });
-await check("assets: upload an image through the file picker, tag it, add it to a scene; reload: kept; replace makes v2", async () => {
+await check("assets: upload an image through the file picker, tag it, add it to a scene; reload: kept; replace makes v2; edit makes v3", async () => {
   const fs = await import("node:fs");
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
   const png2 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGPQqLgDAAJIAX2aqSu/AAAAAElFTkSuQmCC", "base64");
@@ -324,6 +324,16 @@ await check("assets: upload an image through the file picker, tag it, add it to 
   await card.getByText("v2").waitFor();
   await detail.getByRole("tab", { name: "Versions" }).click();
   await detail.getByRole("list", { name: "Versions" }).getByText(/v1 · /).waitFor();
+  // Edit in the browser: rotate, saved as v3 with a note of the edit; reload keeps it.
+  await detail.getByRole("button", { name: "Edit…" }).click();
+  const ed = page.getByRole("dialog", { name: /^Edit Live check reference/ });
+  await ed.getByRole("button", { name: "⟳ Rotate right" }).click();
+  await ed.getByRole("button", { name: "Save as new version" }).click();
+  await page.getByRole("status").getByText(/Saved as a new version/).waitFor();
+  await page.reload();
+  await card.getByText("v3").waitFor();
+  await detail.getByRole("tab", { name: "Versions" }).click();
+  await detail.getByRole("list", { name: "Versions" }).getByText(/Edited in AuraStage from v2: rotated 90°/).waitFor();
 });
 await check("ask AuraStage: suggest a tone change, see before → after, apply; reload: kept; undo; reload: gone", async () => {
   await page.goto(projectUrl + "/scriptwriter");
