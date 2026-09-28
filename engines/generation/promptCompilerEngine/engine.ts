@@ -53,6 +53,7 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
     clean(shot.composition) ? sentence(`Composition: ${clean(shot.composition)}`) : "",
     sentence(performance),
     style || world ? sentence(`Style: ${[style, world].filter(Boolean).join("; ")}`) : "",
+    clean(project.look) ? sentence(`Look: ${clean(project.look)}`) : "",
     sentence(`Aspect ratio ${aspect_ratio}`),
   ].filter(Boolean).join(" ");
 
@@ -83,6 +84,7 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
       script_version_id: provenance.script_version_id,
       character_ids: inFrame.map((c) => c.id),
       dialogue_line_ids: lines.map((l) => l.id),
+      settings_version: provenance.settings_version,
     },
     checks: [
       { id: "location", label: "Location applied", ok: !!clean(scene.location), evidence: place },
@@ -101,6 +103,12 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
       },
       { id: "lighting", label: "Lighting set", ok: !!lighting, evidence: lighting ?? "No lighting in the shot or Scene DNA" },
       { id: "locked_sources", label: "Built from approved versions", ok: true, evidence: "Approved shot plan + locked Scene DNA" },
+      {
+        id: "style",
+        label: "Style matched",
+        ok: !!clean(project.look),
+        evidence: clean(project.look) ? `Project look (settings v${provenance.settings_version ?? "?"}): ${clean(project.look)}` : "No project look set — add one in Project Settings",
+      },
     ],
   };
   return { package: pkg, engine_version: ENGINE_VERSION };

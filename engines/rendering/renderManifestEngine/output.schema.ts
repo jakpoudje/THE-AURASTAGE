@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ProjectCreditsSchema } from "./input.schema";
 import { AudioFamilySchema, ClipGradeSchema, RenderOptionsSchema } from "@aurastage/contracts";
 import { DeliveryProfileSchema } from "../deliveryProfileEngine/output.schema";
 import { SubtitleOutputSchema } from "../subtitleTimelineEngine/output.schema";
@@ -19,7 +20,7 @@ export type PictureSegment = z.infer<typeof PictureSegmentSchema>;
 
 export const RenderManifestSchema = z.object({
   schema: z.string(),
-  project: z.object({ id: z.string(), title: z.string() }),
+  project: z.object({ id: z.string(), title: z.string(), credits: ProjectCreditsSchema.optional() }),
   profile: DeliveryProfileSchema,
   options: RenderOptionsSchema,
   picture_lock: z.object({ id: z.string(), lock_number: z.number().int(), timeline_version_id: z.string() }),

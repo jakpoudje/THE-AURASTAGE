@@ -28,14 +28,14 @@ export const STAGES = [
 
 // Built secondary workspaces link to their page; the rest are shown but not clickable.
 const SECONDARY: { key: string; label: string; path?: string }[] = [
-  { key: "settings", label: "Project Settings" },
+  { key: "settings", label: "Project Settings", path: "settings" },
   { key: "team", label: "Team & Collaboration", path: "team" },
   { key: "assets", label: "Assets Library" },
   { key: "help", label: "Help & Support", path: "help" },
 ];
 
 type StageKey = (typeof STAGES)[number]["key"];
-type ActiveKey = StageKey | "team";
+type ActiveKey = StageKey | "team" | "settings";
 
 // Which permission module each stage writes to (database permission gate, migration 0019).
 const STAGE_MODULE: Record<StageKey, PermissionModule> = {
@@ -76,7 +76,7 @@ export function AppShell({
       setCommentsOpen(true);
     }
   }, []);
-  const commentModule: PermissionModule = active in STAGE_MODULE ? STAGE_MODULE[active as StageKey] : "team";
+  const commentModule: PermissionModule = active in STAGE_MODULE ? STAGE_MODULE[active as StageKey] : active === "settings" ? "settings" : "team";
   const commentContext: CommentContext | null = project
     ? { module: commentModule, objectType: "Workspace", objectId: project.id, objectLabel: "this workspace", ...comments } as CommentContext
     : null;

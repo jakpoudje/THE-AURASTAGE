@@ -14,6 +14,7 @@ API/domain service -> engine -> canonical data -> worker/provider using this tab
 | Audio Studio | apps/web/src/modules/audio-studio | apps/api/src/modules/audio | engines/audio | AudioSession / Mix |
 | Editorial & Timeline | apps/web/src/modules/editorial-timeline | apps/api/src/modules/editorial | engines/editorial | AssemblyTimeline / PictureLock |
 | Export & Deliver | apps/web/src/modules/export-deliver | apps/api/src/modules/rendering | engines/rendering | RenderManifest / Deliverable |
+| Project Settings | apps/web/src/modules/project-settings | apps/api/src/modules/settings | — (settings feed engines as inputs) | ProjectSettings / ProjectSettingsVersion |
 | Assets Library | apps/web/src/modules/assets-library | apps/api/src/modules/assets | engines/assets | Asset / AssetVersion |
 | Help & Support | apps/web/src/modules/help-support | apps/api/src/modules/help | engines/help | SupportTicket (+ system status from telemetry) |
 | Team & Collaboration | apps/web/src/modules/team-collaboration | apps/api/src/modules/collaboration | engines/collaboration | Organization / OrgMember / ProjectMember / Invite / Comment / Task / Notification |
@@ -21,7 +22,6 @@ API/domain service -> engine -> canonical data -> worker/provider using this tab
 Horizontal frontend-only workspaces (no single owned backend domain — they compose across domains):
 - apps/web/src/modules/home
 - apps/web/src/modules/dashboard
-- apps/web/src/modules/project-settings
 - apps/web/src/modules/team-collaboration
 - apps/web/src/modules/help-support
 
@@ -46,6 +46,7 @@ Horizontal backend-only domains:
 | AURA-MOS | Orchestration |
 | AURA-COL | Team & Collaboration (permissions, invites) |
 | AURA-HLP | Help & Support, account security |
+| AURA-SET | Project Settings |
 
 Every operational error carries: trace_id, project_id, relevant object ID, engine_id/version
 (when applicable), job_id, provider_request_id (when applicable), timestamp. User-facing
@@ -74,3 +75,7 @@ messages must be safe; diagnostic detail belongs in authorized logs only.
 `perform public.gate_write(<project>, '<module>', '<action>')`. `tests/integration/team_db.sql` lists any that don't.
 
 Update this checklist whenever a phase completes.
+- [ ] Completion pass — workspaces that still said "Soon"
+  - [x] 12a Project Settings (versioned settings with save-conflict protection and an impact preview before saving; story fields inherited read-only from Scriptwriter; fixed pipeline facts shown with reasons (24 fps, Rec.709, 1080p, 48 kHz stereo). Settings drive: the loudness standard for Audio readiness and delivery QC (EBU R128 / ATSC A/85 / streaming −14), Visual Generation's default frame shape and providers, the project look in every compiled prompt (prompt compiler 1.1.0 "Style matched"; a look change marks compiled prompts for review), a monthly paid-take cap enforced in the database (AURA-GEN-402), required deliverables tracked in Export, and credits written into rendered file metadata (renderManifest 1.1.0). Changes apply to new work only; approved work is never rewritten)
+  - [ ] 12b Assets Library
+  - [ ] 12c Dashboard overview from real evidence

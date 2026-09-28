@@ -14,11 +14,19 @@ const ws = () => {
 http.createServer((req, res) => {
   const chunks = []; req.on("data", (c) => chunks.push(c)); req.on("end", () => {
     const raw = Buffer.concat(chunks); const body = /^audio\//.test(req.headers["content-type"] || "") ? "" : raw.toString();
-    res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Headers", "*"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Headers", "*"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     if (req.method === "OPTIONS") return res.end();
     const send = (code, obj) => { res.statusCode = code; res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(obj)); };
     const b = body ? JSON.parse(body) : {}; const u = req.url.split("?")[0];
     console.log(req.method, u);
+    // ---- Project Settings (mirrors apps/api/src/modules/settings + migration 0023) ----
+    const cc0 = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));
+    const ST = globalThis.__settings || (globalThis.__settings = { settings: cc0.DEFAULT_PROJECT_SETTINGS, revision: null, version_number: 0, updated_at: null, versions: [] });
+    const settingsView = () => ({ ...ST, story: { title: project.title, type: project.type, genre: project.genre ?? null, subgenre: null, setting: null, time_period: null, logline: project.logline ?? null, tone: project.tone ?? null, target_runtime_minutes: project.target_runtime_minutes ?? null },
+      facts: [{ id: "timebase", label: "Timebase", value: "24 fps", reason: "Editorial, subtitles and every deliverable are built on a 24 fps timeline." }],
+      loudness_standards: Object.entries(cc0.LOUDNESS_STANDARDS).map(([id, v]) => ({ id, ...v })),
+      providers: [{ id: "aurastage-sketch", name: "AuraStage Sketch", capabilities: ["image"], state: "configured" }, { id: "runway", name: "Runway", capabilities: ["image", "video"], state: "not_configured" }],
+      delivery_profiles: eng.deliveryProfiles().filter((p) => p.available).map((p) => ({ id: p.id, name: p.label })), paid_takes_this_month: 0 });
     if (u === "/api/organizations/bootstrap") return send(200, { id: ORG, name: "Test Studio", slug: "t", created_at: now() });
     if (u === "/api/projects" && req.method === "GET") return send(200, [project]);
     if (u === "/api/projects" && req.method === "POST") {
@@ -31,6 +39,27 @@ http.createServer((req, res) => {
     }
     if (u === `/api/projects/${P}` && req.method === "GET") return send(200, project);
     if (u === `/api/projects/${P}` && req.method === "PATCH") { const { org_id, ...rest } = b; project = { ...project, ...rest, updated_at: now() }; return send(200, project); }
+    if (u === `/api/projects/${P}/settings` && req.method === "GET") return send(200, settingsView());
+    if (u === `/api/projects/${P}/settings/impact`) {
+      const r = cc0.ProjectSettingsSchema.safeParse(b.settings);
+      if (!r.success) return send(400, { error: { code: "AURA-SET-400", message: r.error.issues[0].message } });
+      const changed = []; const walk = (a, c, pre) => { if (a && c && typeof a === "object" && !Array.isArray(a)) { for (const k of new Set([...Object.keys(a), ...Object.keys(c)])) walk(a[k], c[k], pre ? pre + "." + k : k); } else if (JSON.stringify(a ?? null) !== JSON.stringify(c ?? null)) changed.push(pre); };
+      walk(ST.settings, r.data, "");
+      const impact = []; if (changed.some((c) => c.startsWith("style"))) impact.push({ path: "style", label: "Visual style", effect: "New shot prompts will use it. Nothing compiled yet." });
+      if (changed.includes("technical.loudness_standard")) { const t = cc0.loudnessTarget(r.data.technical.loudness_standard); impact.push({ path: "technical.loudness_standard", label: "Loudness standard", effect: `Audio Studio and deliverable QC will check ${t.integrated_lufs} LUFS ±${t.tolerance_lu}. 0 approved scene mixes stay approved — the check is advisory and mixes are never re-levelled automatically.` }); }
+      if (changed.includes("generation.monthly_paid_take_limit")) impact.push({ path: "generation.monthly_paid_take_limit", label: "Monthly paid takes", effect: r.data.generation.monthly_paid_take_limit === null ? "No monthly cap on paid generations." : `0 of ${r.data.generation.monthly_paid_take_limit} paid takes used this month.` });
+      if (changed.some((c) => c.startsWith("production"))) impact.push({ path: "production", label: "Credits", effect: "Written into files rendered from now on. Files already rendered keep what they have." });
+      if (changed.includes("delivery.required_profiles")) impact.push({ path: "delivery.required_profiles", label: "Required deliverables", effect: `Export & Deliver will track ${r.data.delivery.required_profiles.length} required deliverables.` });
+      return send(200, { changed, impact });
+    }
+    if (u === `/api/projects/${P}/settings` && req.method === "PUT") {
+      const r = cc0.ProjectSettingsSchema.safeParse(b.settings);
+      if (!r.success) return send(400, { error: { code: "AURA-SET-400", message: r.error.issues[0].message } });
+      if ((ST.revision ?? null) !== (b.base_revision ?? null)) return send(409, { error: { code: "AURA-SET-409", message: "someone changed the settings since you opened them — reload to see their version" } });
+      Object.assign(ST, { settings: r.data, revision: crypto.randomUUID(), version_number: ST.version_number + 1, updated_at: now() });
+      ST.versions.unshift({ version_number: ST.version_number, changed: ["settings"], created_at: now() });
+      return send(200, settingsView());
+    }
     if (u === `/api/projects/${P}/script`) return send(200, ws());
     if (u === `/api/projects/${P}/scope-plan`) return send(200, { plan: project.target_runtime_minutes ? eng.runtimeScopeEngine({ target_runtime_minutes: project.target_runtime_minutes, genre: project.genre, type: project.type }) : null });
     if (u === `/api/projects/${P}/script/versions`) {
@@ -352,7 +381,9 @@ http.createServer((req, res) => {
           }) });
       }
       const all = out.flatMap((x) => x.shots);
-      return send(200, { providers: gw.providerStatuses({}, {}), media_ready: true, queue: { waiting: takes.filter((t) => t.status === "queued").length, running: takes.filter((t) => t.status === "running").length },
+      return send(200, { providers: gw.providerStatuses({}, {}), media_ready: true,
+        defaults: { aspect_ratio: ST.settings.technical.aspect_ratio, image_provider: ST.settings.generation.default_image_provider, video_provider: ST.settings.generation.default_video_provider },
+        budget: { monthly_paid_take_limit: ST.settings.generation.monthly_paid_take_limit, used_this_month: 0 }, queue: { waiting: takes.filter((t) => t.status === "queued").length, running: takes.filter((t) => t.status === "running").length },
         scenes: out, summary: { scenes: out.length, shots: all.length, with_approved_take: all.filter((x) => x.approved_take_id).length, takes: takes.length } });
     }
     if ((m = u.match(/^\/api\/projects\/[^/]+\/visual\/shots\/([^/]+)\/compile$/))) {
@@ -425,7 +456,7 @@ http.createServer((req, res) => {
             approved_version_number: s.approved_version_id ? aversions.find((v) => v.id === s.approved_version_id).version_number : null } : null,
           tracks: st, clips: sc.map(clipDTO), measurement: me, readiness: r ? r.readiness : [], ready_for_approval: r ? r.ready : false });
       }
-      return send(200, { target: { integrated_lufs: -23, tolerance_lu: 1, max_true_peak_dbtp: -1 },
+      return send(200, { target: { ...cc0.loudnessTarget(ST.settings.technical.loudness_standard), standard: ST.settings.technical.loudness_standard },
         generators: [{ id: "voice", label: "AI dialogue / voice (TTS)", note: "Needs a voice provider (e.g. OpenAI or ElevenLabs key).", state: "not_connected" }, { id: "music", label: "Music assistant", note: "Needs a music provider key.", state: "not_connected" }],
         assets: assets.map((a) => ({ id: a.id, name: a.name, duration_seconds: a.duration_seconds, media_type: a.media_type, created_at: a.created_at })),
         scenes: out, summary: { scenes: out.length, spotted: out.filter((x) => x.session).length, approved: out.filter((x) => x.session && x.session.status === "approved" && x.session.review_state === "current").length } });
@@ -632,7 +663,7 @@ http.createServer((req, res) => {
       const pv = list.find((r) => r.status === "succeeded" && r.review_state === "current" && r.outputs.some((o) => o.stream_url));
       return send(200, { project: { id: P, title: project.title },
         picture_lock: l ? { id: l.id, lock_number: l.lock_number, locked_at: l.locked_at, duration_frames: v.duration_frames, fps: 24 } : null,
-        timeline_status: timeline ? timeline.status : null, profiles: eng.deliveryProfiles(),
+        timeline_status: timeline ? timeline.status : null, profiles: eng.deliveryProfiles(), required_profiles: ST.settings.delivery.required_profiles,
         preflight: [
           { id: "picture_locked", label: "The picture is locked", ok: !!l, blocking: true, evidence: l ? `Picture Lock ${l.lock_number}` : timeline ? "The cut isn't locked — lock it in Editorial" : "No timeline yet — build it in Editorial" },
           { id: "lock_checks", label: "The locked cut passed the timeline checks", ok: !!l && !!(v.qc && v.qc.ready_for_lock), blocking: true, evidence: l ? "Recorded with the lock" : "—" },

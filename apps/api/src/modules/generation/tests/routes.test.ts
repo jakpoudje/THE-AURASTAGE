@@ -100,11 +100,22 @@ describe("Visual Generation routes", () => {
     rows.generation_packages = [{ id: PKG, project_id: P, shot_id: SHOT, shot_plan_version_id: PV1, content: {}, review_state: "current", review_reason: null, engine_version: "1.0.0", created_at: NOW }];
     const fake = fakeDb(rows, (fn, a) => ({ data: { ...rows.generation_packages[0], review_state: a.p_state, review_reason: a.p_reason } }));
     const ws = (await (await app(fake, {})).inject({ method: "GET", url: `/api/projects/${P}/visual` })).json();
-    expect(fake.calls[0]).toMatchObject({ fn: "set_package_review", args: { p_state: "stale" } });
+    expect(fake.calls.find((c) => c.fn === "set_package_review")).toMatchObject({ args: { p_state: "stale" } });
     expect(ws.scenes[0].shots[0].package.review_reason).toMatch(/approved again \(now version 2\)/);
   });
 
-  it("compiles a package from the approved shot, locked Scene DNA, Casting wardrobe and Dialogue", async () => {
+  it("a changed Project Settings look flags compiled prompts for review; defaults and the paid-take budget are reported", async () => {
+    rows.generation_packages = [{ id: PKG, project_id: P, shot_id: SHOT, shot_plan_version_id: PV1, content: { project: { look: "Old look" } }, review_state: "current", review_reason: null, engine_version: "1.1.0", created_at: NOW }];
+    rows.project_settings = [{ project_id: P, revision: "r", version_number: 4, settings: { style: { look: "Teal and amber" }, technical: { aspect_ratio: "2.39:1" }, generation: { monthly_paid_take_limit: 20 } } }];
+    const fake = fakeDb(rows, (fn, a) => ({ data: fn === "paid_takes_this_month" ? 3 : { ...rows.generation_packages[0], review_state: a.p_state, review_reason: a.p_reason } }));
+    const ws = (await (await app(fake, {})).inject({ method: "GET", url: `/api/projects/${P}/visual` })).json();
+    expect(fake.calls.find((c) => c.fn === "set_package_review")).toMatchObject({ args: { p_state: "review_required", p_reason: expect.stringMatching(/visual style changed/) } });
+    expect(ws.defaults.aspect_ratio).toBe("2.39:1");
+    expect(ws.budget).toEqual({ monthly_paid_take_limit: 20, used_this_month: 3 });
+  });
+
+  it("compiles a package from the approved shot, locked Scene DNA, Casting wardrobe, Dialogue and the project look", async () => {
+    rows.project_settings = [{ project_id: P, revision: "r", version_number: 2, settings: { style: { look: "Desaturated, handheld" } } }];
     const fake = fakeDb(rows, () => ({ data: { id: PKG } }));
     const res = await (await app(fake, {})).inject({ method: "POST", url: `/api/projects/${P}/visual/shots/${SHOT}/compile`, payload: { aspect_ratio: "16:9" } });
     expect(res.statusCode).toBe(200);
@@ -113,7 +124,8 @@ describe("Visual Generation routes", () => {
     expect(args).toMatchObject({ p_shot_id: SHOT, p_shot_plan_version_id: PV1, p_scene_id: S1 });
     expect(args.p_content.prompt).toContain("Tunde Okafor (35) — Journalist wearing Field outfit: Khaki jacket");
     expect(args.p_content.prompt).toContain('TUNDE (relief) says "You came."');
-    expect(args.p_content.provenance).toMatchObject({ shot_plan_version_id: PV1, scene_dna_version_id: DV });
+    expect(args.p_content.provenance).toMatchObject({ shot_plan_version_id: PV1, scene_dna_version_id: DV, settings_version: 2 });
+    expect(args.p_content.prompt).toContain("Look: Desaturated, handheld.");
     expect(res.json().checks.every((c: Row) => c.ok)).toBe(true);
   });
 

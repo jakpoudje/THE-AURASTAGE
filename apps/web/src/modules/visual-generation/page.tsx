@@ -27,7 +27,6 @@ export default function VisualGenerationPage() {
   const { id } = useParams<{ id: string }>();
   const d = useVisual(id);
   const [shotId, setShotId] = useState<string | null>(null);
-  const [aspect] = useState("16:9");
 
   if (d.loading) return <div className="p-12 text-center text-white/50">Opening Visual Generation…</div>;
   if (!d.project || !d.ws) {
@@ -130,7 +129,7 @@ export default function VisualGenerationPage() {
                   onCancel={d.cancel}
                 />
               </div>
-              <PromptPanel s={cur.s} usable={cur.sc.plan.usable} busy={d.busy === "compile"} onCompile={() => d.compile(cur.s.shot.id, aspect)} />
+              <PromptPanel s={cur.s} usable={cur.sc.plan.usable} busy={d.busy === "compile"} onCompile={() => d.compile(cur.s.shot.id, ws.defaults?.aspect_ratio ?? "16:9")} />
             </div>
 
             <div className="space-y-4">
@@ -138,6 +137,8 @@ export default function VisualGenerationPage() {
                 key={cur.s.shot.id}
                 s={cur.s}
                 providers={ws.providers}
+                defaults={ws.defaults}
+                budget={ws.budget}
                 mediaReady={ws.media_ready}
                 usable={cur.sc.plan.usable}
                 busy={d.busy === "generate"}

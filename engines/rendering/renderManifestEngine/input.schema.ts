@@ -3,8 +3,13 @@ import { RenderOptionsSchema, TimelineClipSchema } from "@aurastage/contracts";
 import { DeliveryProfileSchema } from "../deliveryProfileEngine/output.schema";
 
 const num = z.coerce.number();
+/** Project Settings credits written into rendered files' metadata (renderManifest ≥ 1.1.0). */
+export const ProjectCreditsSchema = z.object({
+  director: z.string().nullable(), producer: z.string().nullable(), company: z.string().nullable(),
+  copyright: z.string().nullable(), year: z.number().int().nullable(),
+}).partial();
 export const RenderManifestInputSchema = z.object({
-  project: z.object({ id: z.string(), title: z.string() }),
+  project: z.object({ id: z.string(), title: z.string(), credits: ProjectCreditsSchema.optional() }),
   profile: DeliveryProfileSchema,
   options: RenderOptionsSchema,
   picture_lock: z.object({ id: z.string(), lock_number: z.number().int(), timeline_version_id: z.string() }),

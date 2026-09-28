@@ -140,4 +140,22 @@ describe("Export & Deliver routes", () => {
     expect(res.statusCode).toBe(403);
     expect(res.json().error).toEqual({ code: "AURA-EXP-403", message: "your role (Reviewer) can't create in Export & Deliver. Ask the project's producer for access." });
   });
+
+  // Project Settings: loudness standard in the manifest (QC checks it), credits, required deliverables.
+  it("uses the project's loudness standard, credits and required deliverables", async () => {
+    locked();
+    rows.project_settings = [{ project_id: P, revision: "r", version_number: 3, settings: {
+      technical: { loudness_standard: "streaming" }, delivery: { required_profiles: ["streaming_master", "subtitles"] },
+      production: { director: "Ada Obi", company: "Lagos Pictures", year: 2026, copyright: "© 2026 Lagos Pictures" } } }];
+    rows.renders = [{ id: R1, project_id: P, profile_id: "subtitles", status: "succeeded", qc_passed: true, picture_lock_id: LOCK, lock_number: 1, review_state: "current", review_reason: null, outputs: [] }];
+    const ws = (await (await app(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/delivery` })).json();
+    expect(ws.required_profiles).toEqual(["streaming_master", "subtitles"]);
+    expect(ws.preflight.find((c: Row) => c.id === "mix_loudness").label).toBe("Scene mixes were measured at -14 LUFS ±1 (Streaming / online)");
+    expect(ws.preflight.find((c: Row) => c.id === "required_deliverables")).toMatchObject({ ok: false, blocking: false, evidence: expect.stringMatching(/^1 of 2 done — still to render: Streaming Master/) });
+    const fake = fakeDb(rows, () => ({ data: { id: R1 } }));
+    await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/delivery/renders`, payload: { profile_id: "streaming_master" } });
+    const m = fake.calls.find((c) => c.fn === "create_render")!.args.p_manifest;
+    expect(m.profile.loudness).toMatchObject({ integrated_lufs: -14, tolerance_lu: 1, standard: "Streaming / online" });
+    expect(m.project.credits).toMatchObject({ director: "Ada Obi", company: "Lagos Pictures", year: 2026 });
+  });
 });

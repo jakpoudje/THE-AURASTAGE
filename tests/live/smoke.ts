@@ -494,6 +494,56 @@ await check("delivery: signed downloads return the exact bytes (SHA-256 matches)
   assert(d.preview && d.preview.url, "no preview");
   return `master ${(bytes.length / 1024).toFixed(0)} KB`;
 });
+// ---- Completion pass 12a: Project Settings drive the other workspaces ----
+await check("settings: defaults first; the story is inherited from Scriptwriter", async () => {
+  const st = await api("GET", `/api/projects/${projectId}/settings`);
+  assert(st.version_number === 0 && st.settings.technical.loudness_standard === "ebu_r128" && st.story.title, `defaults ${JSON.stringify(st).slice(0, 200)}`);
+  assert(st.facts.some((f: any) => f.value === "24 fps") && st.delivery_profiles.some((p: any) => p.id === "streaming_master"), "facts/profiles");
+});
+await check("settings: preview the impact, save a version; a stale save is refused (409) and nothing is overwritten", async () => {
+  const st = await api("GET", `/api/projects/${projectId}/settings`);
+  const next = {
+    ...st.settings,
+    style: { look: "Desaturated teal-and-amber, handheld", palette: ["#1f6f78", "#e0a458"] },
+    generation: { ...st.settings.generation, monthly_paid_take_limit: 50 },
+    delivery: { required_profiles: ["streaming_master", "subtitles"] },
+    production: { ...st.settings.production, director: "Live Check Director", company: "AuraStage Live", year: 2026, copyright: "© 2026 AuraStage Live" },
+  };
+  await api("PUT", `/api/projects/${projectId}/settings`, { base_revision: st.revision, settings: { ...next, technical: { aspect_ratio: "5:4", loudness_standard: "ebu_r128" } } }, [400]);
+  const imp = await api("POST", `/api/projects/${projectId}/settings/impact`, { settings: next });
+  const labels = imp.impact.map((i: any) => i.label);
+  assert(["Visual style", "Monthly paid takes", "Required deliverables", "Credits"].every((l) => labels.includes(l)), labels.join(","));
+  assert(/compiled shot prompt/.test(imp.impact.find((i: any) => i.label === "Visual style").effect), "style impact should count compiled prompts");
+  const saved = await api("PUT", `/api/projects/${projectId}/settings`, { base_revision: st.revision, settings: next });
+  assert(saved.version_number === 1 && saved.revision > st.revision, `v${saved.version_number}`);
+  await api("PUT", `/api/projects/${projectId}/settings`, { base_revision: st.revision, settings: { ...next, production: { ...next.production, director: "Overwriter" } } }, [409]);
+  const again = await api("GET", `/api/projects/${projectId}/settings`);
+  assert(again.settings.production.director === "Live Check Director" && again.versions.length === 1, "overwritten or not persisted");
+  return imp.impact.map((i: any) => i.label).join(", ");
+});
+await check("settings → visual: look flags the compiled prompt for review; defaults and budget come from settings", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/visual`);
+  const s = ws.scenes[0].shots[0];
+  assert(s.package.review_state === "review_required" && /visual style changed/.test(s.package.review_reason ?? ""), `package ${s.package.review_state}`);
+  assert(s.approved_take_id === takeId, "approved take must be kept");
+  assert(ws.defaults.aspect_ratio === "16:9" && ws.budget.monthly_paid_take_limit === 50 && ws.budget.used_this_month === 0, JSON.stringify(ws.budget));
+  const c = await api("POST", `/api/projects/${projectId}/visual/shots/${s.shot.id}/compile`, { aspect_ratio: ws.defaults.aspect_ratio });
+  assert(/Look: Desaturated teal-and-amber/.test(c.prompt) && c.checks.some((k: any) => k.id === "style" && k.ok), "look missing from prompt");
+  const after = await api("GET", `/api/projects/${projectId}/visual`);
+  assert(after.scenes[0].shots[0].package.review_state === "current", "recompiled prompt should be current");
+});
+await check("settings → delivery: required deliverables tracked; credits written into the render manifest", async () => {
+  const d = await dvWs();
+  assert(JSON.stringify(d.required_profiles) === JSON.stringify(["streaming_master", "subtitles"]), "required_profiles");
+  const req = d.preflight.find((c: any) => c.id === "required_deliverables");
+  assert(req && req.blocking === false, "required_deliverables check");
+  const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "edit_decision_list" });
+  const m = await api("GET", `/api/renders/${r.render_id}/manifest`);
+  await api("POST", `/api/renders/${r.render_id}/cancel`, {});
+  const cr = m.manifest.project.credits;
+  assert(cr?.director === "Live Check Director" && cr.company === "AuraStage Live" && cr.year === 2026, JSON.stringify(cr));
+  return req.evidence;
+});
 await check("storyboard: a Casting change flows through Scene DNA and flags the shots", async () => {
   await api("PATCH", `/api/characters/${tundeId}`, { description: "Back on the story" });
   const ws = await api("GET", `/api/projects/${projectId}/storyboard`);

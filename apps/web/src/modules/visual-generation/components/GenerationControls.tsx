@@ -34,6 +34,8 @@ export function ProviderList({ providers }: { providers: ProviderStatus[] }) {
 export function GenerationControls({
   s,
   providers,
+  defaults,
+  budget,
   mediaReady,
   usable,
   busy,
@@ -41,6 +43,8 @@ export function GenerationControls({
 }: {
   s: VisualShot;
   providers: ProviderStatus[];
+  defaults?: { aspect_ratio: string; image_provider: string | null; video_provider: string | null };
+  budget?: { monthly_paid_take_limit: number | null; used_this_month: number };
   mediaReady: boolean;
   usable: boolean;
   busy: boolean;
@@ -48,12 +52,13 @@ export function GenerationControls({
 }) {
   const [capability, setCapability] = useState<"image" | "video">("image");
   const available = providers.filter((p) => p.capabilities.includes(capability));
-  const [providerId, setProviderId] = useState<string>("aurastage-sketch");
+  // Project Settings chooses the default provider per capability; otherwise the built-in Sketch.
+  const [providerId, setProviderId] = useState<string>(defaults?.image_provider ?? "aurastage-sketch");
   const provider = available.find((p) => p.id === providerId) ?? available[0];
   const models = provider?.models.filter((m) => m.capability === capability) ?? [];
   const [modelId, setModelId] = useState<string>("");
   const model = models.find((m) => m.id === modelId) ?? models[0];
-  const [ratio, setRatio] = useState<AspectRatio>("16:9");
+  const [ratio, setRatio] = useState<AspectRatio>((defaults?.aspect_ratio as AspectRatio) ?? "16:9");
   const [variations, setVariations] = useState(1);
   const [duration, setDuration] = useState(5);
   const [seed, setSeed] = useState("");
@@ -81,7 +86,7 @@ export function GenerationControls({
       <h3 className="font-display text-lg">Generation controls</h3>
       <div className="mt-3 flex gap-1 rounded-md border border-aura-border p-1 text-sm" role="radiogroup" aria-label="Output type">
         {(["image", "video"] as const).map((c) => (
-          <button key={c} role="radio" aria-checked={capability === c} onClick={() => setCapability(c)} className={`flex-1 rounded px-2 py-1 ${capability === c ? "bg-aura-gold text-black" : "text-white/60"}`}>
+          <button key={c} role="radio" aria-checked={capability === c} onClick={() => { setCapability(c); const d = c === "image" ? defaults?.image_provider : defaults?.video_provider; if (d) setProviderId(d); }} className={`flex-1 rounded px-2 py-1 ${capability === c ? "bg-aura-gold text-black" : "text-white/60"}`}>
             {c === "image" ? "Text → Image" : "Image → Video"}
           </button>
         ))}
@@ -168,6 +173,11 @@ export function GenerationControls({
         {busy ? "Queuing…" : `Generate ${variations > 1 ? `${variations} takes` : "shot"}`}
       </button>
       {blocker && <p className="mt-2 text-xs text-white/50">{blocker}</p>}
+      {budget && budget.monthly_paid_take_limit !== null && (
+        <p className="mt-2 text-xs text-white/50" data-testid="paid-budget">
+          Paid takes this month: {budget.used_this_month} of {budget.monthly_paid_take_limit} (Project Settings). AuraStage Sketch doesn&apos;t count.
+        </p>
+      )}
     </div>
   );
 }

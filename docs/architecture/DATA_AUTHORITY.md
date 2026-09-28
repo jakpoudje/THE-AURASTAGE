@@ -8,6 +8,7 @@ character, scene, shot or technical truth.
 | Organization | Collaboration | Tenant/studio boundary |
 | OrgMember / ProjectMember / ProjectRole / Invite | Collaboration | Who may do what (migration 0019); enforced by `gate_write` and project-scoped RLS |
 | Project | Project Settings + Scriptwriter-owned story fields | Production root |
+| ProjectSettings / ProjectSettingsVersion | Project Settings | Versioned production-wide choices (loudness standard, frame shape, look, providers, paid-take cap, required deliverables, credits); migration 0023 |
 | Script / Act / Sequence / Scene | Scriptwriter | Versioned screenplay + narrative hierarchy |
 | Character | Casting | Canonical identity |
 | CharacterState | Casting + Scene DNA resolution | Story-time look/condition/knowledge/emotion |
@@ -29,8 +30,10 @@ character, scene, shot or technical truth.
 
 - Target runtime, genre, setting, period and narrative structure are edited in
   Scriptwriter. Project Settings displays them as inherited and links back.
-- Master frame rate, aspect ratio, color pipeline, sample rate and provider policy are
-  edited in Project Settings and inherited by production pages.
+- Aspect ratio for new prompts, loudness standard, look, default providers, paid-take cap,
+  required deliverables and credits are edited in Project Settings and inherited by production
+  pages. Frame rate (24 fps), colour pipeline (Rec.709), master resolution (1080p) and sample
+  rate (48 kHz) are fixed by the pipeline today; Project Settings shows them with the reason.
 - Character identity is edited in Casting. Scene DNA selects the correct CharacterState
   for a story moment; it does not redefine the character.
 - Approved dialogue text is owned by Dialogue Intelligence. Audio Studio realizes it

@@ -21,6 +21,7 @@ import { registerAudioRoutes } from "./modules/audio/audio.controller";
 import { registerEditorialRoutes } from "./modules/editorial/editorial.controller";
 import { registerRenderingRoutes } from "./modules/rendering/rendering.controller";
 import { registerHelpRoutes } from "./modules/help/help.controller";
+import { registerSettingsRoutes } from "./modules/settings/settings.controller";
 
 const app = Fastify({ logger: true });
 
@@ -51,6 +52,7 @@ async function main() {
   await registerEditorialRoutes(app);
   await registerRenderingRoutes(app);
   await registerHelpRoutes(app);
+  await registerSettingsRoutes(app);
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });

@@ -7,7 +7,7 @@
 // approve. Upstream changes mark sessions stale / review_required; recordings
 // are never removed (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { LOUDNESS_TARGET } from "@aurastage/contracts";
+import { loudnessTarget } from "@aurastage/contracts";
 import { audioSpotting, audioSpottingEngine } from "@aurastage/engines";
 // Storyboard owns plan review state; ask it to refresh (it refreshes Scene DNA first).
 import { refreshShotPlanReview } from "../shots/shots.service";
@@ -15,6 +15,8 @@ import { assertClipAccess, assertProjectAccess, assertSceneInProject, assertSess
 import * as repo from "./audio.repository";
 import { toClipDTO, toMeasurementDTO, toTrackDTO } from "./audio.mapper";
 import { audioReadiness } from "./audio.readiness";
+// Project Settings owns the loudness standard; Audio reads it.
+import { readProjectSettings } from "../settings/settings.read";
 import { AudioNotReadyError, validateClipPatch, validateMeasurement, validateTrackPatch } from "./audio.validator";
 
 export const SPOTTING_ENGINE_VERSION = audioSpotting.ENGINE_VERSION;
@@ -56,6 +58,7 @@ export async function refreshAudioReview(db: SupabaseClient, projectId: string) 
 export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
   await refreshAudioReview(db, projectId);
+  const standard = (await readProjectSettings(db, projectId)).settings.technical.loudness_standard;
   const [scenes, plans, versions, sessions, tracks, clips, measurements, sessionVersions, assets] = await Promise.all([
     repo.listScenes(db, projectId), repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId), repo.listSessions(db, projectId),
     repo.listTracks(db, projectId), repo.listClips(db, projectId), repo.listMeasurements(db, projectId), repo.listVersions(db, projectId),
@@ -70,7 +73,7 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
     const st = session ? tracks.filter((t) => t.session_id === session!.id) : [];
     const sc = session ? clips.filter((c) => c.session_id === session!.id) : [];
     const m = session ? measurements.find((x) => x.session_id === session!.id) ?? null : null;
-    const ready = session ? audioReadiness(session, st, sc, m) : null;
+    const ready = session ? audioReadiness(session, st, sc, m, standard) : null;
     out.push({
       scene: { id: scene.id, number: scene.number, heading: scene.heading },
       plan: pv ? { version_id: pv.id, version_number: pv.version_number, usable: plan!.status === "approved" && plan!.review_state === "current" } : null,
@@ -89,7 +92,7 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
     });
   }
   return {
-    target: LOUDNESS_TARGET,
+    target: { ...loudnessTarget(standard), standard },
     generators: GENERATORS,
     assets: assets.map((a) => ({ id: a.id, name: a.name, duration_seconds: a.metadata?.duration_seconds ?? null, media_type: a.metadata?.media_type ?? null, created_at: a.created_at })),
     scenes: out,

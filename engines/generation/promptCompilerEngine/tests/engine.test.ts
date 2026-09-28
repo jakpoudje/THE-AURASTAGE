@@ -41,7 +41,7 @@ describe("promptCompilerEngine", () => {
   it("only includes characters in frame and records exact provenance", () => {
     const { package: p } = promptCompilerEngine(base());
     expect(p.characters.map((c) => c.name)).toEqual(["Amara Bello"]);
-    expect(p.provenance).toEqual({ shot_id: SH, shot_plan_version_id: PV, scene_dna_version_id: DV, script_version_id: null, character_ids: [A], dialogue_line_ids: [L1] });
+    expect(p.provenance).toEqual({ shot_id: SH, shot_plan_version_id: PV, scene_dna_version_id: DV, script_version_id: null, character_ids: [A], dialogue_line_ids: [L1], settings_version: null });
     expect(p.negative).toContain("no people other than Amara Bello");
   });
 
@@ -61,5 +61,15 @@ describe("promptCompilerEngine", () => {
 
   it("is deterministic", () => {
     expect(promptCompilerEngine(base())).toEqual(promptCompilerEngine(base()));
+  });
+
+  it("applies the Project Settings look and records its settings version (1.1.0)", () => {
+    const withLook = { ...base(), project: { ...base().project, look: "Desaturated teal-and-amber, handheld" }, provenance: { ...base().provenance, settings_version: 3 } };
+    const { package: p, engine_version } = promptCompilerEngine(withLook);
+    expect(engine_version).toBe("1.1.0");
+    expect(p.prompt).toContain("Look: Desaturated teal-and-amber, handheld.");
+    expect(p.provenance.settings_version).toBe(3);
+    expect(p.checks.find((c) => c.id === "style")).toMatchObject({ ok: true, evidence: expect.stringContaining("settings v3") });
+    expect(promptCompilerEngine(base()).package.checks.find((c) => c.id === "style")).toMatchObject({ ok: false });
   });
 });

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NEUTRAL_GRADE } from "@aurastage/contracts";
 import { getDeliveryProfile, renderManifestEngine, type RenderManifest } from "@aurastage/engines";
-import { encodeArgs, renderDeliverable, type RenderClaim } from "./render";
+import { creditMetadata, encodeArgs, renderDeliverable, type RenderClaim } from "./render";
 import { gradeFilter } from "./picture";
 
 const hasFfmpeg = (() => {
@@ -130,6 +130,13 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
     expect(a).not.toContain("-frames:v");
     expect(a[a.indexOf("-t") + 1]).toBe("2.000000");
     expect(a.slice(0, 4)).toEqual(["-map", "0:v:0", "-map", "1:a:0"]);
+  });
+  it("writes Project Settings credits into the file's metadata, and nothing when none are set", () => {
+    const m = manifest("streaming_master");
+    expect(creditMetadata(m)).toEqual([]);
+    const withCredits = { ...m, project: { ...m.project, credits: { director: "Ada Obi", company: "Lagos Pictures", year: 2026, copyright: null } } };
+    expect(creditMetadata(withCredits)).toEqual(["-metadata", "artist=Ada Obi", "-metadata", "director=Ada Obi", "-metadata", "publisher=Lagos Pictures", "-metadata", "date=2026"]);
+    expect(encodeArgs(withCredits, [], "out.mp4")).toContain("publisher=Lagos Pictures");
   });
   it("grade filter is neutral when the grade is", () => {
     expect(gradeFilter(NEUTRAL_GRADE)).toBeNull();

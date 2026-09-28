@@ -139,7 +139,9 @@ where n.nspname = 'public' and p.prosecdef and has_function_privilege('authentic
     -- 0021: read-only lists, and marking one's own notifications read
     'list_comments','list_tasks','project_activity','mark_notifications_read',
     -- 0022: platform status (aggregates), one's own tickets and sessions (not project writes)
-    'platform_status','is_platform_staff','create_ticket','reply_ticket','close_ticket','list_tickets','my_sessions','revoke_sessions');
+    'platform_status','is_platform_staff','create_ticket','reply_ticket','close_ticket','list_tickets','my_sessions','revoke_sessions',
+    -- 0023: read-only count for the generation budget
+    'paid_takes_this_month');
 insert into r(step, ok) values ('bodies are not callable directly',
   (select has_function_privilege('authenticated', 'app_private.save_script_version(uuid,uuid,text,jsonb,text,text)', 'execute')::text));
 

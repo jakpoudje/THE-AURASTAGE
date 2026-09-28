@@ -25,6 +25,8 @@ export interface DeliveryWorkspace {
   timeline_status: "draft" | "locked" | null;
   profiles: DeliveryProfile[];
   preflight: PreflightCheck[];
+  /** Required deliverables from Project Settings. */
+  required_profiles?: string[];
   renders: Deliverable[];
   preview: { render_id: string; label: string; url: string } | null;
   queue: { waiting: number; running: number };

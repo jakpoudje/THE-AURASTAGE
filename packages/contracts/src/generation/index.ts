@@ -32,7 +32,11 @@ export type AspectRatio = z.infer<typeof AspectRatioSchema>;
 
 /** SRS §10 GenerationPackage blocks. Every block cites where it came from. */
 export const GenerationPackageContentSchema = z.object({
-  project: z.object({ title: z.string(), genre: z.string().nullable(), tone: z.string().nullable(), setting: z.string().nullable(), time_period: z.string().nullable() }),
+  project: z.object({
+    title: z.string(), genre: z.string().nullable(), tone: z.string().nullable(), setting: z.string().nullable(), time_period: z.string().nullable(),
+    /** Project Settings look (promptCompilerEngine ≥ 1.1.0). */
+    look: z.string().nullable().optional(),
+  }),
   scene: z.object({
     number: z.number().int(),
     heading: z.string(),
@@ -71,6 +75,8 @@ export const GenerationPackageContentSchema = z.object({
     script_version_id: z.string().uuid().nullable(),
     character_ids: z.array(z.string().uuid()),
     dialogue_line_ids: z.array(z.string().uuid()),
+    /** Project Settings version the look came from (≥ 1.1.0; null when no settings were saved). */
+    settings_version: z.number().int().nullable().optional(),
   }),
   /** Boolean checks with evidence shown as badges (never a score). */
   checks: z.array(z.object({ id: z.string(), label: z.string(), ok: z.boolean(), evidence: z.string() })),

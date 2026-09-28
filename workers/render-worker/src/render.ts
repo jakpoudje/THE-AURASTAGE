@@ -45,8 +45,17 @@ export function encodeArgs(m: RenderManifest, filters: string[], out: string): s
     "-map", "0:v:0", "-map", "1:a:0", ...(filters.length ? ["-vf", filters.join(",")] : []),
     "-t", secs.toFixed(6), "-r", String(m.fps), ...vcodec,
     "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
-    ...acodec, "-ar", String(SAMPLE_RATE), "-ac", "2", "-metadata", `title=${m.project.title}`, out,
+    ...acodec, "-ar", String(SAMPLE_RATE), "-ac", "2", "-metadata", `title=${m.project.title}`, ...creditMetadata(m), out,
   ];
+}
+
+/** Project Settings credits (manifest ≥ 1.1.0) as container metadata; only the ones that are set. */
+export function creditMetadata(m: RenderManifest): string[] {
+  const c = m.project.credits ?? {};
+  const tags: [string, string | number | null | undefined][] = [
+    ["artist", c.director], ["director", c.director], ["producer", c.producer], ["publisher", c.company], ["copyright", c.copyright], ["date", c.year],
+  ];
+  return tags.flatMap(([k, v]) => (v === null || v === undefined || v === "" ? [] : ["-metadata", `${k}=${String(v).replace(/[\r\n]+/g, " ")}`]));
 }
 
 /** Escapes a path for use inside an ffmpeg filter argument. */

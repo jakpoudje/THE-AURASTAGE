@@ -14,6 +14,9 @@ export interface VisualShot {
 export interface VisualWorkspace {
   providers: ProviderStatus[];
   media_ready: boolean;
+  /** From Project Settings. */
+  defaults: { aspect_ratio: string; image_provider: string | null; video_provider: string | null };
+  budget: { monthly_paid_take_limit: number | null; used_this_month: number };
   queue: { waiting: number; running: number };
   scenes: {
     scene: { id: string; number: number; heading: string };

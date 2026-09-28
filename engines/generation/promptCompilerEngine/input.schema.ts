@@ -8,6 +8,8 @@ export const PromptCompilerInputSchema = z.object({
     tone: z.string().nullable(),
     setting: z.string().nullable(),
     time_period: z.string().nullable(),
+    /** Project Settings look, added to every prompt (null when not set). */
+    look: z.string().nullable().default(null),
   }),
   scene: z.object({
     number: z.number().int(),
@@ -51,6 +53,8 @@ export const PromptCompilerInputSchema = z.object({
     shot_plan_version_id: z.string().uuid(),
     scene_dna_version_id: z.string().uuid(),
     script_version_id: z.string().uuid().nullable(),
+    /** Project Settings version the look was read from. */
+    settings_version: z.number().int().nullable().default(null),
   }),
 });
 export type PromptCompilerInput = z.input<typeof PromptCompilerInputSchema>;

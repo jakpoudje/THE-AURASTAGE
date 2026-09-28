@@ -14,6 +14,8 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   const text = msg.replace(/^AURA-GEN-\d+:\s*/, "");
   if (msg.startsWith("AURA-GEN-409")) return new GenerationConflictError(text);
   if (msg.startsWith("AURA-GEN-412")) return new GenerationNotReadyError(text);
+  // Monthly paid-take cap from Project Settings (migration 0023).
+  if (msg.startsWith("AURA-GEN-402")) return new GenerationNotReadyError(text);
   if (msg.startsWith("AURA-GEN-404")) return new GenerationNotFoundError(text);
   if (msg.startsWith("AURA-GEN-403") || error.code === "42501") return new GenerationForbiddenError(colForbiddenMessage(error));
   if (msg.startsWith("AURA-GEN-400") || error.code === "23514") return new GenerationValidationError([], text || "That value isn't allowed");
@@ -73,3 +75,8 @@ export const setApproval = (db: SupabaseClient, id: string, approval: string) =>
 export const cancelTake = (db: SupabaseClient, id: string) => rpc(db, "cancel_take", { p_take_id: id });
 export const setPackageReview = (db: SupabaseClient, id: string, state: string, reason: string | null) =>
   rpc(db, "set_package_review", { p_package_id: id, p_state: state, p_reason: reason });
+export async function paidTakesThisMonth(db: SupabaseClient, projectId: string) {
+  const { data, error } = await db.rpc("paid_takes_this_month", { p_project: projectId });
+  if (error) throw mapDbError(error);
+  return Number(data ?? 0);
+}

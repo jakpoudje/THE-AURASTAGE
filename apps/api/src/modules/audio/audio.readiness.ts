@@ -1,11 +1,14 @@
 // apps/api/src/modules/audio/audio.readiness.ts
 // Readiness is a predicate list with evidence (CLAUDE.md rule 12) — never a percentage.
-import { FAMILY_BUS, LOUDNESS_TARGET } from "@aurastage/contracts";
-import type { AudioFamily, ReadinessPredicate } from "@aurastage/contracts";
+import { FAMILY_BUS, LOUDNESS_STANDARDS, loudnessTarget } from "@aurastage/contracts";
+import type { AudioFamily, LoudnessStandard, ReadinessPredicate } from "@aurastage/contracts";
 
 type Row = Record<string, any>;
 
-export function audioReadiness(session: Row, tracks: Row[], clips: Row[], measurement: Row | null): { readiness: ReadinessPredicate[]; ready: boolean } {
+/** `standard` comes from Project Settings (technical.loudness_standard); EBU R128 when none is set. */
+export function audioReadiness(session: Row, tracks: Row[], clips: Row[], measurement: Row | null, standard: LoudnessStandard = "ebu_r128"): { readiness: ReadinessPredicate[]; ready: boolean } {
+  const LOUDNESS_TARGET = loudnessTarget(standard);
+  const standardName = LOUDNESS_STANDARDS[standard].label.split(" (")[0];
   const family = new Map(tracks.map((t) => [t.id as string, t.family as AudioFamily]));
   const dialogueClips = clips.filter((c) => FAMILY_BUS[family.get(c.track_id) ?? "FX"] === "DX");
   const dxCues = dialogueClips.filter((c) => c.kind === "cue");
@@ -37,7 +40,7 @@ export function audioReadiness(session: Row, tracks: Row[], clips: Row[], measur
     },
     {
       id: "loudness_target",
-      label: `Integrated loudness ${LOUDNESS_TARGET.integrated_lufs} LUFS ±${LOUDNESS_TARGET.tolerance_lu} (EBU R128)`,
+      label: `Integrated loudness ${LOUDNESS_TARGET.integrated_lufs} LUFS ±${LOUDNESS_TARGET.tolerance_lu} (${standardName})`,
       ok: current && I !== null && Math.abs(I - LOUDNESS_TARGET.integrated_lufs) <= LOUDNESS_TARGET.tolerance_lu,
       blocking: false,
       evidence: current ? (I === null ? "Silent mix — no loudness" : `${I.toFixed(1)} LUFS`) : "Measure the current mix",

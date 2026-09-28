@@ -68,6 +68,13 @@ describe("audioReadiness", () => {
     r = audioReadiness(s, [track()], [clip({ kind: "asset", asset_id: "a" })], { session_revision: "old", integrated_lufs: "-23", measured_at: NOW });
     expect(r.readiness.find((p) => p.id === "measured")).toMatchObject({ ok: false, evidence: "The mix changed after the last measurement" });
   });
+  it("checks the loudness standard chosen in Project Settings", () => {
+    const m = { session_revision: REV, integrated_lufs: "-14.3", true_peak_dbtp: "-1.5", measured_at: NOW };
+    const clips = [clip({ kind: "asset", asset_id: "a" })];
+    expect(audioReadiness(session(), [track()], clips, m).readiness.find((p) => p.id === "loudness_target")).toMatchObject({ ok: false, label: expect.stringContaining("-23 LUFS") });
+    expect(audioReadiness(session(), [track()], clips, m, "streaming").readiness.find((p) => p.id === "loudness_target"))
+      .toMatchObject({ ok: true, label: "Integrated loudness -14 LUFS ±1 (Streaming / online)" });
+  });
 });
 
 describe("Audio Studio routes", () => {

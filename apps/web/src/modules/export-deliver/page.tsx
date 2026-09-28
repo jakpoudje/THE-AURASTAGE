@@ -88,7 +88,7 @@ export default function ExportDeliverPage() {
         )}
 
         <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-          <Presets profiles={ws.profiles} selected={profile.id} onSelect={setSelected} />
+          <Presets profiles={ws.profiles} selected={profile.id} onSelect={setSelected} required={ws.required_profiles ?? []} />
           <div className="min-w-0 space-y-4">
             <div className="overflow-hidden rounded-xl border border-aura-border bg-black">
               {ws.preview ? (

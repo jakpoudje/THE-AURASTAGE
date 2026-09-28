@@ -265,6 +265,26 @@ await check("comments: pin a comment to the timeline's timecode in Editorial; re
   await drawer.getByRole("tab", { name: "resolved" }).click();
   await drawer.getByText("Live check: trim the head of this shot.").waitFor();
 });
+await check("settings: open Project Settings from the sidebar, review and save; reload: kept; Export marks the required deliverable", async () => {
+  await page.goto(projectUrl + "/scriptwriter");
+  await page.getByRole("link", { name: "Project Settings" }).click();
+  await page.waitForURL("**/settings");
+  await page.getByRole("region", { name: "Story & Creative Summary" }).getByText("Inherited").waitFor();
+  await page.getByLabel("Look").fill("Live check look: warm tungsten, soft contrast");
+  await page.getByLabel("Director").fill("Live Check Director");
+  await page.getByRole("region", { name: "Delivery targets" }).getByLabel("Streaming Master").click();
+  await page.getByRole("button", { name: "Review changes" }).click();
+  const dlg = page.getByRole("dialog", { name: "What this changes" });
+  await dlg.getByText(/Written into files rendered from now on/).waitFor();
+  await dlg.getByRole("button", { name: "Save settings" }).click();
+  await page.getByRole("status").getByText(/Saved as settings version 1/).waitFor();
+  await page.reload();
+  await page.getByTestId("settings-version").getByText(/Version 1/).waitFor();
+  if ((await page.getByLabel("Director").inputValue()) !== "Live Check Director") throw new Error("director not kept after reload");
+  if ((await page.getByLabel("Look").inputValue()) !== "Live check look: warm tungsten, soft contrast") throw new Error("look not kept after reload");
+  await page.goto(projectUrl + "/export");
+  await page.getByRole("list", { name: "Presets" }).getByRole("button", { name: /Streaming Master/ }).first().getByText("Required").waitFor();
+});
 await check("help: open Help from a workspace; live status and the assistant answer; account shows this device", async () => {
   await page.goto(projectUrl + "/export");
   await page.getByText("Every Screen").waitFor();

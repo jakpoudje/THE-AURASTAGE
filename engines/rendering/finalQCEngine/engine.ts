@@ -33,7 +33,7 @@ export function finalQCEngine(raw: unknown): FinalQCOutput {
       add({ id: `audio_duration:${f.name}`, label: "Sound runs exactly as long as the locked cut", ok: !!a && Math.abs(a.duration - secs) <= tol + 0.05, blocking: true, evidence: a ? `${a.duration.toFixed(3)} s vs ${secs.toFixed(3)} s` : "No audio stream", file: f.name });
       if (p.loudness && f.loudness && (f.name.endsWith(".mp4") || f.name.endsWith(".mov") || f.name === "mix.wav")) {
         const I = f.loudness.integrated_lufs, TP = f.loudness.true_peak_dbtp;
-        add({ id: `loudness:${f.name}`, label: `Loudness ${p.loudness.integrated_lufs} LUFS ±${p.loudness.tolerance_lu} (EBU R128)`, ok: I !== null && Math.abs(I - p.loudness.integrated_lufs) <= p.loudness.tolerance_lu, blocking: false, evidence: I === null ? "Silent" : `${I.toFixed(1)} LUFS`, file: f.name });
+        add({ id: `loudness:${f.name}`, label: `Loudness ${p.loudness.integrated_lufs} LUFS ±${p.loudness.tolerance_lu} (${p.loudness.standard ?? "EBU R128"})`, ok: I !== null && Math.abs(I - p.loudness.integrated_lufs) <= p.loudness.tolerance_lu, blocking: false, evidence: I === null ? "Silent" : `${I.toFixed(1)} LUFS`, file: f.name });
         add({ id: `true_peak:${f.name}`, label: `True peak ≤ ${p.loudness.max_true_peak_dbtp} dBTP`, ok: TP !== null && TP <= p.loudness.max_true_peak_dbtp, blocking: false, evidence: TP === null ? "No signal" : `${TP.toFixed(1)} dBTP`, file: f.name });
       }
     }

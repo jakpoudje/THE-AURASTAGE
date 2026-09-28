@@ -12,3 +12,4 @@ export * from "./rendering";
 export * from "./collaboration";
 export * from "./platform";
 export * from "./orchestration";
+export * from "./settings";

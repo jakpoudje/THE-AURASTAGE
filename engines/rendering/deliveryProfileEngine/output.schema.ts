@@ -27,7 +27,7 @@ export const DeliveryProfileSchema = z.object({
   video: VideoSpecSchema.nullable(),
   audio: AudioSpecSchema.nullable(),
   /** EBU R128. Advisory: the render never re-levels an approved mix. */
-  loudness: z.object({ integrated_lufs: z.number(), tolerance_lu: z.number(), max_true_peak_dbtp: z.number() }).nullable(),
+  loudness: z.object({ integrated_lufs: z.number(), tolerance_lu: z.number(), max_true_peak_dbtp: z.number(), standard: z.string().optional() }).nullable(),
   /** File names (without the project prefix) this profile produces. */
   files: z.array(z.string()),
   supports: z.object({ watermark: z.boolean(), burn_timecode: z.boolean(), subtitles_sidecar: z.boolean() }),
