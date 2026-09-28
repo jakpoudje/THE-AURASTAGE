@@ -1,6 +1,12 @@
 // apps/api/src/modules/generation/generation.events.ts
-// Typed domain events emitted after committed changes.
-// Domain: Visual Generation
-// Canonical object: GenerationPackage / Take
-
-export {};
+// Written transactionally into audit_events by the migration-0013 functions.
+export const GENERATION_EVENTS = {
+  PackageCompiled: "GenerationPackageCompiled",
+  TakesRequested: "TakesRequested",
+  TakeGenerated: "TakeGenerated",
+  TakeFailed: "TakeFailed",
+  TakeApproved: "TakeApproved",
+  TakeRejected: "TakeRejected",
+  TakeReopened: "TakeReopened",
+  UpstreamChanged: "UpstreamVersionChanged",
+} as const;

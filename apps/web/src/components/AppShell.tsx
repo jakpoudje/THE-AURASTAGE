@@ -15,7 +15,7 @@ export const STAGES = [
   { key: "dialogue", label: "Dialogue Intelligence", path: "dialogue" },
   { key: "scene-dna", label: "Scene DNA", path: "scene-dna" },
   { key: "storyboard", label: "Storyboard & Shots", path: "storyboard" },
-  { key: "visual", label: "Visual Generation" },
+  { key: "visual", label: "Visual Generation", path: "visual" },
   { key: "audio", label: "Audio Studio" },
   { key: "editorial", label: "Editorial & Timeline" },
   { key: "export", label: "Export & Deliver" },

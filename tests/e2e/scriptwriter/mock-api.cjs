@@ -6,7 +6,7 @@ const P = "11111111-1111-4111-8111-111111111111", ORG = "22222222-2222-4222-8222
 const now = () => new Date().toISOString();
 let project = { id: P, org_id: ORG, title: "Shadows of Lagos", type: "feature_film", genre: "Thriller", target_runtime_minutes: 110, status: "draft", created_at: now(), updated_at: now() };
 let script = null; const versions = []; let scenes = [];
-const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
+const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = [], packages = [], takes = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
 const ws = () => {
   const cur = script && versions.find((v) => v.id === script.current_version_id);
   return { script, current_version: cur || null, versions: versions.map(({ id, version_number, note, parser_version, created_at }) => ({ id, version_number, note, parser_version, created_at })).reverse(), scenes, analysis: cur ? eng.sceneBoundaryEngine({ elements: cur.elements }).analysis : null };
@@ -302,7 +302,7 @@ http.createServer((req, res) => {
       const c = cover(dna, planShots(plan));
       if (!c.ready_for_approval) return send(412, { error: { code: "AURA-SHOT-412", message: `Not ready to approve yet: ${c.readiness.filter((x) => x.blocking && !x.ok).map((x) => x.label.toLowerCase()).join("; ")}.` } });
       const v = { id: crypto.randomUUID(), plan_id: plan.id, version_number: planVersions.filter((x) => x.plan_id === plan.id).length + 1, shots: JSON.parse(JSON.stringify(planShots(plan))) };
-      planVersions.push(v); Object.assign(plan, { status: "approved", review_state: "current", review_reason: null, approved_version_id: v.id });
+      v.scene_dna_version_id = plan.scene_dna_version_id; planVersions.push(v); Object.assign(plan, { status: "approved", review_state: "current", review_reason: null, approved_version_id: v.id });
       return send(200, { version_id: v.id, version_number: v.version_number, coverage: c.coverage });
     }
     if ((m = u.match(/^\/api\/shots\/([^/]+)\/move$/))) {
@@ -319,6 +319,76 @@ http.createServer((req, res) => {
     if ((m = u.match(/^\/api\/shots\/([^/]+)$/)) && req.method === "DELETE") {
       const i = shots.findIndex((y) => y.id === m[1]); const x = shots[i]; shots.splice(i, 1); renumber(x.plan_id); touch(x.plan_id);
       return send(200, { deleted_ordinal: x.ordinal });
+    }
+
+    // ---- Visual Generation (mirrors apps/api/src/modules/generation + migration 0013; a stand-in worker
+    // finishes queued takes with the real AuraStage Sketch renderer from the Provider Gateway) ----
+    const gw = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/index.js"));
+    const runWorker = () => {
+      for (const t of takes) {
+        if (t.status === "running") {
+          const pkg = packages.find((x) => x.id === t.package_id);
+          const svg = gw.renderSketch({ capability: "image", model: t.model, package: pkg.content, aspect_ratio: t.params.aspect_ratio || "16:9", duration_seconds: null, seed: t.seed });
+          Object.assign(t, { status: "succeeded", media_type: "image/svg+xml", media_url: "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64"), cost_actual: 0, completed_at: now() });
+        } else if (t.status === "queued") { t.status = "running"; }
+      }
+    };
+    if (u === `/api/projects/${P}/visual` && req.method === "GET") {
+      runWorker();
+      const out = [];
+      for (const scene of scenes) {
+        const plan = plans.find((x) => x.scene_id === scene.id); const version = plan && planVersions.find((v) => v.id === plan.approved_version_id);
+        if (!plan || !version) continue;
+        const usable = plan.status === "approved" && plan.review_state === "current";
+        out.push({ scene: { id: scene.id, number: scene.number, heading: scene.heading },
+          plan: { id: plan.id, version_number: version.version_number, usable, status: plan.status, review_state: plan.review_state, review_reason: plan.review_reason },
+          shots: version.shots.map((shot) => {
+            const pkg = [...packages].reverse().find((x) => x.shot_id === shot.id) || null;
+            if (pkg) { if (pkg.shot_plan_version_id !== plan.approved_version_id) { pkg.review_state = "stale"; pkg.review_reason = `The shot plan was approved again (now version ${version.version_number}) after this was compiled.`; }
+              else if (!usable) { pkg.review_state = "review_required"; pkg.review_reason = "The shot plan has edits that aren't approved yet."; } else { pkg.review_state = "current"; pkg.review_reason = null; } }
+            const st = takes.filter((t) => t.shot_id === shot.id);
+            return { shot, package: pkg, takes: st, approved_take_id: (st.find((t) => t.approval === "approved") || {}).id || null };
+          }) });
+      }
+      const all = out.flatMap((x) => x.shots);
+      return send(200, { providers: gw.providerStatuses({}, {}), media_ready: true, queue: { waiting: takes.filter((t) => t.status === "queued").length, running: takes.filter((t) => t.status === "running").length },
+        scenes: out, summary: { scenes: out.length, shots: all.length, with_approved_take: all.filter((x) => x.approved_take_id).length, takes: takes.length } });
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/visual\/shots\/([^/]+)\/compile$/))) {
+      const plan = plans.find((pl) => { const v = planVersions.find((x) => x.id === pl.approved_version_id); return v && v.shots.some((x) => x.id === m[1]); });
+      if (!plan || plan.status !== "approved" || plan.review_state !== "current") return send(412, { error: { code: "AURA-GEN-412", message: "Approve this scene's shot plan again first — it has changes." } });
+      const version = planVersions.find((x) => x.id === plan.approved_version_id); const shot = version.shots.find((x) => x.id === m[1]);
+      const scene = scenes.find((x) => x.id === plan.scene_id); const dv = sdnaVersions.find((x) => x.id === version.scene_dna_version_id); const ed = dv.content.editable;
+      const look = (cid) => { const l = looks.find((x) => x.id === (ed.wardrobe || {})[cid]); return l ? [l.name, l.description].filter(Boolean).join(": ") : null; };
+      const r = eng.promptCompilerEngine({ project: { title: project.title, genre: project.genre ?? null, tone: project.tone ?? null, setting: project.setting ?? null, time_period: project.time_period ?? null },
+        scene: { number: scene.number, heading: scene.heading, location: scene.location, int_ext: scene.int_ext, time_of_day: scene.time_of_day, purpose: ed.purpose, mood: ed.mood || [], weather: ed.weather, atmosphere: ed.atmosphere, lighting_intent: ed.lighting_intent },
+        shot: { ...shot, lighting: shot.lighting ?? null, composition: shot.composition ?? null },
+        characters: chars.filter((c) => shot.character_ids.includes(c.id)).map((c) => ({ id: c.id, name: c.name, age: c.age ?? null, description: c.description ?? null, wardrobe: look(c.id) })),
+        dialogue: dlines.filter((l) => shot.dialogue_line_ids.includes(l.id)).map((l) => ({ id: l.id, speaker: l.speaker_name, text: l.text, emotion: l.emotion })),
+        aspect_ratio: b.aspect_ratio || "16:9", provenance: { shot_plan_version_id: version.id, scene_dna_version_id: dv.id, script_version_id: null } });
+      const pkg = { id: crypto.randomUUID(), shot_id: shot.id, shot_plan_version_id: version.id, content: r.package, review_state: "current", review_reason: null, engine_version: r.engine_version, created_at: now() };
+      packages.push(pkg); return send(200, { package_id: pkg.id, checks: r.package.checks, prompt: r.package.prompt });
+    }
+    if ((m = u.match(/^\/api\/visual\/packages\/([^/]+)\/takes$/))) {
+      const pkg = packages.find((x) => x.id === m[1]); const a = gw.getAdapter(b.provider);
+      if (!a.isConfigured({})) return send(412, { error: { code: "AURA-GEN-412", message: `${a.name} isn't connected yet — its API key hasn't been added to the server.` } });
+      const n0 = takes.filter((t) => t.shot_id === pkg.shot_id).length; const out = [];
+      for (let i = 1; i <= (b.variations || 1); i++) {
+        const t = { id: crypto.randomUUID(), project_id: P, shot_id: pkg.shot_id, package_id: pkg.id, take_number: n0 + i, provider: b.provider, model: b.model, capability: b.capability || "image",
+          params: { aspect_ratio: b.aspect_ratio || "16:9", duration_seconds: b.duration_seconds ?? null }, seed: b.seed == null ? null : b.seed + i - 1, status: "queued", approval: "pending",
+          media_type: null, media_url: null, error: null, cost_actual: null, provider_request_id: null, created_at: now(), completed_at: null };
+        takes.push(t); out.push(t);
+      }
+      return send(200, { takes: out });
+    }
+    if ((m = u.match(/^\/api\/takes\/([^/]+)\/(approve|reject|reopen|cancel)$/))) {
+      const t = takes.find((x) => x.id === m[1]);
+      if (m[2] === "cancel") { if (t.status !== "queued") return send(409, { error: { code: "AURA-GEN-409", message: "only a waiting take can be cancelled" } }); t.status = "cancelled"; return send(200, t); }
+      if (m[2] === "approve") { if (t.status !== "succeeded") return send(409, { error: { code: "AURA-GEN-409", message: "only a finished take can be approved" } });
+        for (const o of takes) if (o.shot_id === t.shot_id && o.approval === "approved") o.approval = "superseded"; t.approval = "approved"; }
+      if (m[2] === "reject") t.approval = "rejected";
+      if (m[2] === "reopen") t.approval = "pending";
+      return send(200, t);
     }
     send(404, { error: { code: "AURA-X-404", message: "not mocked " + u } });
   });

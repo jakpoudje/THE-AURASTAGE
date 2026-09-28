@@ -21,6 +21,8 @@ It covers: API health, web pages, sign-in, studio bootstrap, project create
 save/409/approve -> scenes, casting sync/confirm/edit/approve/rename clash,
 manual characters, relationships, wardrobe looks, dialogue sync/annotate/approve,
 Scene DNA assemble/save/412 not-ready/lock/upstream-change review/re-lock,
+Storyboard plan/409/edit/approve/propagation, Visual Generation compile/worker take/signed media/approve/
+unconnected-provider 412/propagation,
 persistence re-read, and cross-project 403.
 
 ## Real-browser check (`live-browser`)
@@ -33,3 +35,9 @@ work was saved. It runs as the Railway service `live-browser` (Playwright image,
 watch pattern `tests/live/browser/**`). Env: `WEB_URL`, `SMOKE_EMAIL`,
 `SMOKE_PASSWORD`. Run it (redeploy) after `live-smoke`, while the account still
 exists; read `SUMMARY n/m passed` in its deploy logs; then clean up as above.
+
+## Generation worker (`generation-worker`)
+
+`workers/image-worker` runs as the Railway service `generation-worker`
+(`RAILWAY_DOCKERFILE_PATH=workers/image-worker/Dockerfile`, restart ALWAYS). The live
+checks above need it running: a queued sketch take must finish within ~60 s.

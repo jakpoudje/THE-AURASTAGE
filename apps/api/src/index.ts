@@ -14,6 +14,7 @@ import { registerCharactersRoutes } from "./modules/characters/characters.contro
 import { registerDialogueRoutes } from "./modules/dialogue/dialogue.controller";
 import { registerSceneDnaRoutes } from "./modules/scene-dna/sceneDna.controller";
 import { registerShotsRoutes } from "./modules/shots/shots.controller";
+import { registerGenerationRoutes } from "./modules/generation/generation.controller";
 
 const app = Fastify({ logger: true });
 
@@ -25,7 +26,7 @@ async function main() {
   app.get("/health", async () => ({
     status: "ok",
     service: "aurastage-api",
-    phase: 6,
+    phase: 7,
     timestamp: new Date().toISOString(),
   }));
 
@@ -37,6 +38,7 @@ async function main() {
   await registerDialogueRoutes(app);
   await registerSceneDnaRoutes(app);
   await registerShotsRoutes(app);
+  await registerGenerationRoutes(app);
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });

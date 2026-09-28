@@ -102,6 +102,21 @@ function coverageFor(dna: NonNullable<ReturnType<typeof lockedDna>>, shots: Row[
   });
 }
 
+/**
+ * Brings every shot plan's review state up to date with Scene DNA (which is
+ * itself refreshed first). Downstream domains (Visual Generation) call this
+ * before reading plan state; Storyboard still owns all its own writes.
+ */
+export async function refreshShotPlanReview(db: SupabaseClient, projectId: string) {
+  const u = await load(db, projectId);
+  for (const scene of u.scenes) {
+    const plan = u.plans.get(scene.id);
+    if (!plan) continue;
+    const r = planReview(u, plan, lockedDna(u, scene));
+    if (plan.review_state !== r.state || (plan.review_reason ?? null) !== r.reason) await repo.setReview(db, plan.id, r.state, r.reason);
+  }
+}
+
 export async function getStoryboard(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
   const u = await load(db, projectId);

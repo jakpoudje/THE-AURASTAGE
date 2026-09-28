@@ -66,7 +66,7 @@ await check("api health", async () => {
   assert(r.status === 200 && j.status === "ok", `health ${r.status}`);
   return `phase ${j.phase}`;
 });
-for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard"]) {
+for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual"]) {
   await check(`web ${path}`, async () => {
     const r = await fetch(WEB + path);
     assert(r.status === 200, `status ${r.status}`);
@@ -255,11 +255,58 @@ await check("storyboard: edit a shot (bad value refused), approve, persists", as
   const sc = ws.scenes[0];
   assert(sc.plan.status === "approved" && sc.shots[0].angle === "low" && sc.shots[0].composition === "Lamp top-left", "not persisted");
 });
+let takeId = "";
+await check("visual: honest provider status; compile a prompt from the approved shot", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/visual`);
+  assert(ws.media_ready === true, "media storage not configured on the API");
+  const sketch = ws.providers.find((p: any) => p.id === "aurastage-sketch");
+  assert(sketch.state === "configured", "sketch should always be available");
+  const shot = ws.scenes[0].shots[0].shot;
+  const c = await api("POST", `/api/projects/${projectId}/visual/shots/${shot.id}/compile`, { aspect_ratio: "16:9" });
+  assert(/Cinematic film still/.test(c.prompt), "no prompt");
+  return ws.providers.map((p: any) => `${p.id}:${p.state}`).join(", ");
+});
+await check("visual: the worker generates a sketch take in the background; media is private + signed", async () => {
+  let ws = await api("GET", `/api/projects/${projectId}/visual`);
+  const pkgId = ws.scenes[0].shots[0].package.id;
+  const q = await api("POST", `/api/visual/packages/${pkgId}/takes`, { provider: "aurastage-sketch", model: "sketch-v1", capability: "image", variations: 1 });
+  takeId = q.takes[0].id;
+  let take: any;
+  for (let i = 0; i < 30; i++) {
+    await Bun.sleep(2000);
+    ws = await api("GET", `/api/projects/${projectId}/visual`);
+    take = ws.scenes[0].shots[0].takes.find((t: any) => t.id === takeId);
+    if (take.status === "succeeded" || take.status === "failed") break;
+  }
+  assert(take.status === "succeeded", `take ${take.status} ${take.error ?? ""}`);
+  const media = await fetch(take.media_url);
+  const body = await media.text();
+  assert(media.status === 200 && body.includes("AURASTAGE SKETCH"), `media ${media.status}`);
+  return `take V${take.take_number} in ${Math.round((Date.parse(take.completed_at) - Date.parse(take.created_at)) / 1000)}s`;
+});
+await check("visual: approve the take; unconnected providers are refused plainly (412)", async () => {
+  const t = await api("POST", `/api/takes/${takeId}/approve`, {});
+  assert(t.approval === "approved", "not approved");
+  const ws = await api("GET", `/api/projects/${projectId}/visual`);
+  const pkgId = ws.scenes[0].shots[0].package.id;
+  for (const p of ws.providers.filter((x: any) => x.state === "not_configured")) {
+    const r = await api("POST", `/api/visual/packages/${pkgId}/takes`, { provider: p.id, model: p.models[0].id, capability: "image" }, [412]);
+    assert(/isn't connected yet/.test(r.error.message), r.error.message);
+  }
+  assert(ws.scenes[0].shots[0].approved_take_id === takeId, "approval not persisted");
+});
 await check("storyboard: a Casting change flows through Scene DNA and flags the shots", async () => {
   await api("PATCH", `/api/characters/${tundeId}`, { description: "Back on the story" });
   const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
   assert(ws.scenes[0].plan.review_state === "review_required", `state ${ws.scenes[0].plan.review_state}`);
   return ws.scenes[0].plan.review_reason;
+});
+await check("visual: the upstream change reaches generation too (package needs review, new takes refused)", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/visual`);
+  const s = ws.scenes[0].shots[0];
+  assert(s.package.review_state !== "current", `package ${s.package.review_state}`);
+  await api("POST", `/api/visual/packages/${s.package.id}/takes`, { provider: "aurastage-sketch", model: "sketch-v1", capability: "image" }, [412]);
+  assert(s.approved_take_id === takeId, "approved take must be kept");
 });
 await check("persistence: everything still there on re-read", async () => {
   const [p, s, c] = await Promise.all([
@@ -273,6 +320,7 @@ await check("security: other project ids are refused", async () => {
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/characters`, undefined, [403]);
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/scene-dna`, undefined, [403]);
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/storyboard`, undefined, [403]);
+  await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/visual`, undefined, [403]);
 });
 
 const failed = results.filter((r) => !r.ok).length;

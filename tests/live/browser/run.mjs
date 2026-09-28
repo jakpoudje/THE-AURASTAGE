@@ -120,6 +120,20 @@ await check("storyboard: plan shots, reload: kept; edit, reload: kept; approve, 
   await reload("Cinematic Precision");
   await page.getByRole("button", { name: "Approved · version 1 ✓" }).waitFor();
 });
+await check("visual: compile, generate a sketch take, approve; reload: still approved", async () => {
+  await page.goto(projectUrl + "/visual");
+  await page.getByText("Stunning Visuals").waitFor();
+  await page.getByRole("button", { name: "Compile prompt" }).click();
+  await page.getByText("Prompt compiled from the approved shot plan.").waitFor();
+  await page.getByRole("button", { name: "Generate shot" }).click();
+  await page.getByRole("img", { name: "Take V1" }).waitFor({ timeout: 90000 });
+  await reload("Stunning Visuals");
+  await page.getByRole("img", { name: "Take V1" }).waitFor();
+  await page.getByRole("button", { name: "Approve take" }).click();
+  await page.getByText("Take V1 approved for this shot.").waitFor();
+  await reload("Stunning Visuals");
+  await page.getByRole("button", { name: "Un-approve" }).waitFor();
+});
 await check("dashboard after reload still shows the project", async () => {
   await page.goto(WEB + "/dashboard");
   await reload(TITLE);

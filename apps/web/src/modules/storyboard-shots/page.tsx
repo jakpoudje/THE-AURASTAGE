@@ -65,9 +65,14 @@ export default function StoryboardShotsPage() {
       project={d.project}
       active="storyboard"
       actions={
-        <Link href={`/projects/${id}/scene-dna`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
-          ← Scene DNA
-        </Link>
+        <>
+          <Link href={`/projects/${id}/scene-dna`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
+            ← Scene DNA
+          </Link>
+          <Link href={`/projects/${id}/visual`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Next: Visual Generation →
+          </Link>
+        </>
       }
     >
       <section className="border-b border-aura-border bg-gradient-to-r from-black via-[#16120a] to-black px-8 py-10">
@@ -86,7 +91,9 @@ export default function StoryboardShotsPage() {
           <span className="rounded-md border border-aura-border px-3 py-1.5">Scene DNA · {ws.summary.dna_locked} of {ws.summary.scenes} locked</span>
           <span className="text-aura-gold">→</span>
           <span className="rounded-md border border-aura-gold px-3 py-1.5 text-aura-gold">Storyboard & Shots</span>
-          <span className="text-white/30">→ Visual Generation</span>
+          <Link href={`/projects/${id}/visual`} className="text-white/50 underline hover:text-aura-gold">
+            → Visual Generation
+          </Link>
         </div>
         <p className="text-sm text-white/60">
           <span className="text-emerald-300">{ws.summary.approved}</span> of {ws.summary.scenes} scenes have an approved shot plan · {ws.summary.shots} shots
