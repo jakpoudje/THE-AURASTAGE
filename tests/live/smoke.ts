@@ -66,7 +66,7 @@ await check("api health", async () => {
   assert(r.status === 200 && j.status === "ok", `health ${r.status}`);
   return `phase ${j.phase}`;
 });
-for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio", "/projects/00000000-0000-4000-8000-000000000000/editorial"]) {
+for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio", "/projects/00000000-0000-4000-8000-000000000000/editorial", "/projects/00000000-0000-4000-8000-000000000000/export"]) {
   await check(`web ${path}`, async () => {
     const r = await fetch(WEB + path);
     assert(r.status === 200, `status ${r.status}`);
@@ -424,6 +424,72 @@ await check("editorial: versions restore (current cut kept first) and the EDL ex
   assert(edl.status === 200 && text.includes("FCM: NON-DROP FRAME") && /^001  /m.test(text), `edl ${edl.status}`);
   return `${ws.versions.length} versions, EDL ${text.split("\n").length} lines`;
 });
+// ---- Export & Deliver (Phase 10): real renders by the render worker ----
+const dvWs = () => api("GET", `/api/projects/${projectId}/delivery`);
+const renderIds: Record<string, string> = {};
+await check("delivery: renders need the current Picture Lock; re-lock and the pre-delivery checks pass", async () => {
+  let ws = await edWs();
+  if (ws.timeline.status !== "locked") {
+    await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "streaming_master" }, [412]);
+    for (;;) {
+      ws = await edWs();
+      const slug = ws.clips.find((c: any) => c.kind === "slug");
+      if (!slug) break;
+      await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "lift", clip_id: slug.id } });
+    }
+    ws = await edWs();
+    await api("POST", `/api/projects/${projectId}/editorial/lock`, { base_revision: ws.timeline.revision });
+  }
+  const d = await dvWs();
+  const blocking = d.preflight.filter((c: any) => c.blocking && !c.ok);
+  assert(d.picture_lock && blocking.length === 0, "preflight: " + JSON.stringify(blocking));
+  assert(d.profiles.find((p: any) => p.id === "dcp_theatrical").available === false, "DCP must say it isn't available");
+  await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "dcp_theatrical" }, [400]);
+  return `Picture Lock ${d.picture_lock.lock_number}, ${d.preflight.filter((c: any) => c.ok).length}/${d.preflight.length} checks`;
+});
+await check("delivery: queue Streaming Master, Subtitles and Audio Package from the lock (checksummed manifests)", async () => {
+  for (const id of ["streaming_master", "subtitles", "audio_package"]) {
+    const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: id });
+    assert(/^[0-9a-f]{64}$/.test(r.manifest_sha256), "no manifest checksum");
+    renderIds[id] = r.render_id;
+  }
+  const m = await api("GET", `/api/renders/${renderIds.streaming_master}/manifest`);
+  assert(m.manifest.picture_lock.lock_number >= 1 && m.manifest.sources.take_ids.length > 0 && m.manifest.sources.asset_ids.length > 0, "manifest sources");
+  const c = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "edit_decision_list" });
+  const x = await api("POST", `/api/renders/${c.render_id}/cancel`, {});
+  assert(x.status === "cancelled" || x.cancel_requested, "cancel");
+});
+await check("delivery: the render worker makes the files and final QC passes (real ffmpeg on Railway)", async () => {
+  let d: any;
+  for (let i = 0; i < 90; i++) {
+    d = await dvWs();
+    const mine = d.renders.filter((r: any) => Object.values(renderIds).includes(r.id));
+    if (mine.every((r: any) => ["succeeded", "failed", "cancelled"].includes(r.status))) break;
+    await Bun.sleep(3000);
+  }
+  const out: string[] = [];
+  for (const [id, rid] of Object.entries(renderIds)) {
+    const r = d.renders.find((x: any) => x.id === rid);
+    assert(r.status === "succeeded", `${id}: ${r.status} ${r.error ?? r.stage ?? ""}`);
+    const failing = (r.qc?.checks ?? []).filter((c: any) => c.blocking && !c.ok).map((c: any) => `${c.label}: ${c.evidence}`);
+    assert(r.qc_passed === true, `${id} QC failed: ${failing.join("; ")}`);
+    out.push(`${id}: ${r.outputs.length} files`);
+  }
+  return out.join(", ");
+});
+await check("delivery: signed downloads return the exact bytes (SHA-256 matches); captions contain the dialogue", async () => {
+  const d = await dvWs();
+  const master = d.renders.find((x: any) => x.id === renderIds.streaming_master);
+  const mp4 = master.outputs.find((o: any) => o.name === "streaming_1080p24.mp4");
+  const bytes = new Uint8Array(await (await fetch(mp4.url)).arrayBuffer());
+  const sha = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+  assert(sha === mp4.sha256 && new TextDecoder().decode(bytes.slice(4, 8)) === "ftyp", `mp4 ${bytes.length} bytes sha ${sha === mp4.sha256}`);
+  const subs = d.renders.find((x: any) => x.id === renderIds.subtitles);
+  const srt = await (await fetch(subs.outputs.find((o: any) => o.name === "subtitles.srt").url)).text();
+  assert(/Someone has to tell the truth\./.test(srt), "captions missing the line");
+  assert(d.preview && d.preview.url, "no preview");
+  return `master ${(bytes.length / 1024).toFixed(0)} KB`;
+});
 await check("storyboard: a Casting change flows through Scene DNA and flags the shots", async () => {
   await api("PATCH", `/api/characters/${tundeId}`, { description: "Back on the story" });
   const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
@@ -466,6 +532,7 @@ await check("security: other project ids are refused", async () => {
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/visual`, undefined, [403]);
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/audio`, undefined, [403]);
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/editorial`, undefined, [403]);
+  await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/delivery`, undefined, [403]);
 });
 
 const failed = results.filter((r) => !r.ok).length;

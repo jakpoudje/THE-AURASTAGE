@@ -6,7 +6,7 @@ const P = "11111111-1111-4111-8111-111111111111", ORG = "22222222-2222-4222-8222
 const now = () => new Date().toISOString();
 let project = { id: P, org_id: ORG, title: "Shadows of Lagos", type: "feature_film", genre: "Thriller", target_runtime_minutes: 110, status: "draft", created_at: now(), updated_at: now() };
 let script = null; const versions = []; let scenes = [];
-const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; let timeline = null, tclips = []; const tversions = [], locks = []; const assets = [], asessions = [], atracks = [], aclips = [], ameasures = [], aversions = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = [], packages = [], takes = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
+const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; let timeline = null, tclips = []; const renders = []; const tversions = [], locks = []; const assets = [], asessions = [], atracks = [], aclips = [], ameasures = [], aversions = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = [], packages = [], takes = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
 const ws = () => {
   const cur = script && versions.find((v) => v.id === script.current_version_id);
   return { script, current_version: cur || null, versions: versions.map(({ id, version_number, note, parser_version, created_at }) => ({ id, version_number, note, parser_version, created_at })).reverse(), scenes, analysis: cur ? eng.sceneBoundaryEngine({ elements: cur.elements }).analysis : null };
@@ -595,6 +595,97 @@ http.createServer((req, res) => {
       Object.assign(timeline, { status: "locked", current_lock_id: l.id }); return send(200, { lock_number: n });
     }
     if (u === `/api/projects/${P}/editorial/edl`) { res.statusCode = 200; res.setHeader("Content-Type", "text/plain"); return res.end(eng.edlExportEngine({ title: project.title, fps: FPS, clips: tclips }).edl); }
+
+    // ---- Export & Deliver (mirrors apps/api/src/modules/rendering + migration 0018). Renders are REAL: the render
+    // worker's own pipeline (workers/render-worker/dist/render.js) runs here with the local ffmpeg. ----
+    const RW = require(require("path").resolve(__dirname, "../../../workers/render-worker/dist/render.js"));
+    const fsx = require("fs"), osx = require("os"), pathx = require("path");
+    const STORE = (globalThis.__renderStore ||= process.env.MOCK_RENDER_STORE || fsx.mkdtempSync(pathx.join(osx.tmpdir(), "mock-renders-")));
+    const fetchMedia = async (key) => {
+      const [kind, id] = key.split(":");
+      if (kind === "take") { const t = takes.find((x) => x.id === id); const m = /^data:([^;]+);base64,(.*)$/.exec(t.media_url); return { bytes: Buffer.from(m[2], "base64"), contentType: m[1] }; }
+      const a = assets.find((x) => x.id === id); return { bytes: a.bytes, contentType: a.media_type };
+    };
+    const lockNow = () => (timeline && timeline.status === "locked" ? locks.find((l) => l.id === timeline.current_lock_id) : null);
+    const lockInput = (profileId, options) => {
+      const l = lockNow(); const v = tversions.find((x) => x.id === l.version_id);
+      const mixIds = [...new Set(v.clips.map((c) => c.audio_session_version_id).filter(Boolean))];
+      const mixes = {}; for (const id of mixIds) { const mv = aversions.find((x) => x.id === id); const ses = asessions.find((x) => x.id === mv.session_id);
+        mixes[id] = { scene_id: ses.scene_id, version_number: mv.version_number, seconds: mv.measurement.duration_seconds, tracks: mv.tracks, clips: mv.clips }; }
+      const tk = {}; for (const c of v.clips) if (c.take_id) { const t = takes.find((x) => x.id === c.take_id); tk[t.id] = { storage_key: `take:${t.id}`, media_type: t.media_type, capability: t.capability, duration_seconds: null }; }
+      const as = {}; for (const a of assets) as[a.id] = { storage_key: `asset:${a.id}`, media_type: a.media_type };
+      const ln = {}; for (const d of dlines) ln[d.id] = { speaker: d.speaker_name, text: d.text };
+      return { l, v, input: { project: { id: P, title: project.title }, profile: eng.getDeliveryProfile(profileId), options, picture_lock: { id: l.id, lock_number: l.lock_number, timeline_version_id: v.id }, fps: 24, clips: v.clips, takes: tk, mixes, assets: as, lines: ln } };
+    };
+    const outputsFor = (r) => r.outputs.map((o) => ({ ...o, download_name: `${project.title.replace(/[^a-z0-9]+/gi, "_")}_${o.name}`, url: `${API_BASE}/media/${r.id}/${o.name}?download=1`, stream_url: /video/.test(o.media_type) ? `${API_BASE}/media/${r.id}/${o.name}` : null }));
+    const API_BASE = "http://localhost:3911";
+    if (u === `/api/projects/${P}/delivery` && req.method === "GET") {
+      const l = lockNow();
+      let probe = null;
+      if (l) probe = eng.renderManifestEngine(lockInput("streaming_master", { watermark: null, burn_timecode: false }).input);
+      for (const r of renders) { const stale = !l || l.id !== r.picture_lock_id; r.review_state = stale ? "stale" : "current"; r.review_reason = stale ? `Made from Picture Lock ${r.lock_number}, which is no longer the current lock${l ? ` (now Picture Lock ${l.lock_number})` : ""}.` : null; }
+      const v = l && tversions.find((x) => x.id === l.version_id);
+      const media = probe ? probe.missing.filter((m) => /media|file|offline|mix is missing/.test(m)) : [];
+      const cues = probe && probe.manifest && probe.manifest.subtitles ? probe.manifest.subtitles.cues.length : 0;
+      const hasSound = !!v && v.clips.some((c) => c.track === "A1");
+      const list = [...renders].reverse().map((r) => ({ ...r, manifest: undefined, outputs: outputsFor(r), profile_label: eng.getDeliveryProfile(r.profile_id).label }));
+      const pv = list.find((r) => r.status === "succeeded" && r.review_state === "current" && r.outputs.some((o) => o.stream_url));
+      return send(200, { project: { id: P, title: project.title },
+        picture_lock: l ? { id: l.id, lock_number: l.lock_number, locked_at: l.locked_at, duration_frames: v.duration_frames, fps: 24 } : null,
+        timeline_status: timeline ? timeline.status : null, profiles: eng.deliveryProfiles(),
+        preflight: [
+          { id: "picture_locked", label: "The picture is locked", ok: !!l, blocking: true, evidence: l ? `Picture Lock ${l.lock_number}` : timeline ? "The cut isn't locked — lock it in Editorial" : "No timeline yet — build it in Editorial" },
+          { id: "lock_checks", label: "The locked cut passed the timeline checks", ok: !!l && !!(v.qc && v.qc.ready_for_lock), blocking: true, evidence: l ? "Recorded with the lock" : "—" },
+          { id: "media_online", label: "Every picture and sound file is stored", ok: !!l && !media.length, blocking: true, evidence: l ? (media.join("; ") || "All stored") : "—" },
+          { id: "storage_ready", label: "Delivery storage is set up", ok: true, blocking: true, evidence: "Private bucket connected" },
+          { id: "sound_present", label: "The locked cut has sound", ok: hasSound, blocking: false, evidence: hasSound ? "Approved scene mixes on A1" : "No scene mixes on A1" },
+          { id: "subtitles", label: "Dialogue is available for subtitles", ok: cues > 0, blocking: false, evidence: cues ? `${cues} subtitle cue${cues === 1 ? "" : "s"}` : "No dialogue" },
+        ],
+        renders: list, preview: pv ? { render_id: pv.id, label: pv.profile_label, url: pv.outputs.find((o) => o.stream_url).stream_url } : null,
+        queue: { waiting: renders.filter((r) => r.status === "queued").length, running: renders.filter((r) => r.status === "running").length },
+        destinations: [{ id: "download", label: "Download", state: "ready", note: "Signed links to every file, valid for an hour" }, { id: "youtube", label: "YouTube", state: "not_connected", note: "Needs a YouTube account connection" }] });
+    }
+    if (u === `/api/projects/${P}/delivery/renders`) {
+      const l = lockNow();
+      if (!l) return send(412, { error: { code: "AURA-EXP-412", message: "Lock the picture in Editorial first — deliverables are made from a Picture Lock." } });
+      const prof = eng.getDeliveryProfile(b.profile_id);
+      const { input } = lockInput(b.profile_id, { watermark: (b.options && b.options.watermark) || null, burn_timecode: !!(b.options && b.options.burn_timecode) });
+      const out = eng.renderManifestEngine(input);
+      if (!out.manifest) return send(412, { error: { code: "AURA-EXP-412", message: `Can't render yet: ${out.missing.join("; ")}.`, issues: out.missing } });
+      const sha = crypto.createHash("sha256").update(JSON.stringify(out.manifest)).digest("hex");
+      const r = { id: crypto.randomUUID(), picture_lock_id: l.id, lock_number: l.lock_number, profile_id: prof.id, profile_version: prof.version, options: out.manifest.options, manifest: out.manifest, manifest_sha256: sha,
+        status: "queued", progress: 0, stage: null, error: null, cancel_requested: false, outputs: [], qc: null, qc_passed: null, review_state: "current", review_reason: null, created_at: now(), started_at: null, completed_at: null };
+      renders.push(r);
+      // Stand-in for the render worker: the real pipeline, started a moment later so "queued" is visible.
+      setTimeout(() => {
+        if (r.status !== "queued") return;
+        Object.assign(r, { status: "running", started_at: now() });
+        const dir = pathx.join(STORE, r.id); fsx.mkdirSync(dir, { recursive: true });
+        RW.renderDeliverable({ render: { id: r.id, org_id: ORG, project_id: P, profile_id: r.profile_id, attempt: 1 }, manifest: r.manifest }, {
+          fetchMedia, keyFor: (_x, name) => pathx.join(dir, name), putFile: async (key, file) => (fsx.copyFileSync(file, key), fsx.statSync(key).size),
+          progress: async (pct, stage) => (Object.assign(r, { progress: pct, stage }), await new Promise((res) => setTimeout(res, Number(process.env.MOCK_RENDER_DELAY || 300))), r.cancel_requested),
+          log: () => {}, fontDir: "/usr/share/fonts/truetype/dejavu",
+        }).then(({ outputs, qc }) => Object.assign(r, { status: "succeeded", progress: 100, stage: qc.passed ? "QC passed" : "QC failed", outputs, qc, qc_passed: qc.passed, completed_at: now() }))
+          .catch((e) => Object.assign(r, { status: r.cancel_requested ? "cancelled" : "failed", stage: r.cancel_requested ? "Cancelled" : "Failed", error: r.cancel_requested ? "Cancelled by request" : e.message, completed_at: now() }));
+      }, Number(process.env.MOCK_RENDER_START || 1500));
+      return send(200, { render_id: r.id, manifest_sha256: sha, files: out.manifest.files });
+    }
+    if ((m = u.match(/^\/api\/renders\/([^/]+)\/cancel$/))) {
+      const r = renders.find((x) => x.id === m[1]);
+      if (r.status === "queued") Object.assign(r, { status: "cancelled", stage: "Cancelled", completed_at: now() });
+      else if (r.status === "running") Object.assign(r, { cancel_requested: true, stage: "Cancelling…" });
+      else return send(409, { error: { code: "AURA-EXP-409", message: "only a waiting or running render can be cancelled" } });
+      return send(200, { status: r.status, cancel_requested: r.cancel_requested });
+    }
+    if ((m = u.match(/^\/api\/renders\/([^/]+)\/manifest$/))) { const r = renders.find((x) => x.id === m[1]); return send(200, { manifest_sha256: r.manifest_sha256, manifest: r.manifest }); }
+    if ((m = u.match(/^\/media\/([^/]+)\/([^/]+)$/))) {
+      const file = pathx.join(STORE, m[1], m[2]);
+      if (!fsx.existsSync(file)) return send(404, { error: { code: "AURA-X-404", message: "no such file" } });
+      const ct = { mp4: "video/mp4", mov: "video/quicktime", wav: "audio/wav", srt: "application/x-subrip", vtt: "text/vtt", edl: "text/plain" }[m[2].split(".").pop()];
+      res.statusCode = 200; res.setHeader("Content-Type", ct || "application/octet-stream");
+      if (/download=1/.test(req.url)) res.setHeader("Content-Disposition", `attachment; filename="${m[2]}"`);
+      return res.end(fsx.readFileSync(file));
+    }
     send(404, { error: { code: "AURA-X-404", message: "not mocked " + u } });
   });
 }).listen(3911, () => console.log("mock api on 3911"));

@@ -4,6 +4,7 @@
 // links only — the bucket itself is never public.
 // Env (Railway variable references to the "aurastage-media" bucket):
 //   MEDIA_BUCKET, MEDIA_ENDPOINT, MEDIA_REGION, MEDIA_ACCESS_KEY_ID, MEDIA_SECRET_ACCESS_KEY
+import { createReadStream, statSync } from "node:fs";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -30,14 +31,27 @@ export async function putMedia(storageKey: string, bytes: Uint8Array, contentTyp
   await client(env).send(new PutObjectCommand({ Bucket: env.MEDIA_BUCKET, Key: storageKey, Body: bytes, ContentType: contentType }));
 }
 
+/** Streams a local file into the bucket (render outputs can be large; never held in memory). */
+export async function putMediaFile(storageKey: string, filePath: string, contentType: string, env: Env = process.env) {
+  const size = statSync(filePath).size;
+  await client(env).send(new PutObjectCommand({ Bucket: env.MEDIA_BUCKET, Key: storageKey, Body: createReadStream(filePath), ContentLength: size, ContentType: contentType }));
+  return size;
+}
+
 export async function getMedia(storageKey: string, env: Env = process.env): Promise<{ bytes: Uint8Array; contentType: string }> {
   const r = await client(env).send(new GetObjectCommand({ Bucket: env.MEDIA_BUCKET, Key: storageKey }));
   return { bytes: await r.Body!.transformToByteArray(), contentType: r.ContentType ?? "application/octet-stream" };
 }
 
-/** Signed, time-limited link for one object (default 1 hour). */
-export async function signedMediaUrl(storageKey: string, seconds = 3600, env: Env = process.env) {
-  return getSignedUrl(client(env), new GetObjectCommand({ Bucket: env.MEDIA_BUCKET, Key: storageKey }), { expiresIn: seconds });
+/** Signed, time-limited link for one object (default 1 hour). With `downloadName` the browser saves it under that name. */
+export async function signedMediaUrl(storageKey: string, seconds = 3600, env: Env = process.env, downloadName?: string) {
+  const disposition = downloadName ? `attachment; filename="${downloadName.replace(/[^\w.\-]+/g, "_")}"` : undefined;
+  return getSignedUrl(client(env), new GetObjectCommand({ Bucket: env.MEDIA_BUCKET, Key: storageKey, ResponseContentDisposition: disposition }), { expiresIn: seconds });
+}
+
+/** Object key layout for deliverables: <org>/<project>/renders/<render>/<file> */
+export function renderStorageKey(r: { org_id: string; project_id: string; id: string }, fileName: string) {
+  return `${r.org_id}/${r.project_id}/renders/${r.id}/${fileName}`;
 }
 
 /** Object key layout: <org>/<project>/takes/<shot>/<take>.<ext> */

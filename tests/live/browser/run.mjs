@@ -205,6 +205,26 @@ await check("editorial: build the assembly, blade, lift offline shots, lock; rel
   if (!edl.includes("FCM: NON-DROP FRAME")) throw new Error("bad EDL");
   return `${n + 1} picture clips before lifting offline shots · EDL ${edl.split("\n").length} lines`;
 });
+await check("export: render the Streaming Master from the lock; QC passed; reload: kept; download is a real MP4", async () => {
+  const marker = "Every Screen";
+  await page.goto(projectUrl + "/export");
+  await page.getByText(marker).waitFor();
+  await page.getByText("Ready to render").waitFor();
+  await page.getByRole("button", { name: "Render Streaming Master" }).click();
+  await page.getByText(/Streaming Master queued/).waitFor();
+  const d = page.getByRole("listitem", { name: "Deliverable Streaming Master" }).first();
+  await d.getByText(/QC (passed|failed)/).waitFor({ timeout: 240000 });
+  await reload(marker);
+  await d.getByText("QC passed").waitFor();
+  await d.getByRole("cell", { name: "streaming_1080p24.mp4", exact: true }).waitFor();
+  const [dl] = await Promise.all([page.waitForEvent("download"), d.getByRole("link", { name: "Download streaming_1080p24.mp4" }).click()]);
+  await dl.saveAs("/tmp/live-master.mp4");
+  const fs = await import("node:fs");
+  const b = fs.readFileSync("/tmp/live-master.mp4");
+  if (b.subarray(4, 8).toString() !== "ftyp") throw new Error("download is not an MP4");
+  await page.getByLabel("Preview").waitFor();
+  return `master ${(b.length / 1024).toFixed(0)} KB`;
+});
 await check("dashboard after reload still shows the project", async () => {
   await page.goto(WEB + "/dashboard");
   await reload(TITLE);

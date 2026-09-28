@@ -18,7 +18,7 @@ export const STAGES = [
   { key: "visual", label: "Visual Generation", path: "visual" },
   { key: "audio", label: "Audio Studio", path: "audio" },
   { key: "editorial", label: "Editorial & Timeline", path: "editorial" },
-  { key: "export", label: "Export & Deliver" },
+  { key: "export", label: "Export & Deliver", path: "export" },
 ] as const;
 
 const SECONDARY = ["Project Settings", "Team & Collaboration", "Assets Library", "Help & Support"];

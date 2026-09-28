@@ -1,12 +1,11 @@
 # engines/rendering
 
-Named engines specified in the SRS for this domain (subset — see docs/SRS for full contracts):
+Implemented (deterministic, versioned, typed):
+- `deliveryProfileEngine` v1.0.0 — the delivery profile catalogue (available formats and why others aren't).
+- `renderManifestEngine` v1.0.0 — immutable RenderManifest from a Picture Lock version (SRS §12).
+- `subtitleTimelineEngine` v1.0.0 — SRT/WebVTT from approved dialogue where it is heard in the cut; readability warnings.
+- `timelineAudioMixEngine` v1.0.0 — chunked PCM mix of the cut's scene mixes, same maths as the Audio Studio.
+- `finalQCEngine` v1.0.0 — delivery QC and profile compliance from measured file facts.
 
-- `renderManifestCompilerEngine`
-- `renderChunkingEngine`
-- `deliveryQCEngine`
-- `subtitleReadabilityEngine`
-
-Each engine gets its own folder here (see `_template/`) with: `index.ts`, `engine.ts`,
-`input.schema.ts`, `output.schema.ts`, `rules.ts`, `prompt.ts` (only if LLM-backed),
-`validator.ts`, `version.ts`, `tests/`.
+Planned (SRS §15): `renderChunkPlannerEngine`, `renderStitchEngine`, `localizationEngine`, `dubbingAdaptationEngine`,
+`alternateLanguageVoiceEngine`, `archivePackageEngine`.

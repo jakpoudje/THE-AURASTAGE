@@ -131,9 +131,14 @@ export default function EditorialPage() {
       project={d.project}
       active="editorial"
       actions={
-        <Link href={`/projects/${id}/audio`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
-          ← Audio Studio
-        </Link>
+        <>
+          <Link href={`/projects/${id}/audio`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
+            ← Audio Studio
+          </Link>
+          <Link href={`/projects/${id}/export`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Next: Export & Deliver →
+          </Link>
+        </>
       }
     >
       <section className="border-b border-aura-border bg-gradient-to-r from-black via-[#16120a] to-black px-8 py-10">
