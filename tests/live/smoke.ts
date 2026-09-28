@@ -295,6 +295,65 @@ await check("visual: approve the take; unconnected providers are refused plainly
   }
   assert(ws.scenes[0].shots[0].approved_take_id === takeId, "approval not persisted");
 });
+// ---- Audio Studio (Phase 8). The real loudness render/measure runs in the browser check (live-browser). ----
+function toneWav(seconds = 1, sr = 48000) {
+  const n = sr * seconds, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const w = (o: number, t: string) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(3277 * Math.sin((2 * Math.PI * 440 * i) / sr)), true);
+  return new Uint8Array(buf);
+}
+let sessionId = "", assetId = "";
+await check("audio: spot the approved scene into tracks and cues (unplanned scene refused 412)", async () => {
+  await api("POST", `/api/projects/${projectId}/audio/scenes/${s2}/spot`, {}, [412]);
+  const r = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/spot`, {});
+  sessionId = r.session_id;
+  const ws = await api("GET", `/api/projects/${projectId}/audio`);
+  const sc = ws.scenes.find((x: any) => x.scene.id === s1);
+  assert(sc.session.id === sessionId && sc.tracks.length >= 2 && sc.clips.some((c: any) => c.source.dialogue_line_id), "no dialogue cue");
+  assert(ws.generators.every((g: any) => g.state === "not_connected"), "generators must be honest");
+  return `${r.tracks} tracks, ${r.cues} cues from plan v${r.shot_plan_version_number}`;
+});
+await check("audio: upload a WAV to the private library (non-audio refused); bytes round-trip", async () => {
+  const bad = await fetch(`${API}/api/projects/${projectId}/assets/audio?name=x.wav&duration=1&sample_rate=48000&channels=1`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "audio/wav" }, body: new TextEncoder().encode("not audio at all"),
+  });
+  assert(bad.status === 400, `bad upload ${bad.status}`);
+  const wav = toneWav();
+  const up = await fetch(`${API}/api/projects/${projectId}/assets/audio?name=smoke-line.wav&duration=1&sample_rate=48000&channels=1`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "audio/wav" }, body: wav,
+  });
+  const a = await up.json();
+  assert(up.status === 201, `upload ${up.status} ${JSON.stringify(a).slice(0, 200)}`);
+  assetId = a.id;
+  const back = new Uint8Array(await (await fetch(`${API}/api/assets/${assetId}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
+  assert(back.length === wav.length && back.every((b, i) => b === wav[i]), "bytes differ");
+  const anon = await fetch(`${API}/api/assets/${assetId}/content`);
+  assert(anon.status === 401 || anon.status === 403, `anonymous read ${anon.status}`);
+  return `${wav.length} bytes`;
+});
+await check("audio: place the recording on the dialogue cue; mixer change saved; approval needs a fresh measurement", async () => {
+  let ws = await api("GET", `/api/projects/${projectId}/audio`);
+  let sc = ws.scenes.find((x: any) => x.scene.id === s1);
+  const cue = sc.clips.find((c: any) => c.source.dialogue_line_id);
+  const c = await api("PATCH", `/api/audio-clips/${cue.id}`, { asset_id: assetId, label: "smoke-line", duration_seconds: 1 });
+  assert(c.kind === "asset", "not placed");
+  await api("PATCH", `/api/audio-tracks/${sc.tracks[0].id}`, { gain_db: 99 }, [400]);
+  await api("PATCH", `/api/audio-tracks/${sc.tracks[0].id}`, { gain_db: -3, pan: 0.2 });
+  await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/approve`, {}, [412]);
+  ws = await api("GET", `/api/projects/${projectId}/audio`);
+  sc = ws.scenes.find((x: any) => x.scene.id === s1);
+  assert(sc.tracks[0].gain_db === -3 && sc.clips.find((x: any) => x.id === cue.id).asset_id === assetId, "not persisted");
+  const m = { integrated_lufs: -24.1, true_peak_dbtp: -20.1, lra_lu: 0, duration_seconds: sc.session.scene_seconds, clip_count: 1, engine_version: "1.0.0" };
+  await api("POST", `/api/audio-sessions/${sessionId}/measurements`, { ...m, session_revision: "an-old-revision" }, [409]);
+  await api("POST", `/api/audio-sessions/${sessionId}/measurements`, { ...m, session_revision: sc.session.revision });
+  const v = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/approve`, {});
+  assert(v.version_number === 1, `v${v.version_number}`);
+  ws = await api("GET", `/api/projects/${projectId}/audio`);
+  sc = ws.scenes.find((x: any) => x.scene.id === s1);
+  assert(sc.session.status === "approved" && sc.session.approved_version_number === 1, "approval not persisted");
+});
 await check("storyboard: a Casting change flows through Scene DNA and flags the shots", async () => {
   await api("PATCH", `/api/characters/${tundeId}`, { description: "Back on the story" });
   const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
@@ -307,6 +366,14 @@ await check("visual: the upstream change reaches generation too (package needs r
   assert(s.package.review_state !== "current", `package ${s.package.review_state}`);
   await api("POST", `/api/visual/packages/${s.package.id}/takes`, { provider: "aurastage-sketch", model: "sketch-v1", capability: "image" }, [412]);
   assert(s.approved_take_id === takeId, "approved take must be kept");
+});
+await check("audio: the upstream change marks the scene mix for review; the recording is kept", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/audio`);
+  const sc = ws.scenes.find((x: any) => x.scene.id === s1);
+  assert(sc.session.review_state !== "current", `session ${sc.session.review_state}`);
+  assert(sc.clips.some((c: any) => c.asset_id === assetId), "recording lost");
+  await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/approve`, {}, [412]);
+  return sc.session.review_reason;
 });
 await check("persistence: everything still there on re-read", async () => {
   const [p, s, c] = await Promise.all([
@@ -321,6 +388,7 @@ await check("security: other project ids are refused", async () => {
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/scene-dna`, undefined, [403]);
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/storyboard`, undefined, [403]);
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/visual`, undefined, [403]);
+  await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/audio`, undefined, [403]);
 });
 
 const failed = results.filter((r) => !r.ok).length;

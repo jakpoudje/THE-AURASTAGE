@@ -6,3 +6,4 @@ export * from "./dialogue";
 export * from "./scene-dna";
 export * from "./cinematography";
 export * from "./generation";
+export * from "./audio";

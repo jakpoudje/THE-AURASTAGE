@@ -1,6 +1,3 @@
 // apps/api/src/modules/assets/assets.events.ts
-// Typed domain events emitted after committed changes.
-// Domain: Assets Library
-// Canonical object: Asset / AssetVersion
-
-export {};
+// Written transactionally into audit_events by register_asset (migration 0015).
+export const ASSET_EVENTS = { Registered: "AssetRegistered" } as const;

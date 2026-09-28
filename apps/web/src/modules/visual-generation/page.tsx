@@ -50,9 +50,14 @@ export default function VisualGenerationPage() {
       project={d.project}
       active="visual"
       actions={
-        <Link href={`/projects/${id}/storyboard`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
-          ← Storyboard
-        </Link>
+        <>
+          <Link href={`/projects/${id}/storyboard`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
+            ← Storyboard
+          </Link>
+          <Link href={`/projects/${id}/audio`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Next: Audio Studio →
+          </Link>
+        </>
       }
     >
       <section className="border-b border-aura-border bg-gradient-to-r from-black via-[#16120a] to-black px-8 py-10">
@@ -71,7 +76,9 @@ export default function VisualGenerationPage() {
           <span className="rounded-md border border-aura-border px-3 py-1.5">Storyboard · {ws.summary.scenes} approved {ws.summary.scenes === 1 ? "plan" : "plans"}</span>
           <span className="text-aura-gold">→</span>
           <span className="rounded-md border border-aura-gold px-3 py-1.5 text-aura-gold">Visual Generation</span>
-          <span className="text-white/30">→ Audio Studio</span>
+          <Link href={`/projects/${id}/audio`} className="text-white/50 underline hover:text-aura-gold">
+            → Audio Studio
+          </Link>
         </div>
         <p className="text-sm text-white/60">
           <span className="text-emerald-300">{ws.summary.with_approved_take}</span> of {ws.summary.shots} shots have an approved take · {ws.summary.takes} takes

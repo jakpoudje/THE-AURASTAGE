@@ -1,0 +1,158 @@
+// Browser test: Audio Studio (offline, against tests/e2e/scriptwriter/mock-api.cjs on :3911,
+// web on :3902 built with NEXT_PUBLIC_API_URL=http://localhost:3911 NEXT_PUBLIC_SUPABASE_URL=http://localhost:3912).
+// Uses a real WAV recording; the mix is rendered, measured (BS.1770-4) and exported by the real browser engine.
+const { chromium } = require("playwright");
+const fs = require("fs"), path = require("path");
+const BASE = "http://localhost:3902", API = "http://localhost:3911", P = "11111111-1111-4111-8111-111111111111";
+const OUT = process.env.E2E_OUT || require("os").tmpdir();
+
+const SCRIPT = `EXT. LAGOS HARBOUR - NIGHT
+
+Rain lashes the jetty. TUNDE OKAFOR (35) waits under a lamp.
+
+TUNDE
+You came.
+`;
+
+/** 2 s, 48 kHz mono 16-bit 440 Hz tone at -20 dBFS peak. */
+function wav() {
+  const sr = 48000, n = sr * 2, data = Buffer.alloc(n * 2);
+  for (let i = 0; i < n; i++) data.writeInt16LE(Math.round(0.1 * 32767 * Math.sin((2 * Math.PI * 440 * i) / sr)), i * 2);
+  const h = Buffer.alloc(44);
+  h.write("RIFF", 0); h.writeUInt32LE(36 + data.length, 4); h.write("WAVE", 8); h.write("fmt ", 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(sr, 24); h.writeUInt32LE(sr * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write("data", 36); h.writeUInt32LE(data.length, 40);
+  const f = path.join(OUT, "tunde-line.wav"); fs.writeFileSync(f, Buffer.concat([h, data])); return f;
+}
+
+async function api(method, p, body) {
+  const r = await fetch(API + p, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) });
+  return r.json();
+}
+
+(async () => {
+  const v1 = await api("POST", `/api/projects/${P}/script/versions`, { source_text: SCRIPT, base_version_id: null });
+  await api("POST", `/api/projects/${P}/script/approve`, { version_id: v1.id });
+  await api("POST", `/api/projects/${P}/characters/sync`, {});
+  await api("POST", `/api/projects/${P}/dialogue/sync`, {});
+  const dws = await api("GET", `/api/projects/${P}/dialogue`);
+  const s1 = dws.scenes[0].id;
+  await api("POST", `/api/projects/${P}/dialogue/scenes/${s1}/approve`, {});
+  await api("PATCH", `/api/projects/${P}/scene-dna/${s1}`, { purpose: "Tunde commits.", weather: "rain", sound_intent: "Rain on corrugated iron, distant generator" });
+  await api("POST", `/api/projects/${P}/scene-dna/${s1}/approve`, {});
+  await api("POST", `/api/projects/${P}/storyboard/scenes/${s1}/generate`, {});
+  const ok = await api("POST", `/api/projects/${P}/storyboard/scenes/${s1}/approve`, {});
+  if (!ok.version_number) throw new Error("setup: shot plan not approved " + JSON.stringify(ok));
+  const file = wav();
+
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--autoplay-policy=no-user-gesture-required"] });
+  const ctx = await browser.newContext({ viewport: { width: 1500, height: 1100 }, acceptDownloads: true });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+  page.on("dialog", (d) => d.accept());
+  let failed = 0;
+  const step = async (name, fn) => {
+    try { await fn(); console.log("PASS", name); } catch (e) { failed++; console.log("FAIL", name, e.message.split("\n")[0]); await page.screenshot({ path: `${OUT}/fail-audio-${name.replace(/\W+/g, "_")}.png`, fullPage: true }); }
+  };
+  const reload = async () => { await page.reload(); await page.getByRole("tablist", { name: "Scenes" }).waitFor(); };
+  
+
+  await page.goto(BASE + "/");
+  await page.evaluate(() => localStorage.setItem("sb-localhost-auth-token", JSON.stringify({ access_token: "f", refresh_token: "f", token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 36000, user: { id: "u1", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "" } })));
+
+  await step("Visual Generation links to Audio Studio; the approved scene is listed, not yet spotted", async () => {
+    await page.goto(`${BASE}/projects/${P}/visual`);
+    await page.getByRole("link", { name: "Next: Audio Studio →" }).click();
+    await page.waitForURL(`**/projects/${P}/audio`);
+    await page.getByRole("tablist", { name: "Scenes" }).waitFor();
+    await page.getByText("Spot this scene to lay out dialogue").waitFor();
+  });
+  await step("generators are honestly shown as not connected", async () => {
+    const list = page.getByRole("list", { name: "Audio generators" });
+    await list.getByText("AI dialogue / voice (TTS)").waitFor();
+    if ((await list.getByText(/not connected/i).count()) < 1) throw new Error("no not-connected state");
+  });
+  await step("spot audio from the approved shot plan: dialogue, ambience and score cues; survives reload", async () => {
+    await page.getByRole("button", { name: "Spot audio from the shot plan" }).click();
+    await page.getByText(/Spotted \d+ cues on \d+ tracks from shot plan version 1/).waitFor();
+    await page.getByRole("button", { name: /Clip Tunde.*You came/i }).waitFor();
+    await reload();
+    await page.getByRole("button", { name: /Clip Tunde.*You came/i }).waitFor();
+    await page.getByRole("button", { name: /Clip Score/ }).waitFor();
+    if (!(await page.getByRole("button", { name: "Measure mix" }).isDisabled())) throw new Error("measure should need a recording");
+  });
+  await step("upload a real WAV onto the dialogue cue: waveform drawn, placed, kept after reload", async () => {
+    await page.getByRole("button", { name: /Clip Tunde.*You came/i }).click();
+    await page.getByLabel("Upload a recording for this clip").setInputFiles(file);
+    await page.getByText("“tunde-line.wav” uploaded and placed on the clip.").waitFor();
+    await page.getByRole("button", { name: "Clip tunde-line" }).locator("svg path").waitFor();
+    await reload();
+    await page.getByRole("button", { name: "Clip tunde-line" }).locator("svg path").waitFor({ timeout: 15000 });
+    await page.getByText("1 recordings in the library").waitFor();
+    const checks = page.getByRole("list", { name: "Audio checks" });
+    await checks.getByText("1 of 1 dialogue clips recorded").waitFor();
+  });
+  await step("mixer mute persists across reload, then unmute", async () => {
+    const mute = page.getByRole("button", { name: /^Mixer mute Score/ });
+    await mute.click();
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => /^Mixer mute Score/.test(b.getAttribute("aria-label") || "") && b.getAttribute("aria-pressed") === "true"));
+    await reload();
+    if ((await page.getByRole("button", { name: /^Mixer mute Score/ }).getAttribute("aria-pressed")) !== "true") throw new Error("mute not saved");
+    await page.getByRole("button", { name: /^Mixer mute Score/ }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => /^Mixer mute Score/.test(b.getAttribute("aria-label") || "") && b.getAttribute("aria-pressed") === "false"));
+  });
+  await step("approve is blocked until the rendered mix is measured", async () => {
+    if (!(await page.getByRole("button", { name: "Approve scene mix" }).isDisabled())) throw new Error("approve should be disabled");
+    await page.getByRole("list", { name: "Audio checks" }).getByText("Not measured yet").waitFor();
+  });
+  await step("measure the rendered mix (BS.1770-4): a real loudness number, kept after reload", async () => {
+    await page.getByRole("button", { name: "Measure mix" }).click();
+    const n = await page.getByText(/Measured the rendered mix: -\d+\.\d LUFS, true peak -\d+\.\d dBTP\./).innerText();
+    const lufs = Number(n.match(/(-\d+\.\d) LUFS/)[1]), tp = Number(n.match(/(-\d+\.\d) dBTP/)[1]);
+    // 440 Hz tone at 0.1 peak for 2 s in a longer scene: true peak ≈ -20 dBTP (panned mono -> stereo -3 dB law may apply).
+    if (!(tp < -15 && tp > -27)) throw new Error("implausible true peak " + tp);
+    if (!(lufs < -15 && lufs > -45)) throw new Error("implausible loudness " + lufs);
+    await reload();
+    await page.getByLabel("Loudness measurement").getByText(String(lufs.toFixed(1))).waitFor();
+    await page.getByRole("list", { name: "Audio checks" }).getByText(/^Measured /).waitFor();
+  });
+  await step("approve the scene mix; approved state survives reload", async () => {
+    await page.getByRole("button", { name: "Approve scene mix" }).click();
+    await page.getByText("Scene mix approved as version 1.").waitFor();
+    await reload();
+    await page.getByRole("button", { name: "Approved · version 1 ✓" }).waitFor();
+    await page.getByRole("tab", { name: /✓/ }).waitFor();
+  });
+  await step("export the full mix and the DX stem as WAV files", async () => {
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Full mix" }).click()]);
+    if (dl.suggestedFilename() !== "scene-1-full-mix.wav") throw new Error(dl.suggestedFilename());
+    const p = path.join(OUT, "mix.wav"); await dl.saveAs(p); const b = fs.readFileSync(p);
+    if (b.slice(0, 4).toString() !== "RIFF" || b.readUInt32LE(24) !== 48000 || b.length < 48000 * 4) throw new Error("bad wav");
+    const [dx] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "DX stem" }).click()]);
+    if (dx.suggestedFilename() !== "scene-1-DX-stem.wav") throw new Error(dx.suggestedFilename());
+  });
+  await step("changing the mix makes the measurement out of date and asks to approve again", async () => {
+    await page.getByRole("button", { name: /^Mixer mute Score/ }).click();
+    await page.getByText("The mix changed after this measurement — measure again.").waitFor();
+    await reload();
+    await page.getByText("The mix changed after this measurement — measure again.").waitFor();
+    if (!(await page.getByRole("button", { name: "Approve again (new version)" }).isDisabled())) throw new Error("should need a new measurement");
+  });
+  await step("an upstream shot plan change marks audio for review; the recording is kept", async () => {
+    await api("POST", `/api/projects/${P}/storyboard/scenes/${s1}/approve`, {});
+    await reload();
+    await page.getByText("This scene's audio needs review.").waitFor();
+    await page.getByRole("button", { name: "Clip tunde-line" }).waitFor();
+    await page.getByRole("button", { name: "Re-spot from upstream" }).click();
+    await page.getByText(/from shot plan version 2/).waitFor();
+    await reload();
+    await page.getByRole("button", { name: "Clip tunde-line" }).waitFor();
+    if (await page.getByText("This scene's audio needs review.").count()) throw new Error("still needs review after re-spot");
+    if (await page.getByRole("button", { name: /Clip Tunde.*You came/i }).count()) throw new Error("dialogue cue duplicated after re-spot");
+  });
+
+  if (errors.length) { failed++; console.log("FAIL page errors", errors); }
+  await browser.close();
+  console.log(failed ? `${failed} FAILED` : "ALL PASSED");
+  process.exit(failed ? 1 : 0);
+})();

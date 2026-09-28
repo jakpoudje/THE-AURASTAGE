@@ -1,0 +1,148 @@
+"use client";
+
+// Loads and mutates the Audio Studio workspace. Every change goes through the
+// API and the screen reloads from it, so what you see is what is stored.
+// Recordings are decoded once per asset and reused for playback, waveforms,
+// measurement and export.
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Project, SaveAudioClipInput, UpdateAudioTrackInput } from "@aurastage/contracts";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+import { apiGet } from "@/lib/apiClient";
+import { audioApi } from "../api/audioApi";
+import type { AudioScene, AudioWorkspace } from "../types";
+import { encodeWav, loadAsset, measure, probeFile, renderMix, type Bus } from "../state/mixEngine";
+
+type Busy = null | "spot" | "save" | "upload" | "measure" | "approve" | "export";
+
+export function useAudio(projectId: string) {
+  const router = useRouter();
+  const [project, setProject] = useState<Project | null>(null);
+  const [ws, setWs] = useState<AudioWorkspace | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<Busy>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [buffers, setBuffers] = useState<Map<string, AudioBuffer>>(new Map());
+  const alive = useRef(true);
+
+  const reload = useCallback(async () => {
+    const w = await audioApi.getWorkspace(projectId);
+    if (alive.current) setWs(w);
+    return w;
+  }, [projectId]);
+
+  useEffect(() => {
+    alive.current = true;
+    (async () => {
+      const { data } = await getSupabaseClient().auth.getSession();
+      if (!data.session) {
+        router.replace("/sign-in");
+        return;
+      }
+      try {
+        const [p] = await Promise.all([apiGet<Project>(`/api/projects/${projectId}`), reload()]);
+        if (alive.current) setProject(p);
+      } catch (err) {
+        if (alive.current) setError(err instanceof Error ? err.message : "Could not load the Audio Studio");
+      } finally {
+        if (alive.current) setLoading(false);
+      }
+    })();
+    return () => {
+      alive.current = false;
+    };
+  }, [projectId, router, reload]);
+
+  // Decode every recording used in the workspace (once each).
+  useEffect(() => {
+    if (!ws) return;
+    const ids = new Set(ws.scenes.flatMap((s) => s.clips.filter((c) => c.asset_id).map((c) => c.asset_id!)));
+    for (const id of ids) {
+      if (buffers.has(id)) continue;
+      loadAsset(id)
+        .then((b) => alive.current && setBuffers((m) => new Map(m).set(id, b)))
+        .catch(() => alive.current && setError("A recording could not be loaded for playback."));
+    }
+  }, [ws, buffers]);
+
+  async function run<T>(kind: Busy, fn: () => Promise<T>, message: (r: T) => string | null) {
+    setBusy(kind);
+    setError(null);
+    setNotice(null);
+    try {
+      const r = await fn();
+      await reload();
+      const m = message(r);
+      if (m) setNotice(m);
+      return r;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const missing = (s: AudioScene) => s.clips.filter((c) => c.asset_id && !buffers.has(c.asset_id)).length;
+
+  return {
+    project, ws, loading, busy, error, notice, buffers,
+    spot: (sceneId: string) =>
+      run("spot", () => audioApi.spot(projectId, sceneId), (r) => `Spotted ${r.cues} cues on ${r.tracks} tracks from shot plan version ${r.shot_plan_version_number}. Recordings you've placed are kept.`),
+    updateTrack: (id: string, patch: UpdateAudioTrackInput) => run("save", () => audioApi.updateTrack(id, patch), () => null),
+    createClip: (sessionId: string, patch: SaveAudioClipInput) => run("save", () => audioApi.createClip(sessionId, patch), () => "Clip added."),
+    updateClip: (id: string, patch: SaveAudioClipInput, msg: string | null = "Clip saved.") => run("save", () => audioApi.updateClip(id, patch), () => msg),
+    deleteClip: (id: string) => run("save", () => audioApi.deleteClip(id), () => "Clip removed."),
+    /** Uploads a recording (after decoding it locally to prove it's playable) and optionally places it on a clip. */
+    upload: (file: File, placeOn?: { clipId: string }) =>
+      run(
+        "upload",
+        async () => {
+          const probe = await probeFile(file).catch(() => {
+            throw new Error("That file couldn't be played as audio in this browser.");
+          });
+          const asset = await audioApi.uploadAudio(projectId, file, { name: file.name, duration: probe.duration, sample_rate: probe.sample_rate, channels: probe.channels });
+          setBuffers((m) => new Map(m).set(asset.id, probe.buffer));
+          if (placeOn) await audioApi.updateClip(placeOn.clipId, { asset_id: asset.id, label: file.name.replace(/\.[^.]+$/, ""), duration_seconds: Math.max(0.1, probe.duration) });
+          return asset;
+        },
+        (a) => `“${a.name}” uploaded${placeOn ? " and placed on the clip" : ""}.`
+      ),
+    measure: (s: AudioScene) =>
+      run(
+        "measure",
+        async () => {
+          if (missing(s)) throw new Error("Some recordings are still loading — try again in a moment.");
+          const buf = await renderMix(s.session!.scene_seconds, s.tracks, s.clips, buffers);
+          const r = measure(buf);
+          return audioApi.recordMeasurement(s.session!.id, {
+            integrated_lufs: r.integrated_lufs, true_peak_dbtp: r.true_peak_dbtp, lra_lu: r.lra_lu, duration_seconds: r.duration_seconds,
+            clip_count: s.clips.filter((c) => c.kind === "asset").length, engine_version: r.engine_version, session_revision: s.session!.revision,
+          });
+        },
+        (m) => `Measured the rendered mix: ${m.integrated_lufs === null ? "silent" : `${m.integrated_lufs.toFixed(1)} LUFS`}${m.true_peak_dbtp === null ? "" : `, true peak ${m.true_peak_dbtp.toFixed(1)} dBTP`}.`
+      ),
+    approve: (sceneId: string) => run("approve", () => audioApi.approve(projectId, sceneId), (r) => `Scene mix approved as version ${r.version_number}.`),
+    exportStem: async (s: AudioScene, bus?: Bus) => {
+      setBusy("export");
+      setError(null);
+      try {
+        if (missing(s)) throw new Error("Some recordings are still loading — try again in a moment.");
+        const buf = await renderMix(s.session!.scene_seconds, s.tracks, s.clips, buffers, bus);
+        const url = URL.createObjectURL(encodeWav(buf));
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `scene-${s.scene.number}-${bus ? `${bus}-stem` : "full-mix"}.wav`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        setNotice(`Exported ${bus ? `the ${bus} stem` : "the full mix"} as WAV (48 kHz, 16-bit).`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Export failed");
+      } finally {
+        setBusy(null);
+      }
+    },
+  };
+}

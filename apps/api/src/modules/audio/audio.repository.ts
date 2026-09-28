@@ -1,6 +1,58 @@
 // apps/api/src/modules/audio/audio.repository.ts
-// Canonical persistence access for this domain.
-// Domain: Audio Studio
-// Canonical object: AudioSession / Mix
+// Canonical persistence for the Audio Studio. Reads Scriptwriter (scenes),
+// Storyboard (shot plans + approved versions), Scene DNA (locked versions),
+// Dialogue (lines), Casting (names) and Assets (audio) read-only; writes only
+// via the migration-0015 functions.
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { AudioConflictError, AudioNotFoundError, AudioNotReadyError, AudioValidationError } from "./audio.validator";
+import { AudioForbiddenError } from "./audio.permissions";
 
-export {};
+type Row = Record<string, any>;
+function mapDbError(error: { message?: string; code?: string }): Error {
+  const msg = error.message ?? "";
+  const text = msg.replace(/^AURA-AUD-\d+:\s*/, "");
+  if (msg.startsWith("AURA-AUD-409")) return new AudioConflictError(text);
+  if (msg.startsWith("AURA-AUD-412")) return new AudioNotReadyError(text);
+  if (msg.startsWith("AURA-AUD-404")) return new AudioNotFoundError(text);
+  if (msg.startsWith("AURA-AUD-403") || error.code === "42501") return new AudioForbiddenError();
+  if (msg.startsWith("AURA-AUD-400") || error.code === "23514") return new AudioValidationError([], text || "That value isn't allowed");
+  return Object.assign(new Error(msg || "Database error"), { cause: error });
+}
+async function rows(q: PromiseLike<{ data: unknown[] | null; error: unknown }>): Promise<Row[]> {
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as Row[];
+}
+async function rpc<T = Row>(db: SupabaseClient, fn: string, args: Row): Promise<T> {
+  const { data, error } = await db.rpc(fn, args);
+  if (error) throw mapDbError(error);
+  return data as T;
+}
+
+export const listScenes = (db: SupabaseClient, p: string) =>
+  rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status").eq("project_id", p).order("number", { ascending: true }));
+export const listPlans = (db: SupabaseClient, p: string) => rows(db.from("shot_plans").select("id, scene_id, status, review_state, review_reason, approved_version_id").eq("project_id", p));
+export const listPlanVersions = (db: SupabaseClient, p: string) => rows(db.from("shot_plan_versions").select("id, plan_id, version_number, scene_dna_version_id, shots").eq("project_id", p));
+export const listDnaVersions = (db: SupabaseClient, p: string) => rows(db.from("scene_dna_versions").select("id, content").eq("project_id", p));
+export const listLines = (db: SupabaseClient, p: string) =>
+  rows(db.from("dialogue_lines").select("id, speaker_name, character_id, text, estimated_seconds, extensions").eq("project_id", p));
+export const listCharacters = (db: SupabaseClient, p: string) => rows(db.from("characters").select("id, name").eq("project_id", p));
+export const listSessions = (db: SupabaseClient, p: string) => rows(db.from("audio_sessions").select("*").eq("project_id", p));
+export const listTracks = (db: SupabaseClient, p: string) => rows(db.from("audio_tracks").select("*").eq("project_id", p).order("ordinal", { ascending: true }));
+export const listClips = (db: SupabaseClient, p: string) => rows(db.from("audio_clips").select("*").eq("project_id", p).order("start_seconds", { ascending: true }));
+export const listMeasurements = (db: SupabaseClient, p: string) =>
+  rows(db.from("audio_measurements").select("*").eq("project_id", p).order("measured_at", { ascending: false }));
+export const listVersions = (db: SupabaseClient, p: string) => rows(db.from("audio_session_versions").select("id, session_id, version_number").eq("project_id", p));
+export const listAudioAssets = (db: SupabaseClient, p: string) =>
+  rows(db.from("assets").select("id, name, metadata, created_at").eq("project_id", p).eq("type", "audio").order("created_at", { ascending: false }));
+
+export const spot = (db: SupabaseClient, a: { projectId: string; sceneId: string; planVersionId: string; seconds: number; tracks: unknown; clips: unknown; engineVersion: string }) =>
+  rpc(db, "spot_audio_session", {
+    p_project_id: a.projectId, p_scene_id: a.sceneId, p_shot_plan_version_id: a.planVersionId, p_scene_seconds: a.seconds, p_tracks: a.tracks, p_clips: a.clips, p_engine_version: a.engineVersion,
+  });
+export const updateTrack = (db: SupabaseClient, id: string, patch: Row) => rpc(db, "update_audio_track", { p_track_id: id, p_patch: patch });
+export const saveClip = (db: SupabaseClient, sessionId: string, clipId: string | null, patch: Row) => rpc(db, "save_audio_clip", { p_session_id: sessionId, p_clip_id: clipId, p_patch: patch });
+export const deleteClip = (db: SupabaseClient, id: string) => rpc(db, "delete_audio_clip", { p_clip_id: id });
+export const recordMeasurement = (db: SupabaseClient, sessionId: string, m: Row) => rpc(db, "record_audio_measurement", { p_session_id: sessionId, p_m: m });
+export const approve = (db: SupabaseClient, projectId: string, sceneId: string) => rpc(db, "approve_audio_session", { p_project_id: projectId, p_scene_id: sceneId });
+export const setReview = (db: SupabaseClient, id: string, state: string, reason: string | null) => rpc(db, "set_audio_review", { p_session_id: id, p_state: state, p_reason: reason });

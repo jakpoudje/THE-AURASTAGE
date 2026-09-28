@@ -16,7 +16,7 @@ export const STAGES = [
   { key: "scene-dna", label: "Scene DNA", path: "scene-dna" },
   { key: "storyboard", label: "Storyboard & Shots", path: "storyboard" },
   { key: "visual", label: "Visual Generation", path: "visual" },
-  { key: "audio", label: "Audio Studio" },
+  { key: "audio", label: "Audio Studio", path: "audio" },
   { key: "editorial", label: "Editorial & Timeline" },
   { key: "export", label: "Export & Deliver" },
 ] as const;

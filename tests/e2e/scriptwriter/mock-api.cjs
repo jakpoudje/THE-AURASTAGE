@@ -6,13 +6,14 @@ const P = "11111111-1111-4111-8111-111111111111", ORG = "22222222-2222-4222-8222
 const now = () => new Date().toISOString();
 let project = { id: P, org_id: ORG, title: "Shadows of Lagos", type: "feature_film", genre: "Thriller", target_runtime_minutes: 110, status: "draft", created_at: now(), updated_at: now() };
 let script = null; const versions = []; let scenes = [];
-const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = [], packages = [], takes = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
+const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; const assets = [], asessions = [], atracks = [], aclips = [], ameasures = [], aversions = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = [], packages = [], takes = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
 const ws = () => {
   const cur = script && versions.find((v) => v.id === script.current_version_id);
   return { script, current_version: cur || null, versions: versions.map(({ id, version_number, note, parser_version, created_at }) => ({ id, version_number, note, parser_version, created_at })).reverse(), scenes, analysis: cur ? eng.sceneBoundaryEngine({ elements: cur.elements }).analysis : null };
 };
 http.createServer((req, res) => {
-  let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
+  const chunks = []; req.on("data", (c) => chunks.push(c)); req.on("end", () => {
+    const raw = Buffer.concat(chunks); const body = /^audio\//.test(req.headers["content-type"] || "") ? "" : raw.toString();
     res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Headers", "*"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
     if (req.method === "OPTIONS") return res.end();
     const send = (code, obj) => { res.statusCode = code; res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(obj)); };
@@ -389,6 +390,96 @@ http.createServer((req, res) => {
       if (m[2] === "reject") t.approval = "rejected";
       if (m[2] === "reopen") t.approval = "pending";
       return send(200, t);
+    }
+
+    // ---- Audio Studio + Assets (mirrors apps/api/src/modules/{audio,assets} + migration 0015; readiness is the real module) ----
+    const aud = require(require("path").resolve(__dirname, "../../../apps/api/dist/modules/audio/audio.readiness.js"));
+    const aerr = (code, msg) => send(code, { error: { code: `AURA-AUD-${code}`, message: msg } });
+    const atouch = (s) => { s.revision = crypto.randomUUID(); };
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/assets\/audio$/)) && req.method === "POST") {
+      const q = new URL(req.url, "http://x").searchParams; const isWav = raw.slice(0, 4).toString() === "RIFF" && raw.slice(8, 12).toString() === "WAVE";
+      if (!isWav && raw.slice(0, 3).toString() !== "ID3" && raw.slice(0, 4).toString() !== "OggS") return send(400, { error: { code: "AURA-AST-400", message: "That file isn't a supported audio format." } });
+      const a = { id: crypto.randomUUID(), project_id: P, type: "audio", name: q.get("name"), bytes: raw, media_type: req.headers["content-type"], duration_seconds: Number(q.get("duration")), created_at: now() };
+      assets.push(a); return send(201, { id: a.id, name: a.name, duration_seconds: a.duration_seconds, media_type: a.media_type, created_at: a.created_at });
+    }
+    if ((m = u.match(/^\/api\/assets\/([^/]+)\/content$/))) { const a = assets.find((x) => x.id === m[1]); res.statusCode = 200; res.setHeader("Content-Type", a.media_type); return res.end(a.bytes); }
+    const clipDTO = (c) => ({ ...c });
+    if (u === `/api/projects/${P}/audio` && req.method === "GET") {
+      const out = [];
+      for (const scene of scenes) {
+        const plan = plans.find((x) => x.scene_id === scene.id); const pv = plan && planVersions.find((v) => v.id === plan.approved_version_id);
+        const s = asessions.find((x) => x.scene_id === scene.id) || null;
+        if (!pv && !s) continue;
+        if (s) {
+          if (!plan || plan.approved_version_id !== s.shot_plan_version_id) { s.review_state = "stale"; s.review_reason = `The shot plan was approved again (now version ${pv.version_number}) after this audio was spotted — re-spot to update the cues. Your recordings are kept.`; }
+          else if (plan.status !== "approved" || plan.review_state !== "current") { s.review_state = "review_required"; s.review_reason = "The shot plan has edits that aren't approved yet."; }
+          else { s.review_state = "current"; s.review_reason = null; }
+        }
+        const st = s ? atracks.filter((t) => t.session_id === s.id) : []; const sc = s ? aclips.filter((c) => c.session_id === s.id) : [];
+        const me = s ? [...ameasures].reverse().find((x) => x.session_id === s.id) || null : null; const r = s ? aud.audioReadiness(s, st, sc, me) : null;
+        out.push({ scene: { id: scene.id, number: scene.number, heading: scene.heading },
+          plan: pv ? { version_id: pv.id, version_number: pv.version_number, usable: plan.status === "approved" && plan.review_state === "current" } : null,
+          session: s ? { id: s.id, status: s.status, review_state: s.review_state, review_reason: s.review_reason, revision: s.revision, scene_seconds: s.scene_seconds,
+            approved_version_number: s.approved_version_id ? aversions.find((v) => v.id === s.approved_version_id).version_number : null } : null,
+          tracks: st, clips: sc.map(clipDTO), measurement: me, readiness: r ? r.readiness : [], ready_for_approval: r ? r.ready : false });
+      }
+      return send(200, { target: { integrated_lufs: -23, tolerance_lu: 1, max_true_peak_dbtp: -1 },
+        generators: [{ id: "voice", label: "AI dialogue / voice (TTS)", note: "Needs a voice provider (e.g. OpenAI or ElevenLabs key).", state: "not_connected" }, { id: "music", label: "Music assistant", note: "Needs a music provider key.", state: "not_connected" }],
+        assets: assets.map((a) => ({ id: a.id, name: a.name, duration_seconds: a.duration_seconds, media_type: a.media_type, created_at: a.created_at })),
+        scenes: out, summary: { scenes: out.length, spotted: out.filter((x) => x.session).length, approved: out.filter((x) => x.session && x.session.status === "approved" && x.session.review_state === "current").length } });
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/audio\/scenes\/([^/]+)\/spot$/))) {
+      const scene = scenes.find((x) => x.id === m[1]); const plan = plans.find((x) => x.scene_id === m[1]); const pv = plan && planVersions.find((v) => v.id === plan.approved_version_id);
+      if (!pv || plan.status !== "approved" || plan.review_state !== "current") return aerr(412, "Approve this scene's shot plan in Storyboard first — audio is spotted from the approved version.");
+      const dv = sdnaVersions.find((x) => x.id === pv.scene_dna_version_id); const ed = dv.content.editable || {}; const pr = dv.content.proposal || {};
+      const shotsIn = pv.shots.map((x) => ({ ordinal: x.ordinal, story_start: x.story_start, story_end: x.story_end, dialogue_line_ids: x.dialogue_line_ids || [] }));
+      const seconds = Math.max(1, ...shotsIn.map((x) => x.story_end));
+      const r = eng.audioSpottingEngine({ scene: { number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day }, scene_seconds: seconds, shots: shotsIn,
+        lines: (pr.dialogue ? pr.dialogue.line_ids : []).map((id) => dlines.find((l) => l.id === id)).filter(Boolean).map((l) => ({ id: l.id, speaker: l.speaker_name, character_id: l.character_id,
+          character_name: (chars.find((c) => c.id === l.character_id) || {}).name || null, text: l.text, estimated_seconds: l.estimated_seconds, voice_over: (l.extensions || []).some((e) => /V\.?O/i.test(e)) })),
+        dna: { sound_intent: ed.sound_intent ?? null, weather: ed.weather ?? null, atmosphere: ed.atmosphere ?? null, mood: ed.mood || [], sound_candidates: pr.sound_candidates || [] } });
+      let s = asessions.find((x) => x.scene_id === m[1]);
+      if (!s) { s = { id: crypto.randomUUID(), scene_id: m[1], status: "draft", review_state: "current", review_reason: null, approved_version_id: null }; asessions.push(s); }
+      Object.assign(s, { shot_plan_version_id: pv.id, scene_seconds: seconds, status: "draft" }); atouch(s);
+      const keyToId = {};
+      r.tracks.forEach((t, i) => { let tr = atracks.find((x) => x.session_id === s.id && x.name === t.name && x.family === t.family);
+        if (!tr) { tr = { id: crypto.randomUUID(), session_id: s.id, ordinal: i + 1, name: t.name, family: t.family, gain_db: 0, pan: 0, mute: false, solo: false }; atracks.push(tr); } keyToId[t.key] = tr.id; });
+      for (let i = aclips.length - 1; i >= 0; i--) if (aclips[i].session_id === s.id && aclips[i].kind === "cue" && !aclips[i].source.added_by_hand) aclips.splice(i, 1);
+      for (const c of r.clips) {
+        if (c.source.dialogue_line_id && aclips.some((x) => x.session_id === s.id && x.kind === "asset" && x.source.dialogue_line_id === c.source.dialogue_line_id)) continue;
+        aclips.push({ id: crypto.randomUUID(), session_id: s.id, track_id: keyToId[c.track_key], label: c.label, kind: "cue", asset_id: null, start_seconds: c.start_seconds, duration_seconds: c.duration_seconds,
+          offset_seconds: 0, gain_db: 0, fade_in_seconds: 0, fade_out_seconds: 0, source: c.source, updated_at: now() });
+      }
+      return send(200, { session_id: s.id, tracks: r.tracks.length, cues: r.clips.length, shot_plan_version_number: pv.version_number });
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/audio\/scenes\/([^/]+)\/approve$/))) {
+      const s = asessions.find((x) => x.scene_id === m[1]); const r = aud.audioReadiness(s, atracks.filter((t) => t.session_id === s.id), aclips.filter((c) => c.session_id === s.id), [...ameasures].reverse().find((x) => x.session_id === s.id) || null);
+      if (!r.ready) return aerr(412, `Not ready to approve yet: ${r.readiness.filter((x) => x.blocking && !x.ok).map((x) => x.label.toLowerCase()).join("; ")}.`);
+      const v = { id: crypto.randomUUID(), version_number: aversions.filter((x) => x.session_id === s.id).length + 1, session_id: s.id }; aversions.push(v);
+      Object.assign(s, { status: "approved", approved_version_id: v.id }); return send(200, { version_id: v.id, version_number: v.version_number });
+    }
+    if ((m = u.match(/^\/api\/audio-tracks\/([^/]+)$/)) && req.method === "PATCH") {
+      const t = atracks.find((x) => x.id === m[1]); Object.assign(t, b); const s = asessions.find((x) => x.id === t.session_id); atouch(s); s.status = "draft"; return send(200, t);
+    }
+    const saveClip = (s, c) => {
+      if (b.asset_id) { c.asset_id = b.asset_id; c.kind = "asset"; } else if ("asset_id" in b) { c.asset_id = null; c.kind = "cue"; }
+      for (const k of ["track_id", "label", "start_seconds", "duration_seconds", "offset_seconds", "gain_db", "fade_in_seconds", "fade_out_seconds"]) if (k in b) c[k] = b[k];
+      c.updated_at = now(); atouch(s); s.status = "draft"; return c;
+    };
+    if ((m = u.match(/^\/api\/audio-sessions\/([^/]+)\/clips$/))) {
+      const s = asessions.find((x) => x.id === m[1]);
+      const c = { id: crypto.randomUUID(), session_id: s.id, track_id: b.track_id, label: "New clip", kind: "cue", asset_id: null, start_seconds: 0, duration_seconds: 1, offset_seconds: 0, gain_db: 0, fade_in_seconds: 0, fade_out_seconds: 0, source: { added_by_hand: true } };
+      aclips.push(c); return send(200, saveClip(s, c));
+    }
+    if ((m = u.match(/^\/api\/audio-clips\/([^/]+)$/))) {
+      const i = aclips.findIndex((x) => x.id === m[1]); const c = aclips[i]; const s = asessions.find((x) => x.id === c.session_id);
+      if (req.method === "DELETE") { aclips.splice(i, 1); atouch(s); s.status = "draft"; return send(200, { deleted: true }); }
+      return send(200, saveClip(s, c));
+    }
+    if ((m = u.match(/^\/api\/audio-sessions\/([^/]+)\/measurements$/))) {
+      const s = asessions.find((x) => x.id === m[1]);
+      if (b.session_revision !== s.revision) return aerr(409, "The mix changed while it was being measured — measure again.");
+      const me = { id: crypto.randomUUID(), session_id: s.id, ...b, measured_at: now() }; ameasures.push(me); return send(200, me);
     }
     send(404, { error: { code: "AURA-X-404", message: "not mocked " + u } });
   });

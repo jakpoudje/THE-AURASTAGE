@@ -1,13 +1,10 @@
 # engines/audio
 
-Named engines specified in the SRS for this domain (subset — see docs/SRS for full contracts):
+Implemented:
+- `audioSpottingEngine` v1.0.0 — deterministic cue sheet (DX/VO per line, FX from Scene DNA sound candidates, BG ambience, score) with evidence per cue.
+- `loudnessMeterEngine` v1.0.0 — ITU-R BS.1770-4 K-weighting (libebur128 coefficient derivation at any sample rate), gated integrated loudness, EBU Tech 3342 loudness range, 4× oversampled true peak.
 
-- `foleyRecommendationEngine`
-- `adrConformEngine`
-- `loudnessMeteringEngine`
-- `mixRoutingEngine`
-- `musicCueEngine`
+Planned (SRS): `foleyRecommendationEngine`, `adrConformEngine`, `mixRoutingEngine`, `musicCueEngine`.
 
-Each engine gets its own folder here (see `_template/`) with: `index.ts`, `engine.ts`,
-`input.schema.ts`, `output.schema.ts`, `rules.ts`, `prompt.ts` (only if LLM-backed),
-`validator.ts`, `version.ts`, `tests/`.
+Each engine has its own folder (see `_template/`) with `index.ts`, `engine.ts`,
+`input.schema.ts`, `output.schema.ts`, `rules.ts`, `validator.ts`, `version.ts`, `tests/`.
