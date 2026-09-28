@@ -14,10 +14,30 @@ function client(key: string) {
   return cached.client;
 }
 
-/** JSON Schema for structured outputs, from the engine's zod schema (inlined, no $schema/$ref). */
+// Structured outputs accept a subset of JSON Schema: length, count and range limits are refused (400, seen live
+// 2026-09-28: "For 'array' type, property 'maxItems' is not supported"). They are moved into the description so the
+// model still knows them, and the answer is validated against the full zod schema afterwards, so nothing is lost.
+const UNSUPPORTED = ["maxItems", "minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "pattern", "format"] as const;
+const WORDS: Record<string, string> = { maxItems: "at most {} items", minItems: "at least {} items", minLength: "at least {} characters", maxLength: "at most {} characters",
+  minimum: "minimum {}", maximum: "maximum {}", exclusiveMinimum: "above {}", exclusiveMaximum: "below {}", multipleOf: "a multiple of {}", pattern: "matching {}", format: "format {}" };
+export function toStructuredOutputSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(toStructuredOutputSchema);
+  if (!node || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  const notes: string[] = [];
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    const dropMinItems = k === "minItems" && typeof v === "number" && v > 1;
+    if ((UNSUPPORTED as readonly string[]).includes(k) || dropMinItems) notes.push(WORDS[k].replace("{}", String(v)));
+    else out[k] = toStructuredOutputSchema(v);
+  }
+  if (notes.length) out.description = [out.description, `(${notes.join(", ")})`].filter(Boolean).join(" ");
+  return out;
+}
+
+/** JSON Schema for structured outputs, from the engine's zod schema (inlined, no $schema/$ref, supported keywords only). */
 export function jsonSchemaOf(schema: unknown): Record<string, unknown> {
   const { $schema: _drop, ...rest } = zodToJsonSchema(schema as never, { $refStrategy: "none", target: "jsonSchema7" }) as Record<string, unknown>;
-  return rest;
+  return toStructuredOutputSchema(rest) as Record<string, unknown>;
 }
 
 export const anthropicReasoningAdapter: ReasoningAdapter = {

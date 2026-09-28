@@ -59,3 +59,15 @@ describe("Claude reasoning adapter", () => {
     expect(jsonSchemaOf(Names)).toMatchObject({ type: "object", properties: { names: { type: "array" } } });
   });
 });
+
+describe("structured-output schema (regression: live 400 'maxItems is not supported')", () => {
+  it("sends only supported keywords, with the limits described in words; the full schema still validates the answer", async () => {
+    const { PlanSchema } = await import("@aurastage/aura-intelligence");
+    const s = JSON.stringify(jsonSchemaOf(PlanSchema));
+    for (const k of ["maxItems", "maxLength", "minLength", "minimum", "maximum", "pattern", "format"]) expect(s).not.toContain(`"${k}"`);
+    const plan = jsonSchemaOf(PlanSchema) as any;
+    expect(plan.properties.calls.description).toContain("at most 12 items");
+    expect(plan.properties.calls.items.additionalProperties).toBe(false);
+    expect(jsonSchemaOf(z.object({ n: z.number().int().min(0).max(10) })).properties).toMatchObject({ n: { type: "integer", description: "(minimum 0, maximum 10)" } });
+  });
+});
