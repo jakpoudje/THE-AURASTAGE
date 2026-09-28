@@ -28,7 +28,8 @@ unconnected-provider 412/propagation,
 persistence re-read, Project Settings (impact preview, versioned save, 409, look → prompt review, defaults/budget,
 required deliverables, credits in the render manifest), Assets Library (usage evidence, Replace keeps version 1's exact
 bytes, a replaced recording flags the approved mix until re-measured, image upload/details/links/search/archive),
-and cross-project 403.
+Ask AuraStage (capabilities, ask → worker plan → preview with permission and staleness → apply → undo, discard,
+a Writer can ask but not apply a Casting change), and cross-project 403.
 
 ## Real-browser check (`live-browser`)
 
