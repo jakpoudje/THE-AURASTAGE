@@ -6,7 +6,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { ProviderError } from "../../types";
 import type { ReasoningAdapter, ReasoningRequest, ReasoningResult } from "../types";
 
-export const CLAUDE_MODEL = "claude-opus-5";
+export const CLAUDE_MODEL = "claude-opus-5-5";
 
 let cached: { key: string; client: Anthropic } | null = null;
 function client(key: string) {

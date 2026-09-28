@@ -17,6 +17,21 @@ function png(file, w, h, rgb) {
   fs.writeFileSync(f, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]));
   return f;
 }
+/** A real 16-bit mono WAV: `seconds` of a 440 Hz tone at 48 kHz. */
+function wav(file, seconds) {
+  const sr = 48000, n = sr * seconds, b = Buffer.alloc(44 + n * 2);
+  b.write("RIFF", 0); b.writeUInt32LE(36 + n * 2, 4); b.write("WAVEfmt ", 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(sr, 24); b.writeUInt32LE(sr * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write("data", 36); b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / sr) * 12000), 44 + i * 2);
+  const f = path.join(OUT, file);
+  fs.writeFileSync(f, b);
+  return f;
+}
+/** Sets a range slider the way a person dragging it would (React sees the input event). */
+const setRange = (loc, v) => loc.evaluate((el, val) => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, String(val));
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}, v);
 const SCRIPT = `EXT. LAGOS HARBOUR - DAWN
 
 AMARA BELLO (32) waits by the water.
@@ -117,11 +132,64 @@ You came.
     await page.getByRole("alert").getByText(/identical to the current version/).waitFor();
     await page.getByRole("alert").getByRole("button", { name: "Dismiss" }).click();
   });
+  await step("Edit the image in the browser (crop 1:1, rotate, brighten); saved as version 3 with what was done; reload: kept; v2 untouched", async () => {
+    await detail().getByRole("button", { name: "Edit…" }).click();
+    const ed = page.getByRole("dialog", { name: /^Edit Harbour at dawn/ });
+    await ed.getByText("Saving adds version 3. Version 2 stays in Versions, untouched.").waitFor();
+    await ed.getByRole("button", { name: "1:1" }).click();
+    await ed.getByRole("button", { name: "⟳ Rotate right" }).click();
+    await setRange(ed.getByLabel("Brightness"), 120);
+    await ed.getByTestId("edit-result").getByText("Result: 18×18").waitFor();
+    await ed.getByRole("button", { name: "Save as new version" }).click();
+    await page.getByRole("status").getByText("Saved as a new version. Earlier versions are kept.").waitFor();
+    await page.reload();
+    await card().getByText("v3").waitFor();
+    await detail().getByRole("tab", { name: "Versions" }).click();
+    const vs = detail().getByRole("list", { name: "Versions" });
+    await vs.getByText(/v3 · current .* Edited in AuraStage from v2: cropped to 18×18, rotated 90°, brightness 120%/).waitFor();
+    await vs.getByText(/v2 · .* Cooler grade/).waitFor();
+    const id = new URL(page.url()).searchParams.get("asset");
+    const v3 = Buffer.from(await (await fetch(`${API}/api/assets/${id}/content?version=3`)).arrayBuffer());
+    if (v3.slice(1, 4).toString() !== "PNG" || v3.readUInt32BE(16) !== 18 || v3.readUInt32BE(20) !== 18) throw new Error("v3 isn't an 18×18 PNG");
+    const v2 = Buffer.from(await (await fetch(`${API}/api/assets/${id}/content?version=2`)).arrayBuffer());
+    if (!v2.equals(fs.readFileSync(f2))) throw new Error("version 2 changed");
+  });
+  await step("Edit a recording (trim, fade in, gain), preview it, save as version 2 WAV; reload: kept with the note", async () => {
+    const w = wav("line-take.wav", 2);
+    await page.getByRole("tab", { name: /^All/ }).click();
+    await page.getByLabel("File to upload").setInputFiles(w);
+    const dlg = page.getByRole("dialog", { name: "Add asset" });
+    await dlg.getByLabel("Asset name").fill("Amara line take");
+    await dlg.getByRole("button", { name: "Add to library" }).click();
+    await page.getByRole("status").getByText("Added “Amara line take”.").waitFor();
+    await detail().getByRole("heading", { name: "Amara line take" }).waitFor();
+    await detail().getByRole("button", { name: "Edit…" }).click();
+    const ed = page.getByRole("dialog", { name: /^Edit Amara line take/ });
+    await ed.getByTestId("edit-result").getByText(/Result: 2 s/).waitFor();
+    await setRange(ed.getByLabel("Start"), 0.5);
+    await setRange(ed.getByLabel("Fade in"), 0.25);
+    await setRange(ed.getByLabel("Gain"), 3);
+    await ed.getByTestId("edit-result").getByText(/Result: 1\.5 s · peak -?\d/).waitFor();
+    await ed.getByRole("button", { name: "▶ Preview" }).click();
+    await ed.getByRole("button", { name: "Save as new version" }).click();
+    await page.getByRole("status").getByText("Saved as a new version. Earlier versions are kept.").waitFor();
+    await page.reload();
+    await detail().getByRole("heading", { name: "Amara line take" }).waitFor();
+    await detail().getByRole("tab", { name: "Versions" }).click();
+    await detail().getByRole("list", { name: "Versions" }).getByText(/v2 · current .* Edited in AuraStage from v1: trimmed to 0\.5–2 s, gain \+3 dB, fade in 0\.25 s/).waitFor();
+    const id = new URL(page.url()).searchParams.get("asset");
+    const v2 = Buffer.from(await (await fetch(`${API}/api/assets/${id}/content?version=2`)).arrayBuffer());
+    if (v2.slice(0, 4).toString() !== "RIFF" || v2.readUInt32LE(40) !== 1.5 * 48000 * 2) throw new Error(`v2 isn't a 1.5 s mono WAV (${v2.readUInt32LE(40)} data bytes)`);
+    if (v2.readInt16LE(44) !== 0) throw new Error("fade in should start from silence");
+    await page.getByRole("tab", { name: /Locations/ }).click();
+    await card().click();
+  });
   await step("archive hides it (kept, with every version); the Archived filter shows it; restore", async () => {
     await detail().getByRole("button", { name: "Archive" }).click();
     await page.getByRole("status").getByText(/Archived\. It's kept/).waitFor();
     await page.reload();
-    await page.getByText(/No assets yet|Nothing matches/).waitFor();
+    await page.getByRole("list", { name: "Assets" }).getByRole("button", { name: /Amara line take/ }).waitFor();
+    if (await card().count()) throw new Error("archived asset still listed");
     await page.getByLabel(/Archived \(1\)/).check();
     await card().waitFor();
     await detail().getByRole("button", { name: "Restore" }).click();

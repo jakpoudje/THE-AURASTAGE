@@ -18,7 +18,7 @@ import { anthropicReasoningAdapter, jsonSchemaOf } from "../anthropic/anthropicR
 import { reasoningProvider } from "../index";
 
 const Names = z.object({ names: z.array(z.object({ name: z.string(), why: z.string() })).min(1) }).strict();
-const ok = (text: string, extra: any = {}) => ({ id: "msg_1", model: "claude-opus-5", stop_reason: "end_turn", content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 5 }, ...extra });
+const ok = (text: string, extra: any = {}) => ({ id: "msg_1", model: "claude-opus-5-5", stop_reason: "end_turn", content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 5 }, ...extra });
 const env = { ANTHROPIC_API_KEY: "sk-test" };
 
 describe("Claude reasoning adapter", () => {
@@ -32,9 +32,9 @@ describe("Claude reasoning adapter", () => {
   it("asks for a JSON-schema answer with adaptive thinking and fallbacks, and validates it", async () => {
     next = ok(JSON.stringify({ names: [{ name: "Adaeze Okafor", why: "Igbo, 1990s Lagos" }] }));
     const r = await anthropicReasoningAdapter.complete({ system: "You name characters.", prompt: "A Lagos journalist", schema: Names, effort: "medium" }, env);
-    expect(r).toMatchObject({ data: { names: [{ name: "Adaeze Okafor" }] }, model: "claude-opus-5", provider_request_id: "msg_1" });
+    expect(r).toMatchObject({ data: { names: [{ name: "Adaeze Okafor" }] }, model: "claude-opus-5-5", provider_request_id: "msg_1" });
     const p = calls[0];
-    expect(p).toMatchObject({ model: "claude-opus-5", thinking: { type: "adaptive" }, fallbacks: "default", betas: ["server-side-fallback-2026-07-01"] });
+    expect(p).toMatchObject({ model: "claude-opus-5-5", thinking: { type: "adaptive" }, fallbacks: "default", betas: ["server-side-fallback-2026-07-01"] });
     expect(p.output_config).toMatchObject({ effort: "medium", format: { type: "json_schema" } });
     expect(p.output_config.format.schema).toMatchObject({ type: "object", additionalProperties: false, required: ["names"] });
     expect(p.output_config.format.schema.$schema).toBeUndefined();

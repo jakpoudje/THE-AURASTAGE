@@ -5,6 +5,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { assetsApi } from "../api/assetsApi";
 import type { AssetDetail, Library } from "../types";
 import { usePreview } from "./AssetGrid";
+import { AssetEditor } from "./AssetEditor";
 import { actionLabel, bytes, specLine, TYPE_LABEL } from "./format";
 
 const TABS = ["Overview", "Usage", "Metadata", "Versions"] as const;
@@ -29,6 +30,7 @@ export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, o
   const [note, setNote] = useState("");
   const [sceneId, setSceneId] = useState("");
   const [charId, setCharId] = useState("");
+  const [editing, setEditing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const preview = usePreview(a);
   useEffect(() => setDraft({ name: a.name, category: a.category, description: a.description, tags: a.tags.join(", ") }), [a.id, a.name, a.category, a.description, a.tags]);
@@ -38,6 +40,7 @@ export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, o
 
   return (
     <aside aria-label="Asset details" className="rounded-lg border border-aura-border bg-aura-panel p-4">
+      {editing && <AssetEditor d={d} busy={busy} onClose={() => setEditing(false)} onSave={(f, n) => { onReplace(f, n); setEditing(false); }} />}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="truncate font-display text-xl">{a.name}</h2>
@@ -57,6 +60,9 @@ export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, o
         <button onClick={() => download(a.id, a.name, a.current_version)} className="rounded-md border border-aura-border px-3 py-1.5 text-xs">Download</button>
         {canEdit && !a.archived && (
           <>
+            {(a.type === "image" || a.type === "audio") && (
+              <button onClick={() => setEditing(true)} disabled={busy} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-xs text-aura-gold">Edit…</button>
+            )}
             <button onClick={() => fileRef.current?.click()} disabled={busy} className="rounded-md border border-aura-border px-3 py-1.5 text-xs">Replace…</button>
             <input ref={fileRef} type="file" aria-label="Replacement file" className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplace(f, note); e.target.value = ""; }} />
