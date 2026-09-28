@@ -644,6 +644,19 @@ await check("persistence: everything still there on re-read", async () => {
   assert(p.tone === "Tense" && s.current_version.id === v1 && c.characters.find((x: any) => x.id === tundeId).status === "approved", "mismatch");
 });
 
+// ---- Completion pass 12c: Dashboard overview from each stage's own records ----
+await check("overview: every stage reports real counts and its checks; flagged stages are listed for attention", async () => {
+  const o = await api("GET", `/api/projects/${projectId}/overview`);
+  const by = Object.fromEntries(o.stages.map((s: any) => [s.id, s]));
+  assert(o.stages.length === 9 && o.engine_version === "1.0.0", "shape");
+  assert(by.scriptwriter.state === "complete" && by.scriptwriter.checks.every((c: any) => c.ok), `script ${by.scriptwriter.state}`);
+  assert(by.visual.done >= 1 && by.visual.total >= by.visual.done, `visual ${by.visual.done}/${by.visual.total}`);
+  // The Casting change earlier flagged Scene DNA downstream: the overview must say so, not hide it.
+  assert(o.attention.some((a: any) => a.stage === "scene-dna" || a.stage === "storyboard"), "attention: " + JSON.stringify(o.attention));
+  assert(o.counts.scenes === 2 && o.counts.characters >= 2 && o.counts.assets >= 2, "counts " + JSON.stringify(o.counts));
+  assert(o.stages.every((s: any) => (s.done === null) === (s.total === null) || s.id === "export"), "counts are paired");
+  return o.stages.map((s: any) => `${s.number}:${s.state}`).join(" ");
+});
 // ---- Phase 11: Team & permissions, with a second throwaway account ----
 let token2 = "", user2 = "";
 await check("team: owner invites a second person as Writer; only the hash is stored", async () => {

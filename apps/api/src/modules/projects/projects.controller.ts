@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { createProject, editProject, getProject, listProjects } from "./projects.service";
 import { ProjectValidationError } from "./projects.validator";
 import { ForbiddenError } from "./projects.permissions";
+import { getProjectOverview } from "./projects.overview";
 
 function handleError(err: unknown, reply: FastifyReply) {
   if (err instanceof ProjectValidationError) {
@@ -38,6 +39,16 @@ export async function registerProjectsRoutes(app: FastifyInstance) {
       const project = await getProject(request.db, id);
       if (!project) return reply.code(404).send({ error: { code: "AURA-SCR-404", message: "Project not found" } });
       return project;
+    } catch (err) {
+      return handleError(err, reply);
+    }
+  });
+
+  // Dashboard: where the production stands, stage by stage, from each domain's own records.
+  app.get("/api/projects/:id/overview", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      return await getProjectOverview(request.db, id);
     } catch (err) {
       return handleError(err, reply);
     }

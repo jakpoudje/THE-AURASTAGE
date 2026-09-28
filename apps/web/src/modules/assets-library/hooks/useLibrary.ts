@@ -60,6 +60,15 @@ export function useLibrary(projectId: string) {
     assetsApi.detail(selected).then(setDetail).catch((e) => setError(e.message));
   }, [selected]);
 
+  // The open asset lives in the URL (?asset=<id>) so a reload or a shared link opens it again.
+  const selectAsset = (id: string | null) => {
+    setSelected(id);
+    const u = new URL(window.location.href);
+    if (id) u.searchParams.set("asset", id);
+    else u.searchParams.delete("asset");
+    window.history.replaceState(null, "", u.toString());
+  };
+
   const run = async (label: string, fn: () => Promise<AssetDetail | void>) => {
     setBusy(true);
     setError(null);
@@ -68,7 +77,7 @@ export function useLibrary(projectId: string) {
       const d = await fn();
       if (d) {
         setDetail(d);
-        setSelected(d.asset.id);
+        selectAsset(d.asset.id);
       }
       await load(filters);
       setNotice(label);
@@ -82,13 +91,7 @@ export function useLibrary(projectId: string) {
   return {
     project, lib, filters, selected, detail, loading, busy, error, notice,
     setFilters: (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch })),
-    select: (id: string | null) => {
-      setSelected(id);
-      const u = new URL(window.location.href);
-      if (id) u.searchParams.set("asset", id);
-      else u.searchParams.delete("asset");
-      window.history.replaceState(null, "", u.toString());
-    },
+    select: selectAsset,
     upload: (file: File, name: string, category: string | null) =>
       run(`Added “${name}”.`, async () => assetsApi.upload(projectId, file, { name, category, ...(await readFileSpecs(file)) })),
     replace: (file: File, note: string) =>

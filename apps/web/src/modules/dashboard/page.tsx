@@ -11,9 +11,16 @@ import { NewProjectForm } from "./components/NewProjectForm";
 import { ProjectList } from "./components/ProjectList";
 import { MyTasks } from "@/modules/team-collaboration/components/ReviewQueue";
 import { NotificationBell } from "@/modules/team-collaboration/components/NotificationBell";
+import { ProductionOverview } from "./components/ProductionOverview";
+import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
   const { org, role, memberships, projects, loading, error, createProject, switchOrg, signOut, me } = useDashboardData();
+  const [focus, setFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!projects.length) return setFocus(null);
+    if (!focus || !projects.some((p) => p.id === focus)) setFocus(projects[0].id);
+  }, [projects, focus]);
 
   if (loading) {
     return <div className="p-12 text-center text-white/50">Loading your studio…</div>;
@@ -77,6 +84,20 @@ export default function DashboardPage() {
           <NewProjectForm onCreate={createProject} />
         )}
       </div>
+
+      {focus && (
+        <div className="mb-8">
+          {projects.length > 1 && (
+            <label className="mb-3 flex items-center gap-2 text-xs text-white/60">
+              Overview of
+              <select aria-label="Project overview" value={focus} onChange={(e) => setFocus(e.target.value)} className="rounded-md border border-aura-border bg-black/40 px-2 py-1 text-xs">
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+              </select>
+            </label>
+          )}
+          <ProductionOverview projectId={focus} />
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <ProjectList projects={projects} />

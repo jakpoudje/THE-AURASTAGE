@@ -64,6 +64,8 @@ You came.
     await page.getByRole("status").getByText("Added “Harbour at dawn”.").waitFor();
     await card().waitFor();
     await page.reload();
+    // Regression (live 2026-09-28): the asset just uploaded stays open after a reload.
+    await detail().getByRole("heading", { name: "Harbour at dawn" }).waitFor();
     await card().getByText(/32×18/).waitFor();
     await card().getByText("v1").waitFor();
     await page.getByRole("tab", { name: /Locations 1/ }).waitFor();

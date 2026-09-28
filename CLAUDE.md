@@ -47,7 +47,10 @@ Every user-callable write function starts with `perform public.gate_write(<proje
 Phase 0 (this scaffold) -> 1 Project+Assets+permissions+audit+MOS foundation -> 2 Scriptwriter ->
 3 Casting & Characters -> 4 Dialogue Intelligence -> 5 Scene DNA + production graph/invalidation ->
 6 Storyboard & Shots -> 7 Provider Gateway + Visual Generation -> 8 Audio Studio ->
-9 Editorial & Timeline -> 10 Export & Deliver -> 11 Collaboration/Help hardening + scale/security.
+9 Editorial & Timeline -> 10 Export & Deliver -> 11 Collaboration/Help hardening + scale/security ->
+12 Completion pass (Project Settings, Assets Library, evidence-based Dashboard) -> 13 Intelligence layer
+(Claude-backed assistants in every stage, character/location bibles with reference images and aging,
+consistency-aware prompts, voice/SFX/music/video generation).
 
 ## Definition of done
 

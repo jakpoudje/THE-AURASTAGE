@@ -336,9 +336,14 @@ await check("help: open Help from a workspace; live status and the assistant ans
   await page.getByTestId("session-current").waitFor();
   return render.replace(/\s+/g, " ");
 });
-await check("dashboard after reload still shows the project", async () => {
+await check("dashboard after reload still shows the project, with its production overview", async () => {
   await page.goto(WEB + "/dashboard");
   await reload(TITLE);
+  const script = page.getByTestId("stage-scriptwriter");
+  await script.getByText(/Version \d+ approved/).waitFor();
+  await script.getByRole("button", { name: "Why?" }).click();
+  await script.getByText(/A version is approved/).waitFor();
+  return await page.getByTestId("stages-complete").innerText();
 });
 await check("no browser errors on any page", async () => {
   if (pageErrors.length) throw new Error(pageErrors.slice(0, 3).join(" | "));

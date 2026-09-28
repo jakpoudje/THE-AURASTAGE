@@ -28,6 +28,27 @@ http.createServer((req, res) => {
       providers: [{ id: "aurastage-sketch", name: "AuraStage Sketch", capabilities: ["image"], state: "configured" }, { id: "runway", name: "Runway", capabilities: ["image", "video"], state: "not_configured" }],
       delivery_profiles: eng.deliveryProfiles().filter((p) => p.available).map((p) => ({ id: p.id, name: p.label })), paid_takes_this_month: 0 });
     if (u === "/api/organizations/bootstrap") return send(200, { id: ORG, name: "Test Studio", slug: "t", created_at: now() });
+    // ---- Dashboard overview (mirrors apps/api/src/modules/projects/projects.overview.ts; the engine is the real one) ----
+    if (u === `/api/projects/${P}/overview`) {
+      const act = scenes.filter((x) => x.status !== "omitted"), cs = chars.filter((c) => !c.merged_into), ls = dlines.filter((l) => l.status !== "omitted");
+      const byScene = new Map(); for (const l of ls) byScene.set(l.scene_id, [...(byScene.get(l.scene_id) || []), l]);
+      const approvedPlans = plans.filter((x) => x.status === "approved" && x.review_state === "current");
+      const planShots = shots.filter((sh) => plans.some((pl) => pl.approved_version_id && pl.id === sh.plan_id));
+      const facts = {
+        script: { has_draft: versions.length > 0, approved_version: script && script.approved_version_id ? (versions.find((v) => v.id === script.approved_version_id) || {}).version_number || null : null, scenes: act.length },
+        casting: { characters: cs.length, approved: cs.filter((c) => c.status === "approved").length, pending_candidates: 0, sync: script && script.approved_version_id ? (lastSyncVersion ? "current" : "never") : "no_script" },
+        dialogue: { scenes_with_lines: byScene.size, scenes_approved: [...byScene.values()].filter((x) => x.every((l) => l.approval === "approved")).length, lines: ls.length, review_required: 0, sync: script && script.approved_version_id ? (dlgSyncVersion ? "current" : "never") : "no_script" },
+        scene_dna: { scenes: act.length, locked: sdna.filter((d) => d.status === "approved" && d.review_state === "current").length, needs_review: sdna.filter((d) => d.review_state !== "current").length },
+        storyboard: { locked_scenes: sdna.filter((d) => d.status === "approved").length, planned: plans.length, approved: approvedPlans.length, shots: shots.length, needs_review: plans.filter((x) => x.review_state !== "current").length },
+        visual: { shots: planShots.length, with_approved_take: planShots.filter((sh) => takes.some((t) => t.shot_id === sh.id && t.approval === "approved")).length, needs_review: 0, running: 0 },
+        audio: { scenes: approvedPlans.length, approved: asessions.filter((x) => x.status === "approved" && x.review_state === "current").length, needs_review: asessions.filter((x) => x.review_state !== "current").length },
+        editorial: { timeline: !!timeline, locked: !!(timeline && timeline.status === "locked"), lock_number: locks.length ? locks[locks.length - 1].lock_number : null, review_required: false, offline: tclips.filter((c) => c.kind === "slug").length, issues: 0 },
+        delivery: { picture_lock: !!(timeline && timeline.status === "locked"), required: ST.settings.delivery.required_profiles.length, required_done: 0, delivered: renders.filter((r) => r.status === "succeeded").length, failed: renders.filter((r) => r.status === "failed").length, out_of_date: 0 },
+      };
+      const out = eng.productionOverviewEngine({ project_id: P, facts });
+      return send(200, { project: { id: P, title: project.title, type: project.type, genre: project.genre || null, logline: project.logline || null, target_runtime_minutes: project.target_runtime_minutes || null },
+        counts: { scenes: act.length, shots: shots.length, characters: cs.length, locations: new Set(act.map((x) => String(x.location || "").toUpperCase()).filter(Boolean)).size, dialogue_lines: ls.length, assets: assets.filter((a) => !a.archived_at).length }, ...out });
+    }
     if (u === "/api/projects" && req.method === "GET") return send(200, [project]);
     if (u === "/api/projects" && req.method === "POST") {
       // Same validation as the real API (packages/contracts).
