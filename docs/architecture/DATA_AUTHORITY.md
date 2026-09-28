@@ -18,7 +18,7 @@ character, scene, shot or technical truth.
 | SceneDNA | Scene DNA | Versioned scene production blueprint |
 | Shot | Storyboard & Shots | Canonical Shot DNA |
 | GenerationPackage / Take | Visual Generation | Provider-neutral spec + generated result |
-| Asset / AssetVersion | Assets Library | Media/reference metadata, lineage, rights |
+| Asset / AssetVersion / AssetLink | Assets Library | Media/reference metadata, versions (a new file never overwrites an old one), usage links to scenes/characters; migration 0024 |
 | AudioSession / Track / Clip / Bus / Automation | Audio Studio | DAW session + mix objects |
 | AssemblyTimeline / PictureLock | Editorial | NLE timeline authority + approved lock |
 | RenderManifest / Deliverable | Export | Immutable render spec + master/package output |

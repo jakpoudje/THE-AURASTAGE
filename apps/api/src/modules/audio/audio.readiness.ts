@@ -6,14 +6,19 @@ import type { AudioFamily, LoudnessStandard, ReadinessPredicate } from "@aurasta
 type Row = Record<string, any>;
 
 /** `standard` comes from Project Settings (technical.loudness_standard); EBU R128 when none is set. */
-export function audioReadiness(session: Row, tracks: Row[], clips: Row[], measurement: Row | null, standard: LoudnessStandard = "ebu_r128"): { readiness: ReadinessPredicate[]; ready: boolean } {
+export function audioReadiness(
+  session: Row, tracks: Row[], clips: Row[], measurement: Row | null, standard: LoudnessStandard = "ebu_r128",
+  /** When a recording on this mix last got a new version in the Assets Library (the revision doesn't change then). */
+  recordingsChangedAt: string | null = null
+): { readiness: ReadinessPredicate[]; ready: boolean } {
   const LOUDNESS_TARGET = loudnessTarget(standard);
   const standardName = LOUDNESS_STANDARDS[standard].label.split(" (")[0];
   const family = new Map(tracks.map((t) => [t.id as string, t.family as AudioFamily]));
   const dialogueClips = clips.filter((c) => FAMILY_BUS[family.get(c.track_id) ?? "FX"] === "DX");
   const dxCues = dialogueClips.filter((c) => c.kind === "cue");
   const otherCues = clips.filter((c) => c.kind === "cue" && FAMILY_BUS[family.get(c.track_id) ?? "FX"] !== "DX");
-  const current = !!measurement && measurement.session_revision === session.revision;
+  const replacedAfter = !!measurement && !!recordingsChangedAt && Date.parse(recordingsChangedAt) > Date.parse(measurement.measured_at);
+  const current = !!measurement && measurement.session_revision === session.revision && !replacedAfter;
   const I = measurement?.integrated_lufs === null || measurement?.integrated_lufs === undefined ? null : Number(measurement.integrated_lufs);
   const TP = measurement?.true_peak_dbtp === null || measurement?.true_peak_dbtp === undefined ? null : Number(measurement.true_peak_dbtp);
   const readiness: ReadinessPredicate[] = [
@@ -36,7 +41,7 @@ export function audioReadiness(session: Row, tracks: Row[], clips: Row[], measur
       label: "Loudness measured after the last change",
       ok: current,
       blocking: true,
-      evidence: !measurement ? "Not measured yet" : current ? `Measured ${new Date(measurement.measured_at).toLocaleString("en-GB")}` : "The mix changed after the last measurement",
+      evidence: !measurement ? "Not measured yet" : current ? `Measured ${new Date(measurement.measured_at).toLocaleString("en-GB")}` : replacedAfter ? "A recording was replaced in the Assets Library after the last measurement" : "The mix changed after the last measurement",
     },
     {
       id: "loudness_target",

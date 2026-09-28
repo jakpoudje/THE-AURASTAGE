@@ -359,6 +359,70 @@ await check("audio: place the recording on the dialogue cue; mixer change saved;
   sc = ws.scenes.find((x: any) => x.scene.id === s1);
   assert(sc.session.status === "approved" && sc.session.approved_version_number === 1, "approval not persisted");
 });
+// ---- Completion pass 12b: Assets Library ----
+const PNG_1PX = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
+const rawPost = (path: string, type: string, body: Uint8Array) =>
+  fetch(API + path, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": type }, body });
+await check("assets: the recording is in the library with its real usage (Audio Studio clip)", async () => {
+  const lib = await api("GET", `/api/projects/${projectId}/library?category=audio`);
+  const a = lib.assets.find((x: any) => x.id === assetId);
+  assert(a && a.current_version === 1 && a.versions === 1, `library entry ${JSON.stringify(a).slice(0, 200)}`);
+  assert(a.usage.some((u: any) => u.kind === "audio_clip" && u.scene_id === s1), "usage missing: " + JSON.stringify(a.usage));
+  assert(lib.categories.length === 12 && /isn't available yet/.test(lib.search_note), "categories / honest search note");
+  return a.usage.map((u: any) => u.label).join("; ");
+});
+await check("assets: replacing the recording adds version 2; version 1's exact bytes are kept", async () => {
+  const v1 = toneWav();
+  const v2 = toneWav(2);
+  await rawPost(`/api/assets/${assetId}/versions`, "image/png", PNG_1PX).then((r) => assert(r.status === 400, `other kind ${r.status}`));
+  const same = await rawPost(`/api/assets/${assetId}/versions`, "audio/wav", v1);
+  assert(same.status === 409, `identical file ${same.status}`);
+  const r = await rawPost(`/api/assets/${assetId}/versions?note=Cleaner%20take&duration=2&sample_rate=48000&channels=1`, "audio/wav", v2);
+  const d = await r.json();
+  assert(r.status === 201 && d.asset.current_version === 2 && d.versions.length === 2, `replace ${r.status} ${JSON.stringify(d).slice(0, 200)}`);
+  const old = new Uint8Array(await (await fetch(`${API}/api/assets/${assetId}/content?version=1`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
+  const cur = new Uint8Array(await (await fetch(`${API}/api/assets/${assetId}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
+  assert(old.length === v1.length && old.every((b, i) => b === v1[i]), "version 1 bytes changed");
+  assert(cur.length === v2.length, "current bytes are not version 2");
+});
+await check("assets → audio: the approved mix is flagged; approval waits for a new measurement, then goes through", async () => {
+  let ws = await api("GET", `/api/projects/${projectId}/audio`);
+  let sc = ws.scenes.find((x: any) => x.scene.id === s1);
+  assert(sc.session.review_state === "review_required" && sc.session.recordings_replaced && /replaced in the Assets Library/.test(sc.session.review_reason), `session ${sc.session.review_state} ${sc.session.review_reason}`);
+  const r = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/approve`, {}, [412]);
+  assert(/loudness measured after the last change/.test(r.error.message), r.error.message);
+  const m = { integrated_lufs: -23.4, true_peak_dbtp: -19.8, lra_lu: 0, duration_seconds: sc.session.scene_seconds, clip_count: 1, engine_version: "1.0.0" };
+  await api("POST", `/api/audio-sessions/${sessionId}/measurements`, { ...m, session_revision: sc.session.revision });
+  const v = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/approve`, {});
+  ws = await api("GET", `/api/projects/${projectId}/audio`);
+  sc = ws.scenes.find((x: any) => x.scene.id === s1);
+  assert(v.version_number === 2 && sc.session.review_state === "current" && sc.session.approved_version_number === 2, `re-approve v${v.version_number} ${sc.session.review_state}`);
+  return sc.session.review_reason ?? "current again";
+});
+let imageId = "";
+await check("assets: upload an image (fake refused), set details, link to a scene and a character, search, archive and restore", async () => {
+  const fake = await rawPost(`/api/projects/${projectId}/library?name=x`, "image/png", new TextEncoder().encode("<svg/>"));
+  assert(fake.status === 400, `fake ${fake.status}`);
+  const up = await rawPost(`/api/projects/${projectId}/library?name=Harbour%20reference&category=locations&width=1&height=1`, "image/png", PNG_1PX);
+  const d = await up.json();
+  assert(up.status === 201 && d.asset.category === "locations" && d.asset.specs.width === 1, `upload ${up.status} ${JSON.stringify(d).slice(0, 200)}`);
+  imageId = d.asset.id;
+  await api("PATCH", `/api/assets/${imageId}`, { colour: "red" }, [400]);
+  await api("PATCH", `/api/assets/${imageId}`, { tags: ["Exterior", " dawn "], description: "Golden light over the jetty" });
+  await api("POST", `/api/assets/${imageId}/links`, { object_type: "scene", object_id: s1 });
+  const linked = await api("POST", `/api/assets/${imageId}/links`, { object_type: "character", object_id: tundeId });
+  assert(linked.links.length === 2, "links " + JSON.stringify(linked.links));
+  await api("POST", `/api/assets/${imageId}/links`, { object_type: "scene", object_id: "00000000-0000-4000-8000-000000000000" }, [400]);
+  const found = await api("GET", `/api/projects/${projectId}/library?q=jetty%20exterior&scene_id=${s1}`);
+  assert(found.assets.length === 1 && found.assets[0].id === imageId && found.assets[0].tags.join() === "dawn,exterior", "search " + JSON.stringify(found.assets.map((a: any) => a.tags)));
+  await api("PATCH", `/api/assets/${imageId}`, { archived: true });
+  const active = await api("GET", `/api/projects/${projectId}/library`);
+  assert(!active.assets.some((a: any) => a.id === imageId) && active.archived_count === 1, "archive");
+  await api("PATCH", `/api/assets/${imageId}`, { archived: false });
+  const detail = await api("GET", `/api/assets/${imageId}`);
+  assert(detail.history.map((h: any) => h.action).includes("AssetRestored") && detail.versions.length === 1, "history");
+  return `${detail.history.length} history entries`;
+});
 // ---- Editorial & Timeline (Phase 9) ----
 let edRev = "";
 const edWs = () => api("GET", `/api/projects/${projectId}/editorial`);

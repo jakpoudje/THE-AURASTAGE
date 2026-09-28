@@ -30,13 +30,25 @@ const GENERATORS = [
   { id: "cleanup", label: "Dialogue clean-up / stem separation", note: "Needs an audio-processing provider key." },
 ].map((g) => ({ ...g, state: "not_connected" as const }));
 
-function reviewFor(session: Row, plan: Row | undefined, versionNumber: number | null) {
+function reviewFor(session: Row, plan: Row | undefined, versionNumber: number | null, replaced: string | null = null) {
   if (!plan || plan.approved_version_id !== session.shot_plan_version_id) {
     return { state: "stale", reason: `The shot plan was approved again${versionNumber ? ` (now version ${versionNumber})` : ""} after this audio was spotted — re-spot to update the cues. Your recordings are kept.` };
   }
   if (plan.review_state !== "current") return { state: "review_required", reason: `The shot plan needs review. ${plan.review_reason ?? ""}`.trim() };
   if (plan.status !== "approved") return { state: "review_required", reason: "The shot plan has edits that aren't approved yet." };
+  if (replaced) return { state: "review_required", reason: replaced };
   return { state: "current", reason: null };
+}
+
+/** An approved mix whose recording got a new version in the Assets Library afterwards needs a listen (rule 11). */
+function replacedSince(session: Row, clips: Row[], versions: Row[], assets: Row[]): string | null {
+  if (session.status !== "approved" || !session.approved_version_id) return null;
+  const approvedAt = versions.find((v) => v.id === session.approved_version_id)?.created_at;
+  if (!approvedAt) return null;
+  const used = new Set(clips.filter((c) => c.session_id === session.id && c.asset_id).map((c) => c.asset_id as string));
+  const changed = assets.filter((a) => used.has(a.id) && a.version_updated_at && Date.parse(a.version_updated_at) > Date.parse(approvedAt));
+  if (!changed.length) return null;
+  return `${changed.map((a) => `"${a.name}"`).join(", ")} ${changed.length === 1 ? "was" : "were"} replaced in the Assets Library (now version ${changed.map((a) => a.current_version).join(", ")}) after this mix was approved — listen, measure and approve again.`;
 }
 
 /**
@@ -46,11 +58,14 @@ function reviewFor(session: Row, plan: Row | undefined, versionNumber: number | 
  */
 export async function refreshAudioReview(db: SupabaseClient, projectId: string) {
   await refreshShotPlanReview(db, projectId);
-  const [plans, versions, sessions] = await Promise.all([repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId), repo.listSessions(db, projectId)]);
+  const [plans, versions, sessions, clips, mixVersions, assets] = await Promise.all([
+    repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId), repo.listSessions(db, projectId),
+    repo.listClips(db, projectId), repo.listVersions(db, projectId), repo.listAssetVersionTimes(db, projectId),
+  ]);
   for (const session of sessions) {
     const plan = plans.find((p) => p.scene_id === session.scene_id);
     const pv = plan?.approved_version_id ? versions.find((v) => v.id === plan.approved_version_id) : undefined;
-    const r = reviewFor(session, plan, pv?.version_number ?? null);
+    const r = reviewFor(session, plan, pv?.version_number ?? null, replacedSince(session, clips, mixVersions, assets));
     if (session.review_state !== r.state || (session.review_reason ?? null) !== r.reason) await repo.setReview(db, session.id, r.state, r.reason);
   }
 }
@@ -64,6 +79,7 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
     repo.listTracks(db, projectId), repo.listClips(db, projectId), repo.listMeasurements(db, projectId), repo.listVersions(db, projectId),
     repo.listAudioAssets(db, projectId),
   ]);
+  const assetTimes = await repo.listAssetVersionTimes(db, projectId);
   const out = [];
   for (const scene of scenes) {
     const plan = plans.find((p) => p.scene_id === scene.id);
@@ -73,13 +89,16 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
     const st = session ? tracks.filter((t) => t.session_id === session!.id) : [];
     const sc = session ? clips.filter((c) => c.session_id === session!.id) : [];
     const m = session ? measurements.find((x) => x.session_id === session!.id) ?? null : null;
-    const ready = session ? audioReadiness(session, st, sc, m, standard) : null;
+    const usedIds = new Set(sc.filter((c) => c.asset_id).map((c) => c.asset_id as string));
+    const changedAt = assetTimes.filter((a) => usedIds.has(a.id)).map((a) => a.version_updated_at as string).sort().pop() ?? null;
+    const ready = session ? audioReadiness(session, st, sc, m, standard, changedAt) : null;
     out.push({
       scene: { id: scene.id, number: scene.number, heading: scene.heading },
       plan: pv ? { version_id: pv.id, version_number: pv.version_number, usable: plan!.status === "approved" && plan!.review_state === "current" } : null,
       session: session
         ? {
             id: session.id, status: session.status, review_state: session.review_state, review_reason: session.review_reason, revision: session.revision,
+            recordings_replaced: session.status === "approved" && !!replacedSince(session, clips, sessionVersions, assetTimes),
             scene_seconds: Number(session.scene_seconds),
             approved_version_number: session.approved_version_id ? sessionVersions.find((v) => v.id === session!.approved_version_id)?.version_number ?? null : null,
           }
@@ -179,7 +198,8 @@ export async function approveSession(db: SupabaseClient, projectId: string, scen
   const ws = await getAudioWorkspace(db, projectId);
   const s = ws.scenes.find((x) => x.scene.id === sceneId);
   if (!s?.session) throw new AudioNotReadyError("Spot this scene's audio first.");
-  if (s.session.review_state !== "current") throw new AudioNotReadyError(s.session.review_reason ?? "This audio needs review first.");
+  // A replaced recording is reviewed by measuring and approving again; any other upstream review blocks.
+  if (s.session.review_state !== "current" && !s.session.recordings_replaced) throw new AudioNotReadyError(s.session.review_reason ?? "This audio needs review first.");
   if (!s.ready_for_approval) {
     const failing = s.readiness.filter((r) => r.blocking && !r.ok);
     throw new AudioNotReadyError(`Not ready to approve yet: ${failing.map((f) => f.label.toLowerCase()).join("; ")}.`, failing);

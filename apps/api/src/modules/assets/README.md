@@ -1,34 +1,47 @@
 # Assets Library (backend domain)
 
 ## Purpose
-Canonical authority for Asset / AssetVersion. Phase 8 adds audio recordings;
-other asset types (reference images, documents) follow.
+Canonical authority for Asset / AssetVersion / AssetLink (SRS §13.3). Every file is stored once in the private
+media bucket, fingerprinted (SHA-256) and versioned; other domains reference asset ids and read them read-only.
 
 ## Canonical owner
-`assets` (created only through `register_asset`, migration 0015).
+`assets`, `asset_versions`, `asset_links` — written only through `register_asset` (0015) and `update_asset`,
+`add_asset_version`, `set_asset_link` (0024), all behind `gate_write(project, 'assets', …)`. Version 1 is written by a
+trigger for every new asset.
 
-## Inputs / outputs
-- Upload: raw audio body (WAV, MP3, OGG, FLAC, M4A/AAC — checked by magic bytes, max 50 MB).
-  Bytes go to the private media bucket (`apps/api/src/storage/media.ts`), then
-  the asset row is registered with name, media type, duration, sample rate, channels, size.
-- Content: streamed back through the API to project members only.
-
-## Downstream consumers
-Audio Studio (clips reference `asset_id`); later Editorial, Export.
+## Rules
+- **Replace never overwrites.** A new file gets a new storage key and a new version; earlier versions stay downloadable.
+  Queued renders already froze the storage key they use (RenderManifest), so deliverables keep the file they were made from.
+- **Approved work is flagged, not changed (rule 11).** When a recording on an approved Audio Studio mix is replaced, the
+  mix is marked review_required with the reason; approval waits for a fresh loudness measurement (checked in the API
+  readiness and again in the `approve_audio_session` database wrapper).
+- **Usage is evidence, not a guess:** Audio Studio clips, render manifests (`sources.asset_ids`) and links people made.
+- **Search is honest:** `assetCatalogEngine` (engines/assets, 1.0.0) matches names, descriptions, tags and categories.
+  Searching inside images/audio (vector/multimodal) isn't built yet and the page says so.
 
 ## API endpoints
-- `POST /api/projects/:id/assets/audio?name=&duration=&sample_rate=&channels=` — body is the audio file (`Content-Type: audio/*`)
-- `GET  /api/projects/:id/assets` — project assets
-- `GET  /api/assets/:id/content` — the bytes (members only)
+- `GET  /api/projects/:id/library?q=&category=&type=&usage=any|used|unused&scene_id=&archived=1&sort=newest|name`
+- `POST /api/projects/:id/library?name=&category=&width=&height=&duration=` — body is the file (image PNG/JPEG/WebP/GIF,
+  video MP4/MOV/WebM, audio, PDF, text/CSV, .cube LUT; checked by content, ≤ 50 MB)
+- `GET  /api/assets/:id` — detail with versions, usage, links and history
+- `PATCH /api/assets/:id { name?, category?, description?, tags?, archived? }`
+- `POST /api/assets/:id/versions?note=` — Replace (same kind of file; identical file → 409; archived → 409)
+- `POST /api/assets/:id/links { object_type: scene|character, object_id, linked }`
+- `GET  /api/assets/:id/content[?version=N][&download=1]` — the bytes (members only)
+- Unchanged for Audio Studio: `POST /api/projects/:id/assets/audio`, `GET /api/projects/:id/assets?type=audio`
 
 ## Permissions
-Upload requires project edit rights (checked in `register_asset`); reading requires membership (RLS).
+Adding needs assets:create, changing needs assets:edit (owners, admins, producers, or a grant); everyone on the project
+can browse and download (RLS).
 
 ## Tests
-`tests/routes.test.ts`, `tests/integration/audio_db.sql`, `tests/e2e/audio/run.cjs`.
+`tests/routes.test.ts`, `tests/library.test.ts`, `tests/integration/assets_db.sql`, `tests/integration/audio_db.sql`,
+`tests/e2e/assets/run.cjs`, live smoke + browser checks. Audio regression: `apps/api/src/modules/audio/tests/routes.test.ts`.
 
 ## Known operational error codes
-AURA-AST-002 unsupported/oversized file · 403 · 404 · 412 media storage not configured · 500.
+AURA-AST-002/400 unsupported, mismatched or oversized file · AURA-COL-403 no access · AURA-AST-404 · AURA-AST-409
+identical file / archived · AURA-AST-412 media storage not configured · AURA-AST-500.
 
 ## Known gaps
-Deleting an org/project does not yet remove its files from the bucket (tracked; a cleanup job is planned).
+Thumbnails/proxies are not generated (images are previewed from the file itself); no vector/multimodal search; rights
+metadata fields are not modelled yet; deleting an org/project does not yet remove its files from the bucket.

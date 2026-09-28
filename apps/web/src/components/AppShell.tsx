@@ -30,12 +30,12 @@ export const STAGES = [
 const SECONDARY: { key: string; label: string; path?: string }[] = [
   { key: "settings", label: "Project Settings", path: "settings" },
   { key: "team", label: "Team & Collaboration", path: "team" },
-  { key: "assets", label: "Assets Library" },
+  { key: "assets", label: "Assets Library", path: "assets" },
   { key: "help", label: "Help & Support", path: "help" },
 ];
 
 type StageKey = (typeof STAGES)[number]["key"];
-type ActiveKey = StageKey | "team" | "settings";
+type ActiveKey = StageKey | "team" | "settings" | "assets";
 
 // Which permission module each stage writes to (database permission gate, migration 0019).
 const STAGE_MODULE: Record<StageKey, PermissionModule> = {
@@ -76,7 +76,7 @@ export function AppShell({
       setCommentsOpen(true);
     }
   }, []);
-  const commentModule: PermissionModule = active in STAGE_MODULE ? STAGE_MODULE[active as StageKey] : active === "settings" ? "settings" : "team";
+  const commentModule: PermissionModule = active in STAGE_MODULE ? STAGE_MODULE[active as StageKey] : active === "settings" ? "settings" : active === "assets" ? "assets" : "team";
   const commentContext: CommentContext | null = project
     ? { module: commentModule, objectType: "Workspace", objectId: project.id, objectLabel: "this workspace", ...comments } as CommentContext
     : null;

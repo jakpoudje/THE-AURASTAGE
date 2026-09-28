@@ -15,7 +15,7 @@ API/domain service -> engine -> canonical data -> worker/provider using this tab
 | Editorial & Timeline | apps/web/src/modules/editorial-timeline | apps/api/src/modules/editorial | engines/editorial | AssemblyTimeline / PictureLock |
 | Export & Deliver | apps/web/src/modules/export-deliver | apps/api/src/modules/rendering | engines/rendering | RenderManifest / Deliverable |
 | Project Settings | apps/web/src/modules/project-settings | apps/api/src/modules/settings | — (settings feed engines as inputs) | ProjectSettings / ProjectSettingsVersion |
-| Assets Library | apps/web/src/modules/assets-library | apps/api/src/modules/assets | engines/assets | Asset / AssetVersion |
+| Assets Library | apps/web/src/modules/assets-library | apps/api/src/modules/assets | engines/assets | Asset / AssetVersion / AssetLink |
 | Help & Support | apps/web/src/modules/help-support | apps/api/src/modules/help | engines/help | SupportTicket (+ system status from telemetry) |
 | Team & Collaboration | apps/web/src/modules/team-collaboration | apps/api/src/modules/collaboration | engines/collaboration | Organization / OrgMember / ProjectMember / Invite / Comment / Task / Notification |
 
@@ -77,5 +77,5 @@ messages must be safe; diagnostic detail belongs in authorized logs only.
 Update this checklist whenever a phase completes.
 - [ ] Completion pass — workspaces that still said "Soon"
   - [x] 12a Project Settings (versioned settings with save-conflict protection and an impact preview before saving; story fields inherited read-only from Scriptwriter; fixed pipeline facts shown with reasons (24 fps, Rec.709, 1080p, 48 kHz stereo). Settings drive: the loudness standard for Audio readiness and delivery QC (EBU R128 / ATSC A/85 / streaming −14), Visual Generation's default frame shape and providers, the project look in every compiled prompt (prompt compiler 1.1.0 "Style matched"; a look change marks compiled prompts for review), a monthly paid-take cap enforced in the database (AURA-GEN-402), required deliverables tracked in Export, and credits written into rendered file metadata (renderManifest 1.1.0). Changes apply to new work only; approved work is never rewritten)
-  - [ ] 12b Assets Library
+  - [x] 12b Assets Library (library of every project file with the 12 SRS categories, search and filters via assetCatalogEngine 1.0.0, cards with type/version/specs/usage, detail panel with Overview/Usage/Metadata/Versions and asset comments; uploads checked by content (images, video, audio, PDF, text/CSV, .cube LUTs); Replace adds a version under a new storage key and never overwrites; usage from Audio Studio clips, render manifests and scene/character links; archive/restore; an approved mix whose recording is replaced is flagged and needs a fresh measurement before re-approval. Not built, with reason: thumbnails/proxies and vector/multimodal search need a media-processing worker; rights metadata needs a rights model)
   - [ ] 12c Dashboard overview from real evidence

@@ -29,6 +29,12 @@ refreshes Scene DNA first). If the plan was approved again the session becomes
 planned cues only — recordings and hand-added clips are kept (rule 11), and a
 dialogue line that already has a recording is not given a new cue.
 
+If a recording on an approved mix is replaced in the Assets Library (a new asset
+version, migration 0024), the mix becomes `review_required` with the recording's name
+and new version, and the "Loudness measured after the last change" check fails until
+the mix is measured again. Approval then goes through as normal (the database wrapper
+of `approve_audio_session` checks the same rule).
+
 ## Downstream consumers
 Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 

@@ -13,7 +13,7 @@ const ws = () => {
 };
 http.createServer((req, res) => {
   const chunks = []; req.on("data", (c) => chunks.push(c)); req.on("end", () => {
-    const raw = Buffer.concat(chunks); const body = /^audio\//.test(req.headers["content-type"] || "") ? "" : raw.toString();
+    const raw = Buffer.concat(chunks); const body = /^(audio|image|video)\/|^application\/(pdf|x-cube)|^text\/(plain|csv)/.test(req.headers["content-type"] || "") ? "" : raw.toString();
     res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Headers", "*"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     if (req.method === "OPTIONS") return res.end();
     const send = (code, obj) => { res.statusCode = code; res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(obj)); };
@@ -433,7 +433,11 @@ http.createServer((req, res) => {
       const a = { id: crypto.randomUUID(), project_id: P, type: "audio", name: q.get("name"), bytes: raw, media_type: req.headers["content-type"], duration_seconds: Number(q.get("duration")), created_at: now() };
       assets.push(a); return send(201, { id: a.id, name: a.name, duration_seconds: a.duration_seconds, media_type: a.media_type, created_at: a.created_at });
     }
-    if ((m = u.match(/^\/api\/assets\/([^/]+)\/content$/))) { const a = assets.find((x) => x.id === m[1]); res.statusCode = 200; res.setHeader("Content-Type", a.media_type); return res.end(a.bytes); }
+    if ((m = u.match(/^\/api\/assets\/([^/]+)\/content$/))) {
+      const a = assets.find((x) => x.id === m[1]); const ver = Number(new URL(req.url, "http://x").searchParams.get("version")) || null;
+      const v = ver && a.versions ? a.versions.find((x) => x.version_number === ver) : null;
+      res.statusCode = 200; res.setHeader("Content-Type", (v || a).media_type); return res.end((v || a).bytes);
+    }
     const clipDTO = (c) => ({ ...c });
     const audioReview = (s) => {
       const plan = plans.find((x) => x.scene_id === s.scene_id); const pv = plan && planVersions.find((v) => v.id === plan.approved_version_id);
@@ -738,6 +742,105 @@ http.createServer((req, res) => {
     };
     const refuse = (what) => send(403, { error: { code: "AURA-COL-403", message: `your role (${teamAccess().project_role_label}) can't administer in ${what}. Ask the project's producer for access.` } });
     if (u === "/__test/as") { T.as = b.role; if (b.email) T.email = b.email; return send(200, { ok: true }); }
+    // ---- Assets Library (mirrors apps/api/src/modules/assets library routes + migration 0024; search is the real assetCatalogEngine) ----
+    const CATS = cc0.ASSET_CATEGORIES;
+    const astErr = (code, msg) => send(code, { error: { code: `AURA-AST-${code}`, message: msg } });
+    const astGate = (action) => {
+      if (teamAccess().modules.assets.includes(action)) return false;
+      send(403, { error: { code: "AURA-COL-403", message: `your role (${teamAccess().project_role_label}) can't ${action} in the Assets Library. Ask the project's producer for access.` } });
+      return true;
+    };
+    const libShape = (a) => {
+      a.category ??= a.type === "audio" ? "audio" : a.type === "document" ? "documents" : "visual_references";
+      a.description ??= ""; a.tags ??= []; a.links ??= []; a.history ??= [{ action: "AssetRegistered", metadata: {}, created_at: a.created_at }];
+      a.versions ??= [{ version_number: 1, bytes: a.bytes, media_type: a.media_type, note: "Original upload", created_at: a.created_at, checksum: crypto.createHash("sha256").update(a.bytes).digest("hex") }];
+      a.current_version ??= 1;
+      return a;
+    };
+    const usageOf = (a) => {
+      const out = [];
+      for (const c of aclips.filter((x) => x.asset_id === a.id)) {
+        const se = asessions.find((x) => x.id === c.session_id), sc = se && scenes.find((x) => x.id === se.scene_id);
+        if (sc && !out.some((o) => o.kind === "audio_clip" && o.scene_id === sc.id)) out.push({ kind: "audio_clip", scene_id: sc.id, label: `Scene ${sc.number} — ${sc.heading} · Audio Studio`, href: `/projects/${P}/audio` });
+      }
+      for (const l of a.links) {
+        if (l.object_type === "scene") { const sc = scenes.find((x) => x.id === l.object_id); out.push({ kind: "link", scene_id: l.object_id, label: sc ? `Scene ${sc.number} — ${sc.heading}` : "A scene", href: `/projects/${P}/scene-dna` }); }
+        else { const ch = chars.find((x) => x.id === l.object_id); out.push({ kind: "link", scene_id: null, label: `${ch ? ch.name : "A character"} · Casting`, href: `/projects/${P}/casting` }); }
+      }
+      return out;
+    };
+    const libDTO = (a) => {
+      libShape(a); const cur = a.versions.find((v) => v.version_number === a.current_version);
+      return { id: a.id, project_id: P, type: a.type, name: a.name, checksum: cur.checksum, media_type: cur.media_type, size_bytes: cur.bytes.length, duration_seconds: a.duration_seconds || null, created_at: a.created_at,
+        category: a.category, description: a.description, tags: a.tags, current_version: a.current_version, versions: a.versions.length, archived: !!a.archived_at, updated_at: a.updated_at || a.created_at,
+        specs: { media_type: cur.media_type, size_bytes: cur.bytes.length, duration_seconds: a.duration_seconds || null, sample_rate: null, channels: null, width: a.width || null, height: a.height || null }, usage: usageOf(a) };
+    };
+    const detailOf = (a) => ({ asset: libDTO(a), versions: [...a.versions].reverse().map((v) => ({ version_number: v.version_number, checksum: v.checksum, note: v.note, created_at: v.created_at, current: v.version_number === a.current_version, size_bytes: v.bytes.length, media_type: v.media_type })),
+      links: usageOf(a).filter((x) => x.kind === "link"), history: [...a.history].reverse() });
+    const sniffLib = (ct) => {
+      const t = (ct || "").split(";")[0];
+      const ok = { "image/png": () => raw[0] === 0x89 && raw.slice(1, 4).toString() === "PNG", "image/jpeg": () => raw[0] === 0xff && raw[1] === 0xd8, "application/pdf": () => raw.slice(0, 5).toString() === "%PDF-",
+        "text/plain": () => true, "audio/wav": () => raw.slice(0, 4).toString() === "RIFF" && raw.slice(8, 12).toString() === "WAVE" }[t];
+      if (!ok) return { error: "That kind of file can't be added yet." };
+      if (!ok()) return { error: "That file's contents don't match its type." };
+      return { type: t.startsWith("image/") ? "image" : t.startsWith("audio/") ? "audio" : "document", media_type: t };
+    };
+    const assetById = (id) => { const a = assets.find((x) => x.id === id); return a && libShape(a); };
+    if (u === `/api/projects/${P}/library` && req.method === "GET") {
+      const q = new URL(req.url, "http://x").searchParams;
+      const items = assets.map(libDTO);
+      const out = eng.assetCatalogEngine({ assets: items.map((a) => ({ id: a.id, type: a.type, category: a.category, name: a.name, description: a.description, tags: a.tags, archived: a.archived, created_at: a.created_at, usage: a.usage })),
+        query: { q: q.get("q") || "", category: q.get("category"), type: q.get("type"), usage: q.get("usage") || "any", scene_id: q.get("scene_id"), archived: q.get("archived") === "1", sort: q.get("sort") || "newest" } });
+      return send(200, { assets: out.ids.map((id) => items.find((a) => a.id === id)), total: out.total, library_size: items.filter((a) => !a.archived).length, archived_count: items.filter((a) => a.archived).length,
+        category_counts: out.category_counts, type_counts: out.type_counts, categories: CATS, scenes: scenes.map((x) => ({ id: x.id, number: x.number, heading: x.heading })), characters: chars.map((c) => ({ id: c.id, name: c.name })),
+        media_ready: true, search_note: "Search matches names, descriptions, tags and categories. Searching inside images or audio isn't available yet.", engine_version: out.engine_version });
+    }
+    if (u === `/api/projects/${P}/library` && req.method === "POST") {
+      if (astGate("create")) return;
+      const q = new URL(req.url, "http://x").searchParams; const k = sniffLib(req.headers["content-type"]);
+      if (k.error) return astErr(400, k.error);
+      if (!q.get("name")) return astErr(400, "Give the asset a name.");
+      const a = libShape({ id: crypto.randomUUID(), project_id: P, type: k.type, name: q.get("name"), bytes: raw, media_type: k.media_type, duration_seconds: Number(q.get("duration")) || null, width: Number(q.get("width")) || null, height: Number(q.get("height")) || null, created_at: now() });
+      if (q.get("category")) a.category = q.get("category");
+      assets.push(a); return send(201, detailOf(a));
+    }
+    if ((m = u.match(/^\/api\/assets\/([0-9a-f-]{36})$/))) {
+      const a = assetById(m[1]); if (!a) return send(403, { error: { code: "AURA-AST-403", message: "Not found or not accessible" } });
+      if (req.method === "GET") return send(200, detailOf(a));
+      if (req.method === "PATCH") {
+        if (astGate("edit")) return;
+        const allowed = ["name", "category", "description", "tags", "archived"];
+        if (!Object.keys(b).length || Object.keys(b).some((x) => !allowed.includes(x))) return astErr(400, "Nothing to change");
+        if (b.category && !CATS.some((c) => c.id === b.category)) return astErr(400, "unknown category");
+        if (b.name !== undefined) a.name = String(b.name).trim();
+        if (b.category) a.category = b.category;
+        if (b.description !== undefined) a.description = b.description.trim();
+        if (b.tags) a.tags = [...new Set(b.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))];
+        if (b.archived !== undefined) a.archived_at = b.archived ? now() : null;
+        a.updated_at = now(); a.history.push({ action: b.archived === undefined ? "AssetUpdated" : b.archived ? "AssetArchived" : "AssetRestored", metadata: {}, created_at: now() });
+        return send(200, detailOf(a));
+      }
+    }
+    if ((m = u.match(/^\/api\/assets\/([0-9a-f-]{36})\/versions$/)) && req.method === "POST") {
+      const a = assetById(m[1]); if (astGate("edit")) return;
+      const k = sniffLib(req.headers["content-type"]); if (k.error) return astErr(400, k.error);
+      if (k.type !== a.type) return astErr(400, `This asset is ${a.type === "image" ? "an image" : a.type}; replace it with the same kind of file.`);
+      if (a.archived_at) return astErr(409, "restore this asset before replacing its file");
+      const sum = crypto.createHash("sha256").update(raw).digest("hex");
+      if (a.versions.some((v) => v.version_number === a.current_version && v.checksum === sum)) return astErr(409, "That file is identical to the current version.");
+      const n = a.versions.length + 1; a.versions.push({ version_number: n, bytes: raw, media_type: k.media_type, note: new URL(req.url, "http://x").searchParams.get("note") || "", created_at: now(), checksum: sum });
+      a.current_version = n; a.bytes = raw; a.updated_at = now(); a.history.push({ action: "AssetVersionAdded", metadata: { version: n }, created_at: now() });
+      return send(201, detailOf(a));
+    }
+    if ((m = u.match(/^\/api\/assets\/([0-9a-f-]{36})\/links$/)) && req.method === "POST") {
+      const a = assetById(m[1]); if (astGate("edit")) return;
+      const ok = b.object_type === "scene" ? scenes.some((x) => x.id === b.object_id) : b.object_type === "character" ? chars.some((x) => x.id === b.object_id) : false;
+      if (!ok) return astErr(400, "Choose a scene or character in this project.");
+      a.links = a.links.filter((l) => !(l.object_type === b.object_type && l.object_id === b.object_id));
+      if (b.linked !== false) a.links.push({ object_type: b.object_type, object_id: b.object_id });
+      a.history.push({ action: b.linked === false ? "AssetUnlinked" : "AssetLinked", metadata: {}, created_at: now() });
+      return send(200, detailOf(a));
+    }
     if (u === "/api/organizations" && req.method === "GET") return send(200, [{ org_id: ORG, role: T.as === "owner" ? "owner" : "member", organization: { id: ORG, name: "Test Studio", slug: "t", created_at: now() } }]);
     if (u === `/api/projects/${P}/access`) return send(200, teamAccess());
     if (u === `/api/projects/${P}/team`) return send(200, teamView());

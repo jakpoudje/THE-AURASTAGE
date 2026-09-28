@@ -25,7 +25,10 @@ manual characters, relationships, wardrobe looks, dialogue sync/annotate/approve
 Scene DNA assemble/save/412 not-ready/lock/upstream-change review/re-lock,
 Storyboard plan/409/edit/approve/propagation, Visual Generation compile/worker take/signed media/approve/
 unconnected-provider 412/propagation,
-persistence re-read, and cross-project 403.
+persistence re-read, Project Settings (impact preview, versioned save, 409, look → prompt review, defaults/budget,
+required deliverables, credits in the render manifest), Assets Library (usage evidence, Replace keeps version 1's exact
+bytes, a replaced recording flags the approved mix until re-measured, image upload/details/links/search/archive),
+and cross-project 403.
 
 ## Real-browser check (`live-browser`)
 

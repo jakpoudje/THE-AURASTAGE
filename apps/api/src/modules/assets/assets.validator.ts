@@ -39,3 +39,36 @@ export function cleanName(name: unknown) {
   if (!n) throw new AssetValidationError("Give the recording a name.");
   return n;
 }
+
+export class AssetConflictError extends Error {
+  code = "AURA-AST-409";
+}
+
+/** Library uploads (any type). Audio keeps its own sniffing above. */
+export const MAX_ASSET_BYTES = 50 * 1024 * 1024;
+const OTHER_TYPES: Record<string, { ext: string; type: "image" | "video" | "document"; ok: (b: Buffer) => boolean }> = {
+  "image/png": { ext: "png", type: "image", ok: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+  "image/jpeg": { ext: "jpg", type: "image", ok: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  "image/webp": { ext: "webp", type: "image", ok: (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP" },
+  "image/gif": { ext: "gif", type: "image", ok: (b) => /^GIF8[79]a$/.test(b.subarray(0, 6).toString("latin1")) },
+  "video/mp4": { ext: "mp4", type: "video", ok: (b) => b.subarray(4, 8).toString("latin1") === "ftyp" },
+  "video/quicktime": { ext: "mov", type: "video", ok: (b) => ["ftyp", "moov", "wide", "mdat"].includes(b.subarray(4, 8).toString("latin1")) },
+  "video/webm": { ext: "webm", type: "video", ok: (b) => b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3 },
+  "application/pdf": { ext: "pdf", type: "document", ok: (b) => b.subarray(0, 5).toString("latin1") === "%PDF-" },
+  "text/plain": { ext: "txt", type: "document", ok: (b) => !b.subarray(0, 4096).includes(0) },
+  "text/csv": { ext: "csv", type: "document", ok: (b) => !b.subarray(0, 4096).includes(0) },
+  "application/x-cube": { ext: "cube", type: "document", ok: (b) => /LUT_3D_SIZE|LUT_1D_SIZE/.test(b.subarray(0, 65536).toString("latin1")) },
+};
+export const LIBRARY_CONTENT_TYPES = [...Object.keys(OTHER_TYPES), "audio/*"];
+
+/** What a library upload really is, from its contents. */
+export function sniffAsset(buf: Buffer, declared: string): { ext: string; media_type: string; type: "audio" | "image" | "video" | "document" } {
+  const t = declared.split(";")[0].trim().toLowerCase();
+  if (!Buffer.isBuffer(buf) || buf.length === 0) throw new AssetValidationError("No file was received.");
+  if (buf.length > MAX_ASSET_BYTES) throw new AssetValidationError("That file is larger than 50 MB.");
+  if (t.startsWith("audio/")) return { ...sniffAudio(buf, t), type: "audio" };
+  const k = OTHER_TYPES[t];
+  if (!k) throw new AssetValidationError("That kind of file can't be added yet. Images (PNG, JPEG, WebP, GIF), video (MP4, MOV, WebM), audio, PDF, text/CSV and .cube LUTs are supported.");
+  if (buf.length < 8 || !k.ok(buf)) throw new AssetValidationError("That file's contents don't match its type.");
+  return { ext: k.ext, media_type: t, type: k.type };
+}

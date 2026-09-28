@@ -43,7 +43,10 @@ export const listTracks = (db: SupabaseClient, p: string) => rows(db.from("audio
 export const listClips = (db: SupabaseClient, p: string) => rows(db.from("audio_clips").select("*").eq("project_id", p).order("start_seconds", { ascending: true }));
 export const listMeasurements = (db: SupabaseClient, p: string) =>
   rows(db.from("audio_measurements").select("*").eq("project_id", p).order("measured_at", { ascending: false }));
-export const listVersions = (db: SupabaseClient, p: string) => rows(db.from("audio_session_versions").select("id, session_id, version_number").eq("project_id", p));
+export const listVersions = (db: SupabaseClient, p: string) => rows(db.from("audio_session_versions").select("id, session_id, version_number, created_at").eq("project_id", p));
+/** Read-only view of the Assets Library: when each recording last got a new version (migration 0024). */
+export const listAssetVersionTimes = (db: SupabaseClient, p: string) =>
+  rows(db.from("assets").select("id, name, current_version, version_updated_at").eq("project_id", p).eq("type", "audio"));
 export const listAudioAssets = (db: SupabaseClient, p: string) =>
   rows(db.from("assets").select("id, name, metadata, created_at").eq("project_id", p).eq("type", "audio").order("created_at", { ascending: false }));
 

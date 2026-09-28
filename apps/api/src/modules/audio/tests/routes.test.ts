@@ -109,6 +109,30 @@ describe("Audio Studio routes", () => {
     expect(ws.target).toMatchObject({ integrated_lufs: -23 });
   });
 
+  it("a recording replaced in the Assets Library after approval flags the mix; re-approving needs a new measurement (regression)", async () => {
+    const AS = "abababab-abab-4bab-8bab-abababababab", SV = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
+    rows.audio_sessions = [session({ status: "approved", approved_version_id: SV })];
+    rows.audio_session_versions = [{ id: SV, project_id: P, session_id: SES, version_number: 1, created_at: "2026-09-28T01:00:00Z" }];
+    rows.audio_tracks = [track()];
+    rows.audio_clips = [clip({ kind: "asset", asset_id: AS })];
+    rows.audio_measurements = [{ session_id: SES, project_id: P, session_revision: REV, integrated_lufs: "-23", true_peak_dbtp: "-2", measured_at: "2026-09-28T00:30:00Z" }];
+    rows.assets = [{ id: AS, project_id: P, type: "audio", name: "Tunde take", current_version: 2, version_updated_at: "2026-09-28T02:00:00Z", metadata: {} }];
+    const fake = fakeDb(rows, (_f, a) => ({ data: Object.assign(rows.audio_sessions[0], { review_state: a.p_state, review_reason: a.p_reason }) }));
+    const a = await app(fake);
+    const ws = (await a.inject({ method: "GET", url: `/api/projects/${P}/audio` })).json();
+    expect(fake.calls[0]).toMatchObject({ fn: "set_audio_review", args: { p_state: "review_required" } });
+    expect(ws.scenes[0].session).toMatchObject({ recordings_replaced: true, review_reason: expect.stringMatching(/"Tunde take" was replaced in the Assets Library \(now version 2\)/) });
+    expect(ws.scenes[0].readiness.find((r: Row) => r.id === "measured")).toMatchObject({ ok: false, evidence: "A recording was replaced in the Assets Library after the last measurement" });
+    const refused = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/approve` });
+    expect(refused.statusCode).toBe(412);
+    expect(refused.json().error.message).toMatch(/loudness measured after the last change/);
+    // Measured again after the replacement: approval goes through (it isn't blocked by the review flag itself).
+    rows.audio_measurements[0].measured_at = "2026-09-28T03:00:00Z";
+    const ok = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/approve` });
+    expect(fake.calls.some((c: Row) => c.fn === "approve_audio_session")).toBe(true);
+    expect(ok.statusCode).not.toBe(412);
+  });
+
   it("refuses approval with the failing checks listed (412) and invalid values (400)", async () => {
     rows.audio_sessions = [session()];
     rows.audio_tracks = [track()];
