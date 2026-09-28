@@ -317,7 +317,8 @@ await check("audio: spot the approved scene into tracks and cues (unplanned scen
   const ws = await api("GET", `/api/projects/${projectId}/audio`);
   const sc = ws.scenes.find((x: any) => x.scene.id === s1);
   assert(sc.session.id === sessionId && sc.tracks.length >= 2 && sc.clips.some((c: any) => c.source.dialogue_line_id), "no dialogue cue");
-  assert(ws.generators.every((g: any) => g.state === "not_connected"), "generators must be honest");
+  // Honest generators: the built-in synthesiser is ready; nothing unbuilt claims to be connected.
+  assert(ws.generators.every((g: any) => g.id === "aurastage-synth" ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
   return `${r.tracks} tracks, ${r.cues} cues from plan v${r.shot_plan_version_number}`;
 });
 await check("audio: upload a WAV to the private library (non-audio refused); bytes round-trip", async () => {
