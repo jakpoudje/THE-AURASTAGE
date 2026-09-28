@@ -29,6 +29,26 @@ export const CONTENT_TYPES: Record<string, string> = { mp4: "video/mp4", mov: "v
 const typeOf = (name: string) => CONTENT_TYPES[name.split(".").pop()!] ?? "application/octet-stream";
 const STEMS: [string, Bus][] = [["mix.wav", null], ["stem_DX.wav", "DX"], ["stem_FX.wav", "FX"], ["stem_BG.wav", "BG"], ["stem_MX.wav", "MX"], ["ME.wav", "ME"]];
 
+/**
+ * Final encode arguments (after the two inputs: picture, then sound).
+ * Limited by duration, not "-frames:v": ffmpeg 5.x closes the WHOLE output when a
+ * stream's frame limit is reached, which truncated the sound on the live worker
+ * (caught by final QC). Regression-tested in render.test.ts.
+ */
+export function encodeArgs(m: RenderManifest, filters: string[], out: string): string[] {
+  const p = m.profile, v = p.video!, secs = m.duration_frames / m.fps;
+  const vcodec = v.codec === "prores"
+    ? ["-c:v", "prores_ks", "-profile:v", "3", "-vendor", "apl0", "-pix_fmt", v.pix_fmt]
+    : ["-c:v", "libx264", "-profile:v", "high", "-preset", "medium", "-crf", p.id === "review_copy" ? "23" : "18", "-pix_fmt", v.pix_fmt, "-movflags", "+faststart"];
+  const acodec = p.audio!.codec === "aac" ? ["-c:a", "aac", "-b:a", p.audio!.bitrate ?? "320k"] : ["-c:a", "pcm_s24le"];
+  return [
+    "-map", "0:v:0", "-map", "1:a:0", ...(filters.length ? ["-vf", filters.join(",")] : []),
+    "-t", secs.toFixed(6), "-r", String(m.fps), ...vcodec,
+    "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
+    ...acodec, "-ar", String(SAMPLE_RATE), "-ac", "2", "-metadata", `title=${m.project.title}`, out,
+  ];
+}
+
 /** Escapes a path for use inside an ffmpeg filter argument. */
 const fpath = (p: string) => p.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
 
@@ -80,20 +100,9 @@ export async function renderDeliverable(claim: RenderClaim, d: RenderDeps): Prom
         filters.push(`drawtext=fontfile='${fpath(font)}':textfile='${fpath(tf)}':fontsize=h/12:fontcolor=white@0.28:x=(w-tw)/2:y=(h-th)/2`);
       }
       if (m.options.burn_timecode) filters.push(`drawtext=fontfile='${fpath(mono)}':timecode='00\\:00\\:00\\:00':rate=${m.fps}:fontsize=h/24:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=6:x=(w-tw)/2:y=h-th-24`);
-      const v = p.video;
-      const vcodec = v.codec === "prores"
-        ? ["-c:v", "prores_ks", "-profile:v", "3", "-vendor", "apl0", "-pix_fmt", v.pix_fmt]
-        : ["-c:v", "libx264", "-profile:v", "high", "-preset", "medium", "-crf", p.id === "review_copy" ? "23" : "18", "-pix_fmt", v.pix_fmt, "-movflags", "+faststart"];
-      const acodec = p.audio!.codec === "aac" ? ["-c:a", "aac", "-b:a", p.audio!.bitrate ?? "320k"] : ["-c:a", "pcm_s24le"];
       const audioIn = needsSound ? ["-i", wav] : ["-f", "lavfi", "-t", secs.toFixed(3), "-i", `anullsrc=r=${SAMPLE_RATE}:cl=stereo`];
       await ffmpeg(
-        [
-          "-progress", "pipe:1", "-i", picture, ...audioIn, "-map", "0:v:0", "-map", "1:a:0",
-          ...(filters.length ? ["-vf", filters.join(",")] : []),
-          "-frames:v", String(m.duration_frames), "-r", String(m.fps), ...vcodec,
-          "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
-          ...acodec, "-ar", String(SAMPLE_RATE), "-ac", "2", "-metadata", `title=${m.project.title}`, out,
-        ],
+        ["-progress", "pipe:1", "-i", picture, ...audioIn, ...encodeArgs(m, filters, out)],
         { signal: ac.signal, onTime: (t) => void report(60 + 25 * Math.min(1, t / secs), "Encoding").catch(() => ac.abort()) }
       );
       produced.push(out);

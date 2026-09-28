@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NEUTRAL_GRADE } from "@aurastage/contracts";
 import { getDeliveryProfile, renderManifestEngine, type RenderManifest } from "@aurastage/engines";
-import { renderDeliverable, type RenderClaim } from "./render";
+import { encodeArgs, renderDeliverable, type RenderClaim } from "./render";
 import { gradeFilter } from "./picture";
 
 const hasFfmpeg = (() => {
@@ -124,6 +124,12 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
   it("cancelling stops the render", async () => {
     const claim: RenderClaim = { render: { id: U(98), org_id: U(7), project_id: U(1), profile_id: "streaming_master", attempt: 1 }, manifest: manifest("streaming_master") };
     await expect(renderDeliverable(claim, { fetchMedia: async (k) => media[k], putFile: async () => 0, keyFor: () => "k", progress: async () => true, log: () => {} })).rejects.toThrow(/Cancelled/);
+  });
+  it("regression: the final encode is limited by duration, never by a video frame count (ffmpeg 5.x truncated the sound)", () => {
+    const a = encodeArgs(manifest("streaming_master"), [], "out.mp4");
+    expect(a).not.toContain("-frames:v");
+    expect(a[a.indexOf("-t") + 1]).toBe("2.000000");
+    expect(a.slice(0, 4)).toEqual(["-map", "0:v:0", "-map", "1:a:0"]);
   });
   it("grade filter is neutral when the grade is", () => {
     expect(gradeFilter(NEUTRAL_GRADE)).toBeNull();
