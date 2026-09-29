@@ -76,6 +76,11 @@ changes, the shots that used it are flagged "needs review".
 - ✅ Reference views: establishing / wide / medium / detail per time of day; props hero / ¾ / detail / in hand.
 - ✅ Used by every shot's prompt (described location, props, reference images); edits flag those prompts.
 - ⬜ Set dressing per scene (what's on the table in scene 12) and continuity of props between scenes.
+- ⬜ **Location Intelligence** (owner specification 2026-09-29, full plan in `LOCATION_INTELLIGENCE.md`): real vs
+  fictional places understood from the whole story (not just headings), real places grounded in real geography with
+  verified reference packs and licences, one Location DNA per place with a state per scene (the same apartment clean,
+  at night, smashed), spatial layout and shot geography, shot-aware reference choice, continuity checks, ambience from
+  the place, and "move this sequence from Paris to Rome" with impact analysis. Phases L1–L6; contracts are in place.
 
 ### Stage 4 — Dialogue Intelligence
 - ✅ Lines from the approved script; intent, emotion, intensity, subtext per line; review when the script changes.
@@ -157,14 +162,25 @@ Every one of these is recorded in the render's manifest, so any frame can be tra
 | 7 | More video providers (Luma, Veo), image-to-video | Motion for every shot | Luma / Google keys |
 | 8 | Editorial titles, credits, transitions, music track | A finished-looking film | — |
 | 9 | AI in every field (one-click shot lists, Scene DNA, performance notes) | Speed | — |
-| 10 | Social cut-downs, trailer assistant, PDF import, beat board | Reach and comfort | — |
+| 10 | Location Intelligence L1–L2 (Location DNA, entity resolution, real/fictional, scene states, World Library, packs) | Same places, right geography, before expensive generation | Claude credit |
+| 11 | Location Intelligence L3–L5 (shot geography, reference selection, continuity QC, ambience, assistant commands) | Continuity across a feature | — |
+| 12 | Social cut-downs, trailer assistant, PDF import, beat board | Reach and comfort | — |
+| 13 | Location Intelligence L6 (external geographic providers, 3D/scans, virtual scouting, period reconstruction) | The long-term edge | Provider accounts |
 
 Each item follows the working agreement: build → tests → full build → push → deploy → live check with a throwaway
 account → clean up → short update to the owner.
 
 ---
 
-## 6. What only the owner can provide
+## 6. How work is tracked (so nothing goes round in circles)
+
+Every item is a task with a written finish line ("done when …"), and it is closed only when it passes offline tests
+and a live check. The old umbrella "AI Phase 2–3" was closed on 2026-09-29: AuraScript, the assistant in every
+workspace, character and location reference views and reference-aware prompts are done; what was left is now four
+separate tasks — character aging, sending references to providers, one-pass AI for Dialogue and Scene DNA, and
+Location Intelligence.
+
+## 7. What only the owner can provide
 
 - **Claude credit** (console.anthropic.com → Plans & Billing) — required for every AI writing and assistant step. The
   live check on 2026-09-29 found the balance empty.

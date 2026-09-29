@@ -13,3 +13,4 @@ export * from "./collaboration";
 export * from "./platform";
 export * from "./orchestration";
 export * from "./settings";
+export * from "./location";
