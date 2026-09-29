@@ -45,6 +45,8 @@ export const PromptCompilerInputSchema = z.object({
       age: z.string().nullable(),
       description: z.string().nullable(),
       wardrobe: z.string().nullable(),
+      /** As written in Casting ("Woman", "Man", "Non-binary"); shown in the prompt and used by AuraSketch (≥ 1.4.0). */
+      gender: z.string().nullable().default(null),
       /** The character at another point in the story in this scene; `age` is then that age (≥ 1.3.0). */
       age_state: z.object({ id: z.string().uuid(), label: z.string(), description: z.string().nullable() }).nullable().default(null),
     })

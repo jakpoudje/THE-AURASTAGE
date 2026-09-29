@@ -66,7 +66,7 @@ describe("promptCompilerEngine", () => {
   it("applies the Project Settings look and records its settings version (1.1.0)", () => {
     const withLook = { ...base(), project: { ...base().project, look: "Desaturated teal-and-amber, handheld" }, provenance: { ...base().provenance, settings_version: 3 } };
     const { package: p, engine_version } = promptCompilerEngine(withLook);
-    expect(engine_version).toBe("1.3.0");
+    expect(engine_version).toBe("1.4.0");
     expect(p.prompt).toContain("Look: Desaturated teal-and-amber, handheld.");
     expect(p.provenance.settings_version).toBe(3);
     expect(p.checks.find((c) => c.id === "style")).toMatchObject({ ok: true, evidence: expect.stringContaining("settings v3") });
@@ -116,5 +116,12 @@ describe("promptCompilerEngine", () => {
     expect(Object.fromEntries(withRef.package.checks.map((x) => [x.id, x])).age).toMatchObject({ ok: true, evidence: "Amara Bello: Flashback, 1995 (10)" });
     // No age states: no age check, prompt as before.
     expect(promptCompilerEngine(base()).package.checks.some((x) => x.id === "age")).toBe(false);
+  });
+  it("1.4.0: the gender written in Casting is in the prompt and the package (no gender, no word)", () => {
+    const b = base();
+    const { package: p } = promptCompilerEngine({ ...b, characters: b.characters.map((c) => (c.id === A ? { ...c, gender: "Woman" } : c)) });
+    expect(p.prompt).toContain("In frame: Amara Bello (woman, 32) — Activist.");
+    expect(p.characters[0].gender).toBe("Woman");
+    expect(promptCompilerEngine(base()).package.characters[0].gender).toBeUndefined();
   });
 });

@@ -283,13 +283,15 @@ http.createServer((req, res) => {
       const all = LK.LOOK_ANGLES.flatMap((a) => LK.LOOK_SIZES.map((z) => [a, z]));
       const inp = (views) => ({ character: { name: c.name, age: c.age ?? null, gender: c.gender ?? null, nationality: c.nationality ?? null, occupation: c.occupation ?? null, description: c.description ?? null }, wardrobe: look ? { name: look.name, description: look.description ?? null } : null, style, views,
         age_state: ageSt ? { label: ageSt.label, age: ageSt.age, description: ageSt.description ?? null } : null });
+      const appearance = eng.characterAppearanceEngine({ name: c.name, age: c.age ?? null, gender: c.gender ?? null, description: c.description ?? null,
+        wardrobe: look ? [look.name, look.description].filter(Boolean).join(" — ") : null, age_state: ageSt ? { age: ageSt.age, description: ageSt.description ?? null } : null });
       if (m[2]) {
         const T0 = globalThis.__team || { as: "owner" };
         if (T0.as !== "owner" && T0.as !== "producer") return send(403, { error: { code: "AURA-COL-403", message: "your role can't edit in Casting & Characters. Ask the project's producer for access." } });
         const out = LK.characterLookEngine(inp(b.views ? b.views.map((k) => k.split(":")) : undefined));
         const requested = out.views.map((v) => { const r = { id: crypto.randomUUID(), character_id: c.id, look_id: look ? look.id : null, age_state_id: ageSt ? ageSt.id : null, angle: v.angle, size: v.size, aspect_ratio: v.aspect_ratio, prompt: v.prompt, identity_hash: out.identity_hash,
           provider: "aurastage-sketch", model: "sketch-v1", execution: "native", status: "queued", asset_id: null, error: null, created_at: now(), completed_at: null, _polls: 0,
-          sketch: { title: c.name, subtitle: ageSt ? `${v.label} · ${ageSt.label} (${ageSt.age})` : v.label, angle: v.angle, size: v.size, lines: [out.identity, out.wardrobe].filter(Boolean) } }; refs.unshift(r); return { id: r.id, key: v.key }; });
+          sketch: { title: c.name, subtitle: ageSt ? `${v.label} · ${ageSt.label} (${ageSt.age})` : v.label, angle: v.angle, size: v.size, lines: [out.identity, out.wardrobe].filter(Boolean), appearance } }; refs.unshift(r); return { id: r.id, key: v.key }; });
         return send(200, { requested, provider: "aurastage-sketch", identity_hash: out.identity_hash });
       }
       // The "worker": each queued view is drawn by the real sketch renderer the second time it's read.
@@ -303,6 +305,7 @@ http.createServer((req, res) => {
       const mine = refs.filter((r) => r.character_id === c.id && (r.look_id || null) === (look ? look.id : null) && (r.age_state_id || null) === (ageSt ? ageSt.id : null));
       return send(200, { character: { id: c.id, name: c.name, project_id: P }, looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })), look_id: look ? look.id : null,
         age_states: AGES.filter((a) => a.character_id === c.id).map((a) => ({ id: a.id, label: a.label, age: a.age })), age_state_id: ageSt ? ageSt.id : null,
+        sketch_reads: { evidence: appearance.evidence, unspecified: appearance.unspecified },
         identity: out.identity, wardrobe: out.wardrobe, identity_hash: out.identity_hash, missing: out.missing, negative: out.negative, engine_version: out.engine_version,
         views: out.views.map((v) => { const h = mine.filter((r) => `${r.angle}:${r.size}` === v.key); const g = h.find((r) => r.status === "succeeded");
           return { ...v, in_default_set: LK.DEFAULT_VIEWS.some(([a, z]) => `${a}:${z}` === v.key), versions: h.filter((r) => r.status === "succeeded").length,
@@ -662,7 +665,7 @@ http.createServer((req, res) => {
         scene: { number: scene.number, heading: scene.heading, location: scene.location, int_ext: scene.int_ext, time_of_day: scene.time_of_day, purpose: ed.purpose, mood: ed.mood || [], weather: ed.weather, atmosphere: ed.atmosphere, lighting_intent: ed.lighting_intent },
         shot: { ...shot, lighting: shot.lighting ?? null, composition: shot.composition ?? null },
         characters: chars.filter((c) => shot.character_ids.includes(c.id)).map((c) => { const st = (globalThis.__ages || []).find((a) => a.id === (ed.ages || {})[c.id] && a.character_id === c.id);
-          return { id: c.id, name: c.name, age: st ? st.age : c.age ?? null, description: c.description ?? null, wardrobe: look(c.id), age_state: st ? { id: st.id, label: st.label, description: st.description ?? null } : null }; }),
+          return { id: c.id, name: c.name, age: st ? st.age : c.age ?? null, gender: c.gender ?? null, description: c.description ?? null, wardrobe: look(c.id), age_state: st ? { id: st.id, label: st.label, description: st.description ?? null } : null }; }),
         dialogue: dlines.filter((l) => shot.dialogue_line_ids.includes(l.id)).map((l) => ({ id: l.id, speaker: l.speaker_name, text: l.text, emotion: l.emotion })),
         aspect_ratio: b.aspect_ratio || "16:9", provenance: { shot_plan_version_id: version.id, scene_dna_version_id: dv.id, script_version_id: null } });
       const pkg = { id: crypto.randomUUID(), shot_id: shot.id, shot_plan_version_id: version.id, content: r.package, review_state: "current", review_reason: null, engine_version: r.engine_version, created_at: now() };

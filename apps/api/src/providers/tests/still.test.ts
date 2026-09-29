@@ -12,7 +12,18 @@ describe("still images from a prompt (character references)", () => {
     expect(r).toMatchObject({ media_type: "image/svg+xml", cost_usd: 0 });
     expect(svg).toContain('viewBox="0 0 720 1280"');
     expect(svg).toContain("Amara Bello");
-    expect(svg).toContain("AURASTAGE SKETCH (not AI)");
+    expect(svg).toContain("AURASKETCH (not AI)");
+  });
+  it("AuraSketch 2 draws the described person, not a placeholder head", async () => {
+    const { characterAppearanceEngine } = await import("@aurastage/engines");
+    const appearance = characterAppearanceEngine({ gender: "Woman", age: "32", description: "long braids, brown skin", wardrobe: "emerald green dress, gold gele" });
+    const svg = new TextDecoder().decode((await sketchAdapter.generateStill!({ ...req, sketch: { ...req.sketch, appearance } }, {})).bytes);
+    expect(svg).toContain("#6b4430"); // brown skin
+    expect(svg).toContain("#3f7a45"); // green dress
+    expect(svg).toContain("#c9a24a"); // gold gele
+    // Without appearance facts (an older request) it reads the identity lines instead of drawing a blank figure.
+    const old = new TextDecoder().decode((await sketchAdapter.generateStill!(req, {})).bytes);
+    expect(old).toContain("<svg x=");
   });
   it("OpenAI gets the full prompt with what to avoid, at a portrait size for full-length views; no key = plain refusal", async () => {
     let body: any;

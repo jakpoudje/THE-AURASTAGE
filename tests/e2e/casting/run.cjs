@@ -211,6 +211,8 @@ async function api(method, path, body) {
     await panel.getByText("0 of 16 made").waitFor();
     await panel.getByLabel("Wardrobe for these views").selectOption({ label: "Field outfit" });
     await panel.getByText(/Wearing: Field outfit — Khaki jacket, press badge, worn boots\./).first().waitFor();
+    // AuraSketch 2 says what it will draw from the description and wardrobe, and what isn't described yet.
+    await panel.getByTestId("sketch-reads").getByText(/AuraSketch draws:.*top: jacket/).waitFor();
     await panel.getByRole("button", { name: "Generate look set (8 views)" }).click();
     await panel.getByText(/Making 8 views with AuraStage Sketch/).waitFor();
     await panel.getByText("8 of 16 made").waitFor({ timeout: 15000 });

@@ -4,7 +4,7 @@
 // to the character. A view made from an older identity is shown as "profile changed", never replaced silently.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { characterLook } from "@aurastage/engines";
+import { characterAppearanceEngine, characterLook } from "@aurastage/engines";
 import { stillBackends, stillBackendStatuses } from "../../providers";
 import { readProjectSettings } from "../settings/settings.read";
 import { mapDbError } from "./characters.repository";
@@ -42,11 +42,17 @@ async function lookFor(db: SupabaseClient, characterId: string, lookId: string |
     wardrobe: look ? { name: look.name, description: look.description } : null, style: style || null, views,
     age_state: ageState ? { label: ageState.label, age: ageState.age, description: ageState.description } : null,
   });
-  return { c, looks, look, ages, ageState, engineIn };
+  // What AuraSketch draws: the same profile, wardrobe and age, read into concrete appearance facts.
+  const appearance = characterAppearanceEngine({
+    name: c.name, age: c.age, gender: c.gender, description: c.description,
+    wardrobe: look ? [look.name, look.description].filter(Boolean).join(" — ") : null,
+    age_state: ageState ? { age: ageState.age, description: ageState.description } : null,
+  });
+  return { c, looks, look, ages, ageState, engineIn, appearance };
 }
 
 export async function getCharacterLook(db: SupabaseClient, characterId: string, lookId: string | null, env: Env = process.env, ageStateId: string | null = null) {
-  const { c, looks, look, ages, ageState, engineIn } = await lookFor(db, characterId, lookId, ageStateId);
+  const { c, looks, look, ages, ageState, engineIn, appearance } = await lookFor(db, characterId, lookId, ageStateId);
   const out = characterLook.characterLookEngine(engineIn(ALL_VIEWS));
   const refs = await many(db.from("character_reference_images")
     .select("id, look_id, age_state_id, angle, size, status, asset_id, error, provider, model, execution, identity_hash, created_at, completed_at")
@@ -70,6 +76,7 @@ export async function getCharacterLook(db: SupabaseClient, characterId: string, 
     character: { id: c.id, name: c.name, project_id: c.project_id },
     looks: looks.map((l) => ({ id: l.id, name: l.name })), look_id: look?.id ?? null,
     age_states: ages.map((a) => ({ id: a.id, label: a.label, age: a.age })), age_state_id: ageState?.id ?? null,
+    sketch_reads: { evidence: appearance.evidence, unspecified: appearance.unspecified },
     identity: out.identity, wardrobe: out.wardrobe, identity_hash: out.identity_hash, missing: out.missing, negative: out.negative, engine_version: out.engine_version,
     views, backends: stillBackends(env), backend_statuses: stillBackendStatuses(env),
   };
@@ -85,7 +92,7 @@ const GenerateInput = z.object({
 export async function generateCharacterLook(db: SupabaseClient, characterId: string, body: unknown, env: Env = process.env) {
   const p = GenerateInput.safeParse(body ?? {});
   if (!p.success) throw new CharacterValidationError(p.error.issues, p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
-  const { c, look, ageState, engineIn } = await lookFor(db, characterId, p.data.look_id, p.data.age_state_id);
+  const { c, look, ageState, engineIn, appearance } = await lookFor(db, characterId, p.data.look_id, p.data.age_state_id);
   const pairs = p.data.views ? p.data.views.map((k) => k.split(":") as [characterLook.LookAngle, characterLook.LookSize]) : undefined;
   const out = characterLook.characterLookEngine(engineIn(pairs));
   const backends = stillBackends(env);
@@ -98,7 +105,7 @@ export async function generateCharacterLook(db: SupabaseClient, characterId: str
       p_character: c.id, p_look: look?.id ?? null, p_angle: v.angle, p_size: v.size, p_aspect: v.aspect_ratio, p_prompt: v.prompt, p_negative: out.negative,
       p_identity_hash: out.identity_hash, p_provider: b.id, p_model: b.model, p_execution: b.execution, p_seed: Math.floor(Math.random() * 2 ** 31),
       p_age_state: ageState?.id ?? null,
-      p_sketch: { title: c.name, subtitle: ageState ? `${v.label} · ${ageState.label} (${ageState.age})` : v.label, angle: v.angle, size: v.size, lines: [out.identity, out.wardrobe].filter(Boolean) }, p_engine_version: out.engine_version,
+      p_sketch: { title: c.name, subtitle: ageState ? `${v.label} · ${ageState.label} (${ageState.age})` : v.label, angle: v.angle, size: v.size, lines: [out.identity, out.wardrobe].filter(Boolean), appearance }, p_engine_version: out.engine_version,
     });
     if (error) throw mapDbError(error);
     requested.push({ id: (data as Row).id, key: v.key, status: (data as Row).status, provider: b.id });

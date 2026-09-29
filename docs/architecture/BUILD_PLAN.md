@@ -66,6 +66,11 @@ changes, the shots that used it are flagged "needs review".
 ### Stage 2 — Casting & Characters
 - ✅ Characters created from the approved script; profiles (age, look, personality, background); approval.
 - ✅ Wardrobe looks per character; 16 reference views per character (angle × framing) from one identity description.
+- 🟡 **AuraSketch 2** (built 2026-09-29; live check pending): the free built-in sketcher draws each character as a real
+  illustrated figure from their description and wardrobe — build, age, hair (12 styles), face, facial hair, glasses,
+  headwear (gele, hijab, turban, caps, hats), layered clothes in the described colours — from four angles and every shot
+  size, in Casting and in every storyboard frame. It only draws what's written (skin tone never guessed) and says what
+  isn't described yet.
 - ✅ Voice DNA: each character's voice type, pitch, pace and accent, matched to a natural neural voice.
 - 🟡 AI assistant fills profiles as proposals (Ask AuraStage). ⬜ Relationship map.
 - ✅ **Story-driven aging** (verified live 2026-09-29): each character's other ages (Casting → Ages), reference

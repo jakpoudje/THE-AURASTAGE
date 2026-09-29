@@ -61,6 +61,7 @@ export const GenerationPackageContentSchema = z.object({
   characters: z.array(
     z.object({
       id: z.string(), name: z.string(), description: z.string().nullable(), age: z.string().nullable(), wardrobe: z.string().nullable(),
+      gender: z.string().optional(),
       /** The character's age state in this scene (Casting, chosen in Scene DNA; promptCompilerEngine ≥ 1.3.0). */
       age_state: z.object({ id: z.string(), label: z.string(), description: z.string().nullable() }).optional(),
     })

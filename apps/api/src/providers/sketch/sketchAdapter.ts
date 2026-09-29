@@ -5,13 +5,10 @@
 // run with no external account, and gives every shot a readable frame.
 import type { GenerateRequest, GenerateResult, ProviderAdapter, StillRequest } from "../types";
 import { ProviderError } from "../types";
+import { characterAppearanceEngine, drawAuraSketchFigure } from "@aurastage/engines";
+import type { SketchAngle, SketchSize } from "@aurastage/engines";
 
 const RATIO: Record<string, [number, number]> = { "16:9": [1280, 720], "9:16": [720, 1280], "1:1": [1024, 1024], "2.39:1": [1434, 600], "4:3": [1024, 768] };
-const HEAD: Record<string, { r: number; y: number }> = {
-  EWS: { r: 0.02, y: 0.66 }, WS: { r: 0.035, y: 0.55 }, FULL: { r: 0.06, y: 0.3 }, MWS: { r: 0.08, y: 0.33 }, COWBOY: { r: 0.09, y: 0.33 },
-  MS: { r: 0.12, y: 0.36 }, MCU: { r: 0.17, y: 0.4 }, CU: { r: 0.27, y: 0.48 }, ECU: { r: 0.5, y: 0.52 }, TWO_SHOT: { r: 0.1, y: 0.36 },
-  THREE_SHOT: { r: 0.08, y: 0.36 }, GROUP: { r: 0.06, y: 0.38 }, OTS: { r: 0.15, y: 0.4 }, POV: { r: 0.08, y: 0.4 }, CUTAWAY: { r: 0.1, y: 0.4 },
-};
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 function wrap(text: string, max: number, lines: number) {
@@ -33,7 +30,6 @@ export function renderSketch(req: GenerateRequest): string {
   const [W, H] = RATIO[req.aspect_ratio] ?? RATIO["16:9"];
   const p = req.package;
   const size = p.camera.size;
-  const s = HEAD[size];
   const n = size === "TWO_SHOT" ? 2 : size === "THREE_SHOT" ? 3 : size === "GROUP" ? 4 : Math.max(1, Math.min(3, p.characters.length || 1));
   const people = ["CU", "ECU", "MCU", "OTS", "POV", "CUTAWAY"].includes(size) ? 1 : n;
   const angle = p.camera.angle;
@@ -43,16 +39,41 @@ export function renderSketch(req: GenerateRequest): string {
   const seed = req.seed ?? 0;
   const bg = night ? "#0d1220" : "#1d1c22";
   const figures: string[] = [];
+  // AuraSketch 2: the characters in frame, drawn from their Casting description, wardrobe for the scene and age.
+  const cast = p.characters.map((c) => characterAppearanceEngine({
+    name: c.name, age: c.age, gender: c.gender ?? null, description: c.description, wardrobe: c.wardrobe,
+    age_state: c.age_state ? { age: c.age ?? "", description: c.age_state.description } : null,
+  }));
+  const neutral = characterAppearanceEngine({});
+  const personAt = (i: number) => cast[i] ?? cast[0] ?? neutral;
+  // Figure size for the shot: how much of the body is in frame and how tall the figure stands in the frame.
+  const FR: Record<string, { crop: SketchSize; h: number; floor: number }> = {
+    EWS: { crop: "FULL", h: 0.22, floor: 0.7 }, WS: { crop: "FULL", h: 0.45, floor: 0.78 }, FULL: { crop: "FULL", h: 0.82, floor: 0.92 },
+    MWS: { crop: "FULL", h: 0.95, floor: 1.0 }, COWBOY: { crop: "MS", h: 0.95, floor: 1.0 }, MS: { crop: "MS", h: 0.95, floor: 1.0 },
+    TWO_SHOT: { crop: "MS", h: 0.95, floor: 1.0 }, THREE_SHOT: { crop: "MS", h: 0.9, floor: 1.0 }, GROUP: { crop: "FULL", h: 0.7, floor: 0.9 },
+    MCU: { crop: "MCU", h: 1, floor: 1.0 }, OTS: { crop: "MCU", h: 0.95, floor: 1.0 }, POV: { crop: "MS", h: 0.7, floor: 0.95 },
+    CU: { crop: "CU", h: 1, floor: 1.0 }, ECU: { crop: "CU", h: 1.25, floor: 1.1 }, CUTAWAY: { crop: "MS", h: 0.8, floor: 1.0 },
+  };
+  const fr = FR[size];
   if (size === "INSERT") figures.push(`<rect x="${W * 0.3}" y="${H * 0.25}" width="${W * 0.4}" height="${H * 0.5}" rx="12" fill="#8a8a95"/>`);
-  else if (s) {
-    for (let i = 0; i < people; i++) {
-      const cx = size === "OTS" ? W * 0.64 : W * ((i + 1) / (people + 1)) + ((seed * 37 + i * 11) % 21) - 10;
-      const r = H * s.r, cy = H * s.y;
-      figures.push(
-        `<g fill="#9a9aa6"><circle cx="${cx}" cy="${cy}" r="${r}"/><path d="M ${cx - r * 2.2} ${cy + r * 5} Q ${cx - r * 2.1} ${cy + r * 1.3} ${cx} ${cy + r * 1.25} Q ${cx + r * 2.1} ${cy + r * 1.3} ${cx + r * 2.2} ${cy + r * 5} Z"/></g>`
-      );
+  else if (fr) {
+    const fh = H * fr.h, bottom = H * fr.floor;
+    if (size === "OTS") {
+      // Over the shoulder: the other person seen from behind in the foreground, the subject facing us.
+      figures.push(drawAuraSketchFigure(personAt(0), "three_quarter", "MCU", { x: W * 0.42, y: bottom - fh, width: W * 0.45, height: fh }).svg);
+      figures.push(drawAuraSketchFigure(personAt(1), "back", "MCU", { x: -W * 0.08, y: H * 0.2, width: W * 0.5, height: H * 1.05 }).svg);
+    } else {
+      const n = people;
+      const bw = Math.min(W / n, fh * (fr.crop === "FULL" ? 0.55 : fr.crop === "MS" ? 0.75 : 1.1));
+      for (let i = 0; i < n; i++) {
+        const cx = W * ((i + 1) / (n + 1)) + ((seed * 37 + i * 11) % 21) - 10;
+        const angle: SketchAngle = n === 1 ? "front" : "three_quarter";
+        const fig = drawAuraSketchFigure(personAt(i), angle, fr.crop, { x: -bw / 2, y: 0, width: bw, height: fh }).svg;
+        // In two- and three-shots the people turn towards each other (the right-hand side is mirrored).
+        const mirror = n > 1 && cx > W / 2;
+        figures.push(`<g transform="translate(${cx} ${bottom - fh})${mirror ? " scale(-1 1)" : ""}">${fig}</g>`);
+      }
     }
-    if (size === "OTS") figures.push(`<ellipse cx="${W * 0.12}" cy="${H * 0.75}" rx="${W * 0.2}" ry="${H * 0.45}" fill="#55555f"/>`);
   }
   const caption = wrap(p.performance.action || p.camera.size_label, Math.round(W / 16), 2);
   const who = p.characters.map((c) => c.name).join(", ");
@@ -69,40 +90,28 @@ ${who ? `<text x="${W - fs}" y="${fs * 1.6}" text-anchor="end" font-family="Helv
 </svg>`;
 }
 
-/** A labelled reference figure: head and body drawn for the angle, framed for the shot size. Deterministic. */
+/**
+ * AuraSketch 2 character sheet: the character drawn from their appearance (build, age, hair, face, headwear, clothes and
+ * colours from the Casting profile and wardrobe) for the angle, framed for the shot size, on a concept-sheet page.
+ * Deterministic. Labelled as a sketch, not AI.
+ */
 export function renderCharacterSketch(req: StillRequest): string {
   const [W, H] = RATIO[req.aspect_ratio] ?? RATIO["1:1"];
   const s0 = req.sketch;
-  const k = s0 && (s0.kind ?? "character") === "character" ? (s0 as Extract<NonNullable<StillRequest["sketch"]>, { angle: string }>) : { title: "Reference", subtitle: "", angle: "front" as const, size: "MS" as const, lines: [] as string[] };
-  // How much of the body is in frame: head radius and head centre as fractions of the frame height.
-  const frame = { CU: { r: 0.26, y: 0.5 }, MCU: { r: 0.15, y: 0.36 }, MS: { r: 0.1, y: 0.3 }, FULL: { r: 0.055, y: 0.16 } }[k.size];
-  const cx = W / 2, r = H * frame.r, cy = H * frame.y;
-  const skin = "#b9b3ad", cloth = "#7d7a88", fg: string[] = [];
-  const bodyW = k.angle === "profile" ? r * 1.25 : k.angle === "three_quarter" ? r * 1.8 : r * 2.2;
-  // Body: shoulders to hips, legs for full-length.
-  fg.push(`<path d="M ${cx - bodyW} ${cy + r * 5.2} Q ${cx - bodyW} ${cy + r * 1.35} ${cx} ${cy + r * 1.25} Q ${cx + bodyW} ${cy + r * 1.35} ${cx + bodyW} ${cy + r * 5.2} Z" fill="${cloth}"/>`);
-  if (k.size === "FULL") {
-    fg.push(`<rect x="${cx - bodyW * 0.62}" y="${cy + r * 5.1}" width="${bodyW * 0.5}" height="${r * 6.2}" rx="${r * 0.2}" fill="#5f5c69"/>`);
-    fg.push(`<rect x="${cx + bodyW * 0.12}" y="${cy + r * 5.1}" width="${bodyW * 0.5}" height="${r * 6.2}" rx="${r * 0.2}" fill="#5f5c69"/>`);
-  }
-  // Head, with the face turned by angle (the back view shows hair only).
-  const hx = k.angle === "three_quarter" ? cx + r * 0.12 : cx;
-  fg.push(`<ellipse cx="${hx}" cy="${cy}" rx="${k.angle === "profile" ? r * 0.85 : r * 0.92}" ry="${r}" fill="${k.angle === "back" ? "#3b3842" : skin}"/>`);
-  if (k.angle !== "back") {
-    fg.push(`<path d="M ${hx - r * 0.95} ${cy - r * 0.15} Q ${hx} ${cy - r * 1.45} ${hx + r * 0.95} ${cy - r * 0.15} Q ${hx} ${cy - r * 0.8} ${hx - r * 0.95} ${cy - r * 0.15} Z" fill="#3b3842"/>`);
-    const eyes = k.angle === "front" ? [-0.33, 0.33] : k.angle === "three_quarter" ? [-0.05, 0.45] : [0.5];
-    for (const e of eyes) fg.push(`<circle cx="${hx + r * e}" cy="${cy + r * 0.05}" r="${r * 0.07}" fill="#2a2830"/>`);
-    if (k.angle === "profile") fg.push(`<path d="M ${hx + r * 0.8} ${cy} L ${hx + r * 1.05} ${cy + r * 0.3} L ${hx + r * 0.8} ${cy + r * 0.35} Z" fill="${skin}"/>`);
-  }
+  const k = s0 && (s0.kind ?? "character") === "character" ? (s0 as Extract<NonNullable<StillRequest["sketch"]>, { angle: string }>) : { title: "Reference", subtitle: "", angle: "front" as const, size: "MS" as const, lines: [] as string[], appearance: undefined };
+  const appearance = k.appearance ?? characterAppearanceEngine({ description: k.lines.join(". ") });
   const fs = Math.round(Math.min(W, H) / 30);
-  const lines = k.lines.flatMap((l) => wrap(l, Math.round(W / (fs * 0.55)), 2)).slice(0, 4);
+  const lines = k.lines.flatMap((l) => wrap(l, Math.round(W / (fs * 0.55)), 2)).slice(0, 3);
+  const headH = fs * 3.9, footH = fs * (lines.length * 1.3 + 1.2);
+  const fig = drawAuraSketchFigure(appearance, k.angle, k.size, { x: W * 0.04, y: headH, width: W * 0.92, height: H - headH - footH }).svg;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
-<rect width="${W}" height="${H}" fill="#2b2a31"/>
-<g>${fg.join("")}</g>
-<rect x="0" y="${H - fs * (lines.length * 1.3 + 1.2)}" width="${W}" height="${fs * (lines.length * 1.3 + 1.2)}" fill="#000" opacity="0.7"/>
-${lines.map((l, i) => `<text x="${fs}" y="${H - fs * ((lines.length - i) * 1.3 - 0.4)}" font-family="Helvetica,Arial,sans-serif" font-size="${fs}" fill="#eee">${esc(l)}</text>`).join("")}
-<text x="${fs}" y="${fs * 1.7}" font-family="Helvetica,Arial,sans-serif" font-size="${Math.round(fs * 1.1)}" fill="#e8b84b">${esc(k.title)}</text>
-<text x="${fs}" y="${fs * 3.1}" font-family="Helvetica,Arial,sans-serif" font-size="${Math.round(fs * 0.85)}" fill="#bbbbc4">${esc(k.subtitle)} · AURASTAGE SKETCH (not AI)</text>
+<rect width="${W}" height="${H}" fill="#f3efe6"/>
+<rect x="${fs * 0.5}" y="${fs * 0.5}" width="${W - fs}" height="${H - fs}" fill="none" stroke="#d9d2c3" stroke-width="2"/>
+${fig}
+<rect x="0" y="${H - footH}" width="${W}" height="${footH}" fill="#2b2622" opacity="0.88"/>
+${lines.map((l, i) => `<text x="${fs}" y="${H - fs * ((lines.length - i) * 1.3 - 0.4)}" font-family="Helvetica,Arial,sans-serif" font-size="${fs}" fill="#f3efe6">${esc(l)}</text>`).join("")}
+<text x="${fs}" y="${fs * 1.9}" font-family="Helvetica,Arial,sans-serif" font-size="${Math.round(fs * 1.1)}" font-weight="bold" fill="#2b2622">${esc(k.title)}</text>
+<text x="${fs}" y="${fs * 3.2}" font-family="Helvetica,Arial,sans-serif" font-size="${Math.round(fs * 0.85)}" fill="#6b645a">${esc(k.subtitle)} · AURASKETCH (not AI)</text>
 </svg>`;
 }
 

@@ -57,3 +57,11 @@ up to 3 (`referenceImages`); OpenAI Images: up to 6 via `/v1/images/edits`; sket
 - Piper text-to-speech — © Michael Hansen, MIT licence (https://github.com/rhasspy/piper).
 - en_GB-vctk-medium — trained on the CSTR VCTK Corpus (Yamagishi, Veaux, MacDonald; University of Edinburgh), CC BY 4.0.
 - en_US-libritts_r-medium — trained on LibriTTS-R (Koizumi et al., Google), CC BY 4.0.
+
+## AuraSketch 2 (built in, free, not AI)
+`sketch/sketchAdapter.ts` draws with `engines/generation/auraSketchFigureEngine` (2.0.0): character sheets
+(`renderCharacterSketch`) and storyboard frames (`renderSketch`) show each character as an illustrated figure built from
+`characterAppearanceEngine` facts (profile, description, wardrobe look, age for the scene): proportions by life stage and
+build, face, 12 hair styles, headwear, facial hair, glasses, scars, earrings and layered clothing in the described
+colours, from four angles and framed per shot size. Skin tone comes only from the description's own words; anything not
+described is drawn neutrally and listed (`sketch_reads.unspecified` in the Look panel).

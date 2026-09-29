@@ -30,7 +30,8 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
 
   const people = inFrame.map((c) => {
     const when = c.age_state ? `${clean(c.age_state.label)}${clean(c.age_state.description) ? `: ${clean(c.age_state.description)}` : ""}` : "";
-    const age = c.age && when ? `(aged ${c.age}, ${when})` : c.age ? `(${c.age})` : when ? `(${when})` : null;
+    const who = [clean(c.gender).toLowerCase(), c.age && !when ? c.age : null].filter(Boolean).join(", ");
+    const age = c.age && when ? `(${clean(c.gender) ? `${clean(c.gender).toLowerCase()}, ` : ""}aged ${c.age}, ${when})` : who ? `(${who})` : when ? `(${when})` : null;
     const bits = [c.name, age, clean(c.description) ? `— ${clean(c.description)}` : null, clean(c.wardrobe) ? `wearing ${clean(c.wardrobe)}` : null];
     return bits.filter(Boolean).join(" ");
   });
@@ -82,7 +83,7 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
       size: shot.size, size_label: sizeLabel, angle: shot.angle, movement: shot.movement, lens_mm: shot.lens_mm, focus: shot.focus,
       composition: shot.composition, duration_seconds: shot.duration_seconds,
     },
-    characters: inFrame.map((c) => ({ id: c.id, name: c.name, description: c.description, age: c.age, wardrobe: c.wardrobe, ...(c.age_state ? { age_state: c.age_state } : {}) })),
+    characters: inFrame.map((c) => ({ id: c.id, name: c.name, description: c.description, age: c.age, wardrobe: c.wardrobe, ...(c.gender ? { gender: c.gender } : {}), ...(c.age_state ? { age_state: c.age_state } : {}) })),
     performance: { action: clean(shot.description), dialogue: lines.map((l) => ({ speaker: l.speaker, text: l.text, emotion: l.emotion })) },
     lighting,
     technical: { aspect_ratio },

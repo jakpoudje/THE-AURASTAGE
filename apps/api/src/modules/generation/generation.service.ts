@@ -218,7 +218,7 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
     characters: chars.filter((c) => (shot.character_ids ?? []).includes(c.id)).map((c) => {
       const st = ageOf(c.id);
       return {
-        id: c.id, name: c.name, age: st ? st.age : c.age ?? null, description: c.description ?? null, wardrobe: lookText(c.id),
+        id: c.id, name: c.name, age: st ? st.age : c.age ?? null, description: c.description ?? null, wardrobe: lookText(c.id), gender: c.gender ?? null,
         age_state: st ? { id: st.id, label: st.label, description: st.description ?? null } : null,
       };
     }),

@@ -50,7 +50,7 @@ export const getDnaVersion = (db: SupabaseClient, id: string) =>
 export const getScriptVersionId = async (db: SupabaseClient, projectId: string) =>
   ((await one(db.from("scripts").select("approved_version_id").eq("project_id", projectId).maybeSingle()))?.approved_version_id as string | undefined) ?? null;
 export const listCharacters = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("characters").select("id, name, age, description, merged_into").eq("project_id", projectId));
+  rows(db.from("characters").select("id, name, age, gender, description, merged_into").eq("project_id", projectId));
 export const listLooks = (db: SupabaseClient, projectId: string) =>
   rows(db.from("wardrobe_looks").select("id, character_id, name, description").eq("project_id", projectId));
 export const listAgeStates = (db: SupabaseClient, projectId: string) =>

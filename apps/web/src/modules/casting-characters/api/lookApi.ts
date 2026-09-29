@@ -11,6 +11,8 @@ export interface CharacterLookView {
   character: { id: string; name: string; project_id: string };
   looks: { id: string; name: string }[]; look_id: string | null;
   age_states: { id: string; label: string; age: string }[]; age_state_id: string | null;
+  /** What AuraSketch read from the profile, wardrobe and age (and what it couldn't find). */
+  sketch_reads?: { evidence: { fact: string; from: string }[]; unspecified: string[] };
   identity: string; wardrobe: string | null; identity_hash: string; missing: string[]; negative: string[]; engine_version: string;
   views: LookView[];
   backends: { id: string; name: string; model: string; execution: "native" | "external"; note: string }[];

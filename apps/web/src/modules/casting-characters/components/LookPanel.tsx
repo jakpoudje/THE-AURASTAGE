@@ -97,6 +97,15 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
         {data.missing.length > 0 && (
           <p className="mt-2 text-xs text-amber-300">Add {data.missing.join(", ")} in the Profile tab so every view shows the same person more precisely.</p>
         )}
+        {data.sketch_reads && (
+          <div className="mt-2 text-xs" data-testid="sketch-reads">
+            <span className="text-white/50">AuraSketch draws: </span>
+            <span className="text-white/80">{data.sketch_reads.evidence.map((e) => e.fact).join(" · ") || "a neutral figure"}</span>
+            {data.sketch_reads.unspecified.length > 0 && (
+              <p className="mt-1 text-amber-300/90">Not described yet (drawn neutrally): {data.sketch_reads.unspecified.join(", ")}. Add them to the description in the Profile tab.</p>
+            )}
+          </div>
+        )}
         {data.age_states.length === 0 && <p className="mt-2 text-[11px] text-white/40">Flashback or time jump? Add the character's other ages in the Ages tab, then make views for each age here.</p>}
         <p className="mt-2 text-[11px] text-white/40">Built from this character's profile, wardrobe look and the project look in Project Settings. When any of them changes, existing views are marked “Profile changed” — nothing is replaced automatically.</p>
       </div>
@@ -146,7 +155,7 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
         <SelectedImage v={view} />
         <div className="space-y-2">
           <div className="text-sm font-medium">{view.label}</div>
-          {view.image && <p className="text-white/50">{view.image.execution === "native" ? "AuraStage Sketch — a labelled placeholder, not AI" : view.image.provider} · {view.versions} version{view.versions === 1 ? "" : "s"}{view.image.stale ? " · made before the latest profile change" : ""}</p>}
+          {view.image && <p className="text-white/50">{view.image.execution === "native" ? "AuraSketch — a built-in illustration drawn from the description, not AI" : view.image.provider} · {view.versions} version{view.versions === 1 ? "" : "s"}{view.image.stale ? " · made before the latest profile change" : ""}</p>}
           {view.latest?.status === "failed" && <p className="text-red-300">{view.latest.error}</p>}
           <details><summary className="cursor-pointer text-white/60">Prompt sent to the generator</summary><p className="mt-1 whitespace-pre-wrap text-white/70" data-testid="look-prompt">{view.prompt}</p></details>
           <div className="flex flex-wrap gap-2">
