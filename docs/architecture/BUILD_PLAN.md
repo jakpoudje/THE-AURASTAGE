@@ -68,7 +68,7 @@ changes, the shots that used it are flagged "needs review".
 - ✅ Wardrobe looks per character; 16 reference views per character (angle × framing) from one identity description.
 - ✅ Voice DNA: each character's voice type, pitch, pace and accent, matched to a natural neural voice.
 - 🟡 AI assistant fills profiles as proposals (Ask AuraStage). ⬜ Relationship map.
-- 🟡 **Story-driven aging** (built 2026-09-29; live check pending): each character's other ages (Casting → Ages), reference
+- ✅ **Story-driven aging** (verified live 2026-09-29): each character's other ages (Casting → Ages), reference
   views per age, the age chosen per scene in Scene DNA (with the script's own time clues pointed out), and prompts and
   reference images that follow it; a changed age flags the scenes that use it.
 - ⬜ Upload an actor's photos as the reference (with consent record) instead of generated views.
@@ -100,7 +100,8 @@ changes, the shots that used it are flagged "needs review".
 - ✅ Prompt compiled for every shot from all the canonical records; built-in sketch; Runway and OpenAI images when keys
   are added; takes, compare, approve.
 - ✅ Reference images are chosen per shot, shown, and **sent** to providers that accept them (Runway: 3, OpenAI: 6 —
-  characters first, then the place, then props); each take lists what it sent and why anything was left out.
+  characters first, then the place, then props); each take lists what it sent and why anything was left out. Verified
+  live with the built-in generator (which takes none and says so); Runway/OpenAI receive them once their keys are added.
 - ⬜ More video providers (Luma, Google Veo); ⬜ image-to-video from the approved still; ⬜ in-painting fixes.
 
 ### Stage 8 — Audio Studio
@@ -157,7 +158,7 @@ Every one of these is recorded in the render's manifest, so any frame can be tra
 | # | Work | Why first | Needs from the owner |
 |---|---|---|---|
 | 1 | ✅ Send reference images to image providers that accept them (done 2026-09-29) | Same faces and places in every shot | — |
-| 2 | 🟡 Story-driven aging (age per scene, reference sets per age) — built, live check pending | Time jumps and flashbacks look right | — |
+| 2 | ✅ Story-driven aging (age per scene, reference sets per age) (done 2026-09-29) | Time jumps and flashbacks look right | — |
 | 3 | Built-in SFX/ambience library + auto-placement + mix presets | Better sound without paid services | — |
 | 4 | Music suggestions per scene + built-in library; music provider | Background music in every film | Music provider key |
 | 5 | Premium voices (ElevenLabs) with Voice DNA | Natural performances | ElevenLabs key |
