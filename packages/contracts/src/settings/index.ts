@@ -65,6 +65,22 @@ export const ProjectSettingsSchema = z
         country: text(80),
         year: z.number().int().min(1888).max(2200).nullable().default(null),
         copyright: text(200),
+        /** Shown in the end credits (with director, producer, company, country, year and copyright). */
+        writer: text(200),
+        composer: text(200),
+        thanks: text(1000),
+      })
+      .strict()
+      .default({}),
+    /** The film's opening title card and end-credits roll, added to video deliverables by the render worker. */
+    titles: z
+      .object({
+        opening_title: z.boolean().default(false),
+        opening_seconds: z.number().min(2).max(15).default(5),
+        /** A line under the title on the opening card (e.g. a tagline). */
+        opening_subtitle: text(200),
+        end_credits: z.boolean().default(false),
+        credits_speed: z.enum(["slow", "medium", "fast"]).default("medium"),
       })
       .strict()
       .default({}),

@@ -38,5 +38,11 @@ export const RenderManifestInputSchema = z.object({
   automation: TimelineAutomationSchema.default({}),
   automation_revision: z.string().nullable().default(null),
   lines: z.record(z.object({ speaker: z.string(), text: z.string() })),
+  /** Opening title card and end-credits roll (titleSequenceEngine), added to video deliverables only (manifest ≥ 1.4.0). */
+  titles: z.object({
+    opening: z.object({ frames: z.number().int().positive(), svg: z.string().max(200_000) }).nullable(),
+    end_credits: z.object({ frames: z.number().int().positive(), svg: z.string().max(2_000_000), image_height: z.number().int().positive() }).nullable(),
+    engine_version: z.string(),
+  }).nullable().default(null),
 });
 export type RenderManifestInput = z.infer<typeof RenderManifestInputSchema>;

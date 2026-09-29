@@ -5,7 +5,7 @@ import { DeliveryProfileSchema } from "../deliveryProfileEngine/output.schema";
 import { SubtitleOutputSchema } from "../subtitleTimelineEngine/output.schema";
 
 export const PictureSegmentSchema = z.object({
-  kind: z.enum(["take", "black"]),
+  kind: z.enum(["take", "black", "title", "credits"]),
   record_in: z.number().int(),
   duration: z.number().int(),
   source_in: z.number().int(),
@@ -15,6 +15,9 @@ export const PictureSegmentSchema = z.object({
   capability: z.string().nullable(),
   grade: ClipGradeSchema.nullable(),
   label: z.string(),
+  /** Title card / credit roll artwork (SVG); the roll scrolls an image this tall through the frame. */
+  svg: z.string().optional(),
+  image_height: z.number().int().optional(),
 });
 export type PictureSegment = z.infer<typeof PictureSegmentSchema>;
 

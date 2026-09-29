@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NEUTRAL_GRADE } from "@aurastage/contracts";
-import { getDeliveryProfile, renderManifestEngine, type RenderManifest } from "@aurastage/engines";
+import { getDeliveryProfile, renderManifestEngine, titleSequenceEngine, type RenderManifest } from "@aurastage/engines";
 import { creditMetadata, encodeArgs, renderDeliverable, type RenderClaim } from "./render";
 import { gradeFilter } from "./picture";
 
@@ -127,6 +127,20 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
     };
     expect(maxDb("stem_DX.wav")).toBeCloseTo(-13.5 + 1.14 - 6, 0); // 6 dB lower than without automation
   }, 120000);
+  it("opening title card and end-credits roll: the film is longer by exactly both, the captions move with the cut (manifest 1.4.0)", async () => {
+    const t = titleSequenceEngine({ title: "Render Test", width: 1920, height: 1080, fps: 24, opening: { enabled: true, seconds: 2 }, end_credits: { enabled: true, speed: "fast" },
+      credits: { director: "Ada Obi" }, cast: [{ character: "Tunde" }] });
+    const titles = { opening: { frames: t.opening!.frames, svg: t.opening!.svg }, end_credits: { frames: t.end_credits!.frames, svg: t.end_credits!.svg, image_height: t.end_credits!.image_height }, engine_version: t.engine_version };
+    const r = await render("streaming_master", { titles });
+    expect(failing(r.qc).filter((f) => !/^(loudness|true_peak)/.test(f))).toEqual([]);
+    const secs = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(r.store, "streaming_1080p24.mp4")]).toString());
+    expect(secs).toBeCloseTo(2 + 2 + t.end_credits!.frames / 24, 1);
+    expect(readFileSync(join(r.store, "captions.srt"), "utf8")).toContain("00:00:02,250 --> 00:00:03,750\nYou came.");
+    const bright = (at: number) => { const raw = execFileSync("ffmpeg", ["-v", "error", "-ss", String(at), "-i", join(r.store, "streaming_1080p24.mp4"), "-frames:v", "1", "-vf", "scale=64:36", "-f", "rawvideo", "-pix_fmt", "gray", "-"]); return Math.max(...raw); };
+    expect(bright(1)).toBeGreaterThan(120); // the title is on screen mid-card
+    expect(bright(0.02)).toBeLessThan(60); // …and fades in from black
+    expect(bright(4 + (t.end_credits!.frames / 24) * 0.45)).toBeGreaterThan(100); // credit lines are scrolling through
+  }, 180000);
   it("subtitles and EDL", async () => {
     const s = await render("subtitles");
     expect(s.qc.passed).toBe(true);

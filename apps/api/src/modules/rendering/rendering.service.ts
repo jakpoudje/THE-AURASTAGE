@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TIMELINE_FPS, type DeliveryProfileId } from "@aurastage/contracts";
-import { deliveryProfiles, getDeliveryProfile, renderManifest, renderManifestEngine } from "@aurastage/engines";
+import { deliveryProfiles, getDeliveryProfile, renderManifest, renderManifestEngine, titleSequenceEngine } from "@aurastage/engines";
 import { mediaConfigured, signedMediaUrl } from "../../storage/media";
 import { assertProjectAccess, assertRenderAccess } from "./rendering.permissions";
 import * as repo from "./rendering.repository";
@@ -44,15 +44,43 @@ async function loadLock(db: SupabaseClient, projectId: string) {
   const [takes, mixes, sessions] = await Promise.all([repo.listTakes(db, takeIds), repo.listMixVersions(db, mixIds), repo.listSessions(db, projectId)]);
   const assetIds = [...new Set(mixes.flatMap((m) => ((m.clips as Row[]) ?? []).map((c) => c.asset_id).filter((x): x is string => !!x)))];
   const lineIds = [...new Set(mixes.flatMap((m) => ((m.clips as Row[]) ?? []).map((c) => c.source?.dialogue_line_id).filter((x): x is string => typeof x === "string")))];
-  const [assets, lines] = await Promise.all([repo.listAssets(db, assetIds), repo.listLines(db, lineIds)]);
-  return { timeline, lock, version, clips, takes, mixes, sessions, assets, lines };
+  const [assets, lines, cast] = await Promise.all([repo.listAssets(db, assetIds), repo.listLines(db, lineIds), repo.listCast(db, projectId)]);
+  return { timeline, lock, version, clips, takes, mixes, sessions, assets, lines, cast };
 }
 type Locked = Awaited<ReturnType<typeof loadLock>>;
 
+const ROLE_ORDER = ["lead", "supporting", "minor", "extra"];
+const PROVIDER_NAMES: Record<string, string> = { runway: "Runway", openai: "OpenAI Images", google: "Google (Imagen / Veo)", stability: "Stability AI",
+  bfl: "Black Forest Labs FLUX", luma: "Luma Dream Machine", kling: "Kling AI", minimax: "MiniMax Hailuo" };
+/** Opening title card and end-credits roll from Project Settings (titleSequenceEngine); null when both are off. */
+function titlesFor(project: { title: string }, L: Locked, settings: ProjectSettings, profile: ReturnType<typeof profileFor>, fps: number) {
+  const t = settings.titles, c = settings.production;
+  if (!profile.video || (!t.opening_title && !t.end_credits)) return null;
+  const cast = [...(L.cast ?? [])].filter((x) => x.kind !== "group").sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role))
+    .slice(0, 200).map((x) => ({ character: String(x.name), performer: null }));
+  // Credit what actually made the pictures and sound in this cut (never a provider that wasn't used).
+  const made = new Set<string>();
+  for (const tk of L.takes) if (tk.provider) made.add(tk.provider === "aurastage-sketch" ? "AuraStage Sketch storyboards" : `Pictures: ${PROVIDER_NAMES[tk.provider] ?? tk.provider}`);
+  const r = titleSequenceEngine({
+    title: project.title, width: profile.video.width, height: profile.video.height, fps,
+    opening: { enabled: t.opening_title, seconds: t.opening_seconds, subtitle: t.opening_subtitle },
+    end_credits: { enabled: t.end_credits, speed: t.credits_speed },
+    credits: { director: c.director, writer: c.writer, producer: c.producer, composer: c.composer, company: c.company, country: c.country, year: c.year, copyright: c.copyright, thanks: c.thanks },
+    cast, made_with: [...made, "AuraStage"],
+  });
+  return {
+    opening: r.opening ? { frames: r.opening.frames, svg: r.opening.svg } : null,
+    end_credits: r.end_credits ? { frames: r.end_credits.frames, svg: r.end_credits.svg, image_height: r.end_credits.image_height } : null,
+    engine_version: r.engine_version,
+  };
+}
+
 function manifestInput(project: { id: string; title: string }, L: Locked, profileId: string, options: { watermark: string | null; burn_timecode: boolean }, settings: ProjectSettings) {
+  const profile = profileFor(profileId, settings);
   return {
     project: { id: project.id, title: project.title, credits: creditsOf(settings) },
-    profile: profileFor(profileId, settings),
+    titles: titlesFor(project, L, settings, profile, L.version?.fps ?? TIMELINE_FPS),
+    profile,
     options,
     picture_lock: { id: L.lock!.id, lock_number: L.lock!.lock_number, timeline_version_id: L.version!.id },
     fps: L.version?.fps ?? TIMELINE_FPS,

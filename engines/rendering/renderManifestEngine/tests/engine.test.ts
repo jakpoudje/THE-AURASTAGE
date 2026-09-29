@@ -57,3 +57,22 @@ describe("renderManifestEngine", () => {
     expect(JSON.stringify(renderManifestEngine(input()))).toBe(JSON.stringify(renderManifestEngine(input())));
   });
 });
+
+describe("renderManifestEngine 1.4.0: titles and credits", () => {
+  const titles = { opening: { frames: 120, svg: "<svg>TITLE</svg>" }, end_credits: { frames: 240, svg: "<svg>ROLL</svg>", image_height: 3000 }, engine_version: "1.0.0" };
+  it("puts the title card first and the credit roll last; the cut, its sound, automation and captions move later together", () => {
+    const { manifest } = renderManifestEngine(input("streaming_master", { titles, automation: { A1: [{ frame: 0, db: -3 }, { frame: 48, db: 0 }] } }));
+    expect(manifest!.picture.map((s) => [s.kind, s.record_in, s.duration])).toEqual([["title", 0, 120], ["take", 120, 48], ["black", 168, 24], ["take", 192, 24], ["credits", 216, 240]]);
+    expect(manifest!.duration_frames).toBe(456);
+    expect(manifest!.audio[0].record_in).toBe(120);
+    expect(manifest!.automation.A1.map((p) => p.frame)).toEqual([120, 168]);
+    expect(manifest!.subtitles!.cues[0].start_frame).toBe(144);
+    expect(manifest!.picture.at(-1)).toMatchObject({ svg: "<svg>ROLL</svg>", image_height: 3000 });
+    expect(manifest!.engine_versions.titles).toBe("1.0.0");
+  });
+  it("audio-only and text deliverables never get titles; no titles means exactly the 1.3.0 layout", () => {
+    expect(renderManifestEngine(input("audio_package", { titles })).manifest!.duration_frames).toBe(96);
+    expect(renderManifestEngine(input("subtitles", { titles })).manifest!.subtitles!.cues[0].start_frame).toBe(24);
+    expect(renderManifestEngine(input()).manifest!.picture.map((s) => s.kind)).toEqual(["take", "black", "take"]);
+  });
+});

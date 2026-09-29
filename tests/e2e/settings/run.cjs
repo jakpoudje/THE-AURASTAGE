@@ -52,6 +52,24 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
     await page.getByLabel("Palette colour 1").waitFor();
     await page.getByTestId("paid-usage").getByText("0 used this month of 5").waitFor();
   });
+  await step("titles & credits: turn on the opening card and end credits, see what they change, save; kept after reload", async () => {
+    const t = page.getByRole("group", { name: "Titles and credits" });
+    await t.getByLabel("Opening title card").check();
+    await t.getByLabel("Title card seconds").fill("6");
+    await t.getByLabel("Line under the title").fill("A story of the harbour");
+    await t.getByLabel("End credits").check();
+    await page.getByLabel("Written by").fill("Julius");
+    await page.getByRole("button", { name: "Review changes" }).click();
+    const dlg = page.getByRole("dialog", { name: "What this changes" });
+    await dlg.getByText(/start with a 6-second title card and end with a credits roll/).waitFor();
+    await dlg.getByRole("button", { name: "Save settings" }).click();
+    await page.getByRole("status").getByText(/Saved as settings version 2/).waitFor();
+    await page.reload();
+    const t2 = page.getByRole("group", { name: "Titles and credits" });
+    if (!(await t2.getByLabel("Opening title card").isChecked()) || !(await t2.getByLabel("End credits").isChecked())) throw new Error("titles not kept");
+    if ((await t2.getByLabel("Title card seconds").inputValue()) !== "6") throw new Error("seconds not kept");
+    if ((await page.getByLabel("Written by").inputValue()) !== "Julius") throw new Error("writer not kept");
+  });
   await step("Export & Deliver marks the required deliverable", async () => {
     await page.goto(`${BASE}/projects/${P}/export`);
     await page.getByRole("list", { name: "Presets" }).getByRole("button", { name: /Streaming Master/ }).first().getByText("Required").waitFor();

@@ -34,6 +34,16 @@ export async function renderPicture(
     const common = ["-frames:v", String(s.duration), "-r", String(m.fps), ...INTERMEDIATE, "-an", out];
     if (s.kind === "black") {
       await ffmpeg(["-f", "lavfi", "-i", `color=c=black:s=${W}x${H}:r=${m.fps}`, "-vf", "format=yuv444p", ...common], { signal });
+    } else if (s.kind === "title" || s.kind === "credits") {
+      // Title card: held with a fade in and out. Credit roll: one tall image scrolled up at a steady speed.
+      const png = join(dir, `${s.kind}_${i}.png`);
+      const tall = s.kind === "credits" ? (s.image_height ?? H) : H;
+      writeFileSync(png, new Resvg(s.svg ?? "<svg xmlns='http://www.w3.org/2000/svg'/>", { fitTo: { mode: "width", value: W }, background: "black" }).render().asPng());
+      const secs = s.duration / m.fps, fade = Math.min(0.8, secs / 4);
+      const vf = s.kind === "title"
+        ? `scale=${W}:${H},setsar=1,fade=t=in:st=0:d=${fade.toFixed(3)},fade=t=out:st=${(secs - fade).toFixed(3)}:d=${fade.toFixed(3)},format=yuv444p`
+        : `scale=${W}:${tall},setsar=1,crop=${W}:${H}:0:'min(${tall - H}\,${tall - H}*t/${secs.toFixed(3)})',format=yuv444p`;
+      await ffmpeg(["-loop", "1", "-framerate", String(m.fps), "-i", png, "-vf", vf, ...common], { signal });
     } else {
       let src = cache.get(s.storage_key!);
       if (!src) {

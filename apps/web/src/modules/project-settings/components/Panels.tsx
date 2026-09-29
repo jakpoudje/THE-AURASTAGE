@@ -136,7 +136,7 @@ export function DeliveryPanel({ view, d, update, disabled }: { view: SettingsVie
 }
 
 export function ProductionPanel({ d, update, disabled }: { d: ProjectSettings; update: Upd; disabled: boolean }) {
-  const f = (key: "director" | "producer" | "company" | "country" | "copyright", label: string) => (
+  const f = (key: "director" | "producer" | "company" | "country" | "copyright" | "writer" | "composer", label: string) => (
     <label className="text-xs text-white/60">{label}
       <input aria-label={label} className={input} value={d.production[key] ?? ""} disabled={disabled} onChange={(e) => update((x) => ((x.production[key] = e.target.value || null), x))} />
     </label>
@@ -151,6 +151,36 @@ export function ProductionPanel({ d, update, disabled }: { d: ProjectSettings; u
             onChange={(e) => update((x) => ((x.production.year = e.target.value ? Number(e.target.value) : null), x))} />
         </label>
         {f("copyright", "Copyright notice")}
+        {f("writer", "Written by")}{f("composer", "Music by")}
+      </div>
+      <label className="mt-3 block text-xs text-white/60">Thanks (one per line, shown at the end of the credits)
+        <textarea aria-label="Thanks" rows={2} className={input} value={d.production.thanks ?? ""} disabled={disabled}
+          onChange={(e) => update((x) => ((x.production.thanks = e.target.value || null), x))} />
+      </label>
+      <div className="mt-4 rounded-md border border-aura-border p-3" role="group" aria-label="Titles and credits">
+        <p className="mb-2 text-sm">Titles &amp; credits in video deliverables</p>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" className="accent-[#d4a64a]" aria-label="Opening title card" disabled={disabled} checked={d.titles.opening_title}
+            onChange={(e) => update((x) => ((x.titles.opening_title = e.target.checked), x))} />
+          Opening title card
+          <input aria-label="Title card seconds" type="number" min={2} max={15} className="ml-2 w-16 rounded-md border border-aura-border bg-black/30 px-2 py-1" value={d.titles.opening_seconds}
+            disabled={disabled || !d.titles.opening_title} onChange={(e) => update((x) => ((x.titles.opening_seconds = Math.min(15, Math.max(2, Number(e.target.value) || 5))), x))} />
+          <span className="text-xs text-white/50">seconds</span>
+        </label>
+        <label className="mt-2 block text-xs text-white/60">Line under the title (optional)
+          <input aria-label="Line under the title" className={input} value={d.titles.opening_subtitle ?? ""} disabled={disabled || !d.titles.opening_title}
+            onChange={(e) => update((x) => ((x.titles.opening_subtitle = e.target.value || null), x))} />
+        </label>
+        <label className="mt-2 flex items-center gap-2 text-sm">
+          <input type="checkbox" className="accent-[#d4a64a]" aria-label="End credits" disabled={disabled} checked={d.titles.end_credits}
+            onChange={(e) => update((x) => ((x.titles.end_credits = e.target.checked), x))} />
+          End credits roll (the credits above, the cast from Casting, and what made the pictures)
+          <select aria-label="Credits speed" className="ml-2 rounded-md border border-aura-border bg-black/30 px-2 py-1" value={d.titles.credits_speed} disabled={disabled || !d.titles.end_credits}
+            onChange={(e) => update((x) => ((x.titles.credits_speed = e.target.value as "slow" | "medium" | "fast"), x))}>
+            <option value="slow">Slow</option><option value="medium">Medium</option><option value="fast">Fast</option>
+          </select>
+        </label>
+        <p className="mt-2 text-[11px] text-white/40">Added by the render worker to masters and review copies; the Picture Lock itself doesn&apos;t change. Only credits you fill in are shown.</p>
       </div>
     </section>
   );

@@ -8,3 +8,5 @@ export * as timelineAudioMix from "./timelineAudioMixEngine";
 export { timelineAudioMixEngine } from "./timelineAudioMixEngine";
 export * as finalQC from "./finalQCEngine";
 export { finalQCEngine } from "./finalQCEngine";
+export * as titleSequence from "./titleSequenceEngine";
+export { titleSequenceEngine, type TitleSequenceOutput } from "./titleSequenceEngine";

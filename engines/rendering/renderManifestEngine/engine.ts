@@ -69,6 +69,21 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
     }
   }
 
+  // Titles (video deliverables only): the opening card pushes the whole cut later; the credit roll follows it.
+  const p0 = i.profile;
+  const titled = !!p0.video && !!i.titles && (!!i.titles.opening || !!i.titles.end_credits);
+  const offset = titled ? i.titles!.opening?.frames ?? 0 : 0;
+  const cutEnd = duration;
+  if (offset) {
+    for (const s of picture) s.record_in += offset;
+    for (const a of audio) a.record_in += offset;
+    picture.unshift({ kind: "title", record_in: 0, duration: offset, source_in: 0, take_id: null, storage_key: null, media_type: "image/svg+xml", capability: null, grade: null, label: "Opening title", svg: i.titles!.opening!.svg });
+  }
+  const roll = titled ? i.titles!.end_credits : null;
+  if (roll) picture.push({ kind: "credits", record_in: offset + cutEnd, duration: roll.frames, source_in: 0, take_id: null, storage_key: null, media_type: "image/svg+xml", capability: null, grade: null, label: "End credits", svg: roll.svg, image_height: roll.image_height });
+  const automation = offset ? { A1: i.automation.A1.map((pt) => ({ ...pt, frame: pt.frame + offset })) } : i.automation;
+  const totalFrames = offset + cutEnd + (roll?.frames ?? 0);
+
   // Subtitles from the dialogue actually heard in the cut.
   const dialogue: Record<string, { dialogue: { line_id: string; start_seconds: number; duration_seconds: number }[] }> = {};
   for (const [id, m] of Object.entries(i.mixes))
@@ -93,12 +108,12 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
     options: { watermark: p.supports.watermark ? i.options.watermark : null, burn_timecode: p.supports.burn_timecode ? i.options.burn_timecode : false },
     picture_lock: i.picture_lock,
     fps: i.fps,
-    duration_frames: duration,
+    duration_frames: totalFrames,
     picture,
     audio,
     mixes,
     assets,
-    automation: i.automation,
+    automation,
     subtitles: subtitles.cues.length ? subtitles : null,
     edl: p.id === "edit_decision_list" ? edlExportEngine({ title: i.project.title, fps: i.fps, clips: i.clips }).edl : null,
     files,
@@ -109,7 +124,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
       dialogue_line_ids: [...new Set(subtitles.cues.map((c) => c.line_id))],
       automation_revision: i.automation.A1.length ? i.automation_revision : null,
     },
-    engine_versions: { manifest: ENGINE_VERSION, subtitles: SUB_V, audio_mix: MIX_V, profile: p.version },
+    engine_versions: { manifest: ENGINE_VERSION, subtitles: SUB_V, audio_mix: MIX_V, profile: p.version, ...(titled ? { titles: i.titles!.engine_version } : {}) },
   };
   return { manifest: missing.length ? null : manifest, missing, engine_version: ENGINE_VERSION };
 }

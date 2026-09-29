@@ -25,7 +25,7 @@ function fakeDb(rows: Record<string, Row[]>, rpcImpl: (fn: string, a: Row) => { 
     const f: ((r: Row) => boolean)[] = [];
     const res = () => (rows[t] ?? []).filter((r) => f.every((p) => p(r)));
     const q: any = {
-      select: () => q, order: () => q,
+      select: () => q, order: () => q, is: (k: string, v: unknown) => (f.push((r) => (r[k] ?? null) === v), q),
       eq: (k: string, v: unknown) => (f.push((r) => r[k] === v), q),
       in: (k: string, v: unknown[]) => (f.push((r) => v.includes(r[k])), q),
       maybeSingle: async () => ({ data: res()[0] ?? null, error: null }), then: (ok: any) => ok({ data: res(), error: null }),
@@ -157,5 +157,26 @@ describe("Export & Deliver routes", () => {
     const m = fake.calls.find((c) => c.fn === "create_render")!.args.p_manifest;
     expect(m.profile.loudness).toMatchObject({ integrated_lufs: -14, tolerance_lu: 1, standard: "Streaming / online" });
     expect(m.project.credits).toMatchObject({ director: "Ada Obi", company: "Lagos Pictures", year: 2026 });
+    expect(m.picture.map((s: Row) => s.kind)).toEqual(["take"]); // titles are off unless Project Settings turns them on
+  });
+  it("with titles on: the master opens on the title card and ends on a credit roll with the cast; the audio package doesn't", async () => {
+    locked();
+    rows.characters = [{ project_id: P, name: "Tunde Okafor", role: "supporting", kind: "person", merged_into: null }, { project_id: P, name: "Amara Bello", role: "lead", kind: "person", merged_into: null },
+      { project_id: P, name: "Old Name", role: "lead", kind: "person", merged_into: "x" }];
+    rows.project_settings = [{ project_id: P, revision: "r", version_number: 3, settings: {
+      production: { director: "Ada Obi", company: "Lagos Pictures" }, titles: { opening_title: true, opening_seconds: 4, end_credits: true } } }];
+    const fake = fakeDb(rows, () => ({ data: { id: R1 } }));
+    const a = await app(fake);
+    await a.inject({ method: "POST", url: `/api/projects/${P}/delivery/renders`, payload: { profile_id: "streaming_master" } });
+    const m = fake.calls.find((c) => c.fn === "create_render")!.args.p_manifest;
+    expect(m.picture.map((s: Row) => [s.kind, s.record_in])).toEqual([["title", 0], ["take", 96], ["credits", 192]]);
+    expect(m.picture[0].svg).toContain("LAGOS PICTURES PRESENTS");
+    const roll = m.picture[2].svg as string;
+    expect(roll.indexOf("Amara Bello")).toBeLessThan(roll.indexOf("Tunde Okafor")); // leads first
+    expect(roll).not.toContain("Old Name");
+    expect(roll).toContain("AuraStage");
+    await a.inject({ method: "POST", url: `/api/projects/${P}/delivery/renders`, payload: { profile_id: "audio_package" } });
+    const audio = fake.calls.filter((c) => c.fn === "create_render").at(-1)!.args.p_manifest;
+    expect(audio.duration_frames).toBe(96);
   });
 });

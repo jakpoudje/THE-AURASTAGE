@@ -637,6 +637,24 @@ await check("settings → delivery: required deliverables tracked; credits writt
   assert(cr?.director === "Live Check Director" && cr.company === "AuraStage Live" && cr.year === 2026, JSON.stringify(cr));
   return req.evidence;
 });
+// ---- Titles & credits (Project Settings → render worker): opening card and end-credits roll on video deliverables ----
+await check("titles & credits: with them on, a review copy opens on the title card and ends on the credit roll; real ffmpeg render passes QC", async () => {
+  const st = await api("GET", `/api/projects/${projectId}/settings`);
+  await api("PUT", `/api/projects/${projectId}/settings`, { base_revision: st.revision, settings: { ...st.settings, titles: { ...st.settings.titles, opening_title: true, opening_seconds: 3, end_credits: true, credits_speed: "fast" } } });
+  const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "review_copy" });
+  const m = (await api("GET", `/api/renders/${r.render_id}/manifest`)).manifest;
+  const kinds = m.picture.map((s: any) => s.kind);
+  assert(kinds[0] === "title" && kinds.at(-1) === "credits" && m.picture[0].duration === 72, kinds.join(","));
+  assert(m.picture.at(-1).svg.includes("LIVE CHECK DIRECTOR") || m.picture.at(-1).svg.includes("Live Check Director"), "credits missing the director");
+  let x: any;
+  for (let i = 0; i < 80; i++) {
+    x = (await dvWs()).renders.find((y: any) => y.id === r.render_id);
+    if (["succeeded", "failed", "cancelled"].includes(x.status)) break;
+    await Bun.sleep(3000);
+  }
+  assert(x.status === "succeeded" && x.qc_passed === true, `${x.status} ${x.error ?? ""} ${(x.qc?.checks ?? []).filter((c: any) => c.blocking && !c.ok).map((c: any) => c.evidence).join("; ")}`);
+  return `${(m.duration_frames / m.fps).toFixed(1)}s incl. 3s title + ${(m.picture.at(-1).duration / m.fps).toFixed(1)}s credits`;
+});
 await check("storyboard: a Casting change flows through Scene DNA and flags the shots", async () => {
   await api("PATCH", `/api/characters/${tundeId}`, { description: "Back on the story" });
   const ws = await api("GET", `/api/projects/${projectId}/storyboard`);

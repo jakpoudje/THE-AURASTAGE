@@ -83,7 +83,14 @@ export async function previewImpact(db: SupabaseClient, projectId: string, paylo
     impact.push({ path: "delivery.required_profiles", label: "Required deliverables", effect: `Export & Deliver will track ${next.delivery.required_profiles.length} required deliverable${next.delivery.required_profiles.length === 1 ? "" : "s"}.` });
   }
   if (has("production")) {
-    impact.push({ path: "production", label: "Credits", effect: "Written into files rendered from now on. Files already rendered keep what they have." });
+    impact.push({ path: "production", label: "Credits", effect: "Written into files rendered from now on (and the end credits, when they're on). Files already rendered keep what they have." });
+  }
+  if (has("titles")) {
+    const t = next.titles;
+    const parts = [t.opening_title ? `start with a ${t.opening_seconds}-second title card` : null, t.end_credits ? "end with a credits roll" : null].filter(Boolean);
+    impact.push({ path: "titles", label: "Titles & credits", effect: parts.length
+      ? `Video deliverables rendered from now on ${parts.join(" and ")}. The Picture Lock itself doesn't change.`
+      : "Video deliverables rendered from now on have no title card or credits." });
   }
   return { changed, impact };
 }

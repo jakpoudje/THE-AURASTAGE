@@ -9,3 +9,9 @@ Implemented (deterministic, versioned, typed):
 
 Planned (SRS §15): `renderChunkPlannerEngine`, `renderStitchEngine`, `localizationEngine`, `dubbingAdaptationEngine`,
 `alternateLanguageVoiceEngine`, `archivePackageEngine`.
+
+- `titleSequenceEngine` v1.0.0 — the opening title card ("X presents", title, optional line) and the end-credits roll
+  (director, writer, producer, music, cast from Casting leads first, what made the pictures, thanks, company · country ·
+  year, copyright) as SVG. Only credits that are set are shown. `renderManifestEngine` 1.4.0 puts them first and last
+  on video deliverables (the cut, its sound, automation and captions move later together); audio and text deliverables
+  never get them. The render worker holds the card with fades and scrolls the roll.
