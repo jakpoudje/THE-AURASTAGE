@@ -41,3 +41,6 @@ See ./tests
 
 ## Known operational error codes
 TODO
+
+## Generation readiness
+`GET /api/projects/:id/generation-readiness` (`projects.generation.ts`) — read-only. Backends from the Provider Gateway (configured or not, never guessed) plus each domain's own records of what was made in this project (ai_proposals, takes, character_reference_images, audio_generations, renders) → `generationReadinessEngine` 1.0.0: `proven` (configured + a real success here), `ready`, `needs_key` (names the exact variable), `not_built`. Test output alone never counts as ready.

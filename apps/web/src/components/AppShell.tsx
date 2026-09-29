@@ -30,6 +30,7 @@ export const STAGES = [
 
 // Built secondary workspaces link to their page; the rest are shown but not clickable.
 const SECONDARY: { key: string; label: string; path?: string }[] = [
+  { key: "generation", label: "AI & Generation", path: "generation" },
   { key: "settings", label: "Project Settings", path: "settings" },
   { key: "team", label: "Team & Collaboration", path: "team" },
   { key: "assets", label: "Assets Library", path: "assets" },
@@ -37,7 +38,7 @@ const SECONDARY: { key: string; label: string; path?: string }[] = [
 ];
 
 type StageKey = (typeof STAGES)[number]["key"];
-type ActiveKey = StageKey | "team" | "settings" | "assets";
+type ActiveKey = StageKey | "team" | "settings" | "assets" | "generation";
 
 // Which permission module each stage writes to (database permission gate, migration 0019).
 const STAGE_MODULE: Record<StageKey, PermissionModule> = {

@@ -35,6 +35,17 @@ export class ProviderError extends Error {
   }
 }
 
+/** A still image from a prompt alone (character / location references). Adapters that can't do it leave it out. */
+export interface StillRequest {
+  model: string;
+  prompt: string;
+  negative: string[];
+  aspect_ratio: AspectRatio;
+  seed: number | null;
+  /** Hints for the built-in sketch renderer (it can't read prompts): what to draw and what to write on it. */
+  sketch?: { title: string; subtitle: string; angle: "front" | "three_quarter" | "profile" | "back"; size: "CU" | "MCU" | "MS" | "FULL"; lines: string[] };
+}
+
 export interface ProviderAdapter {
   id: ProviderId;
   name: string;
@@ -44,4 +55,5 @@ export interface ProviderAdapter {
   isConfigured(env: Record<string, string | undefined>): boolean;
   note: string;
   generate(req: GenerateRequest, env: Record<string, string | undefined>, opts?: { signal?: AbortSignal; fetchImpl?: typeof fetch; pollMs?: number }): Promise<GenerateResult>;
+  generateStill?(req: StillRequest, env: Record<string, string | undefined>, opts?: { signal?: AbortSignal; fetchImpl?: typeof fetch }): Promise<GenerateResult>;
 }

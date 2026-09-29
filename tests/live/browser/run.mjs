@@ -82,6 +82,22 @@ await check("casting: find characters, reload: still there", async () => {
   await reload(/Up to date with approved script version 1/);
   await page.getByText("Tunde Okafor").first().waitFor();
 });
+await check("casting look panel: generate a character's reference views; images appear; reload: still there", async () => {
+  await page.goto(projectUrl + "/casting");
+  await page.getByRole("button", { name: /Tunde Okafor/ }).first().click();
+  await page.getByRole("button", { name: "Look & References" }).click();
+  const panel = page.getByRole("region", { name: "Look and references" });
+  await panel.getByTestId("look-identity").getByText(/^Tunde Okafor/).waitFor();
+  await panel.getByRole("button", { name: /Generate look set \(8 views\)/ }).click();
+  await panel.getByText("8 of 16 made").waitFor({ timeout: 90000 });
+  await panel.getByTestId("look-front:CU").locator("img").waitFor();
+  await page.reload();
+  await page.getByRole("button", { name: /Tunde Okafor/ }).first().click();
+  await page.getByTestId("character-portrait").waitFor();
+  await page.getByRole("button", { name: "Look & References" }).click();
+  await panel.getByText("8 of 16 made").waitFor();
+  await panel.getByTestId("look-back:FULL").locator("img").waitFor();
+});
 await check("dialogue: bring in + approve scene, reload: still approved", async () => {
   await page.goto(projectUrl + "/dialogue");
   await page.getByRole("button", { name: "Bring in dialogue" }).click();
@@ -376,6 +392,16 @@ await check("help: open Help from a workspace; live status and the assistant ans
   await page.reload();
   await page.getByTestId("session-current").waitFor();
   return render.replace(/\s+/g, " ");
+});
+await check("AI & Generation page: every generator's state with proof from this project; reload: same", async () => {
+  await page.goto(projectUrl + "/scriptwriter");
+  await page.getByRole("link", { name: "AI & Generation" }).click();
+  await page.waitForURL("**/generation");
+  await page.getByTestId("cap-storyboard").getByText("Working — proven").waitFor();
+  await page.getByTestId("cap-voice").getByText("Not built yet", { exact: true }).waitFor();
+  await page.reload();
+  await page.getByTestId("cap-assistant").getByText(/Working — proven|Ready — not tried yet/).first().waitFor();
+  return await page.getByTestId("readiness-summary").innerText();
 });
 await check("dashboard after reload still shows the project, with its production overview", async () => {
   await page.goto(WEB + "/dashboard");

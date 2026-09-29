@@ -7,6 +7,7 @@ import { createProject, editProject, getProject, listProjects } from "./projects
 import { ProjectValidationError } from "./projects.validator";
 import { ForbiddenError } from "./projects.permissions";
 import { getProjectOverview } from "./projects.overview";
+import { getGenerationReadiness } from "./projects.generation";
 
 function handleError(err: unknown, reply: FastifyReply) {
   if (err instanceof ProjectValidationError) {
@@ -49,6 +50,14 @@ export async function registerProjectsRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     try {
       return await getProjectOverview(request.db, id);
+    } catch (err) {
+      return handleError(err, reply);
+    }
+  });
+  app.get("/api/projects/:id/generation-readiness", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      return await getGenerationReadiness(request.db, id);
     } catch (err) {
       return handleError(err, reply);
     }

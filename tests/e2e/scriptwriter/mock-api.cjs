@@ -156,6 +156,43 @@ http.createServer((req, res) => {
       return send(200, r);
     }
     if ((m = u.match(/^\/api\/relationships\/([^/]+)$/)) && req.method === "DELETE") { const i = rels.findIndex((x) => x.id === m[1]); if (i >= 0) rels.splice(i, 1); return send(200, { deleted: true }); }
+    // ---- Character look panel (mirrors apps/api/src/modules/characters/characters.look + migration 0027; REAL engine + REAL sketch renderer) ----
+    if ((m = u.match(/^\/api\/characters\/([^/]+)\/look(\/generate)?$/))) {
+      const LK = eng.characterLook, sk = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/sketch/sketchAdapter.js"));
+      const refs = globalThis.__refs || (globalThis.__refs = []);
+      const c = chars.find((x) => x.id === m[1]); if (!c) return send(404, { error: { code: "AURA-CHR-404", message: "Character not found" } });
+      const lookId = (m[2] ? b.look_id : new URL(req.url, "http://x").searchParams.get("look_id")) || null;
+      const look = lookId ? looks.find((l) => l.id === lookId && l.character_id === c.id) : null;
+      const style = ((globalThis.__settings || {}).settings || {}).style?.look || null;
+      const all = LK.LOOK_ANGLES.flatMap((a) => LK.LOOK_SIZES.map((z) => [a, z]));
+      const inp = (views) => ({ character: { name: c.name, age: c.age ?? null, gender: c.gender ?? null, nationality: c.nationality ?? null, occupation: c.occupation ?? null, description: c.description ?? null }, wardrobe: look ? { name: look.name, description: look.description ?? null } : null, style, views });
+      if (m[2]) {
+        const T0 = globalThis.__team || { as: "owner" };
+        if (T0.as !== "owner" && T0.as !== "producer") return send(403, { error: { code: "AURA-COL-403", message: "your role can't edit in Casting & Characters. Ask the project's producer for access." } });
+        const out = LK.characterLookEngine(inp(b.views ? b.views.map((k) => k.split(":")) : undefined));
+        const requested = out.views.map((v) => { const r = { id: crypto.randomUUID(), character_id: c.id, look_id: look ? look.id : null, angle: v.angle, size: v.size, aspect_ratio: v.aspect_ratio, prompt: v.prompt, identity_hash: out.identity_hash,
+          provider: "aurastage-sketch", model: "sketch-v1", execution: "native", status: "queued", asset_id: null, error: null, created_at: now(), completed_at: null, _polls: 0,
+          sketch: { title: c.name, subtitle: v.label, angle: v.angle, size: v.size, lines: [out.identity, out.wardrobe].filter(Boolean) } }; refs.unshift(r); return { id: r.id, key: v.key }; });
+        return send(200, { requested, provider: "aurastage-sketch", identity_hash: out.identity_hash });
+      }
+      // The "worker": each queued view is drawn by the real sketch renderer the second time it's read.
+      for (const r of refs.filter((x) => x.status === "queued" && x.character_id === c.id)) if (r._polls++ >= 1) {
+        const svg = Buffer.from(sk.renderCharacterSketch({ model: "sketch-v1", prompt: r.prompt, negative: [], aspect_ratio: r.aspect_ratio, seed: 1, sketch: r.sketch }));
+        const a = { id: crypto.randomUUID(), project_id: P, type: "image", name: `${c.name} — ${r.angle === "three_quarter" ? "¾" : r.angle[0].toUpperCase() + r.angle.slice(1)} ${r.size} reference`, bytes: svg, media_type: "image/svg+xml", created_at: now(),
+          category: "characters", tags: ["generated"], links: [{ object_type: "character", object_id: c.id }] };
+        assets.push(a); Object.assign(r, { status: "succeeded", asset_id: a.id, completed_at: now() });
+      }
+      const out = LK.characterLookEngine(inp(all));
+      const mine = refs.filter((r) => r.character_id === c.id && (r.look_id || null) === (look ? look.id : null));
+      return send(200, { character: { id: c.id, name: c.name, project_id: P }, looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })), look_id: look ? look.id : null,
+        identity: out.identity, wardrobe: out.wardrobe, identity_hash: out.identity_hash, missing: out.missing, negative: out.negative, engine_version: out.engine_version,
+        views: out.views.map((v) => { const h = mine.filter((r) => `${r.angle}:${r.size}` === v.key); const g = h.find((r) => r.status === "succeeded");
+          return { ...v, in_default_set: LK.DEFAULT_VIEWS.some(([a, z]) => `${a}:${z}` === v.key), versions: h.filter((r) => r.status === "succeeded").length,
+            latest: h[0] ? { id: h[0].id, status: h[0].status, error: h[0].error, provider: h[0].provider, execution: h[0].execution, created_at: h[0].created_at } : null,
+            image: g ? { reference_id: g.id, asset_id: g.asset_id, provider: g.provider, execution: g.execution, created_at: g.completed_at, stale: g.identity_hash !== out.identity_hash } : null }; }),
+        backends: [{ id: "aurastage-sketch", name: "AuraStage Sketch", model: "sketch-v1", execution: "native", note: "" }],
+        backend_statuses: [{ id: "aurastage-sketch", name: "AuraStage Sketch", state: "configured", note: "" }, { id: "openai", name: "OpenAI Images", state: "not_configured", note: "" }] });
+    }
     if ((m = u.match(/^\/api\/characters\/([^/]+)\/looks$/))) {
       if (looks.some((l) => l.character_id === m[1] && l.name.toLowerCase() === b.name.toLowerCase() && l.id !== b.id)) return send(409, { error: { code: "AURA-CHR-409", message: "this character already has a look with that name" } });
       let l = b.id && looks.find((x) => x.id === b.id);
@@ -803,6 +840,23 @@ http.createServer((req, res) => {
     };
     const refuse = (what) => send(403, { error: { code: "AURA-COL-403", message: `your role (${teamAccess().project_role_label}) can't administer in ${what}. Ask the project's producer for access.` } });
     if (u === "/__test/as") { T.as = b.role; if (b.email) T.email = b.email; return send(200, { ok: true }); }
+    // ---- AI & Generation readiness (mirrors apps/api/src/modules/projects/projects.generation; REAL engine; evidence from the mock's records) ----
+    if (u === `/api/projects/${P}/generation-readiness`) {
+      const ev = (list, okS = ["succeeded"], prov = "provider", at = "completed_at") => { const ok = list.filter((x) => okS.includes(x.status)); const l = [...ok].sort((a, b2) => String(b2[at]).localeCompare(String(a[at])))[0];
+        return { succeeded: ok.length, failed: list.filter((x) => x.status === "failed").length, last_success_at: l ? l[at] : null, last_success_backend: l ? l[prov] : null }; };
+      const B = (id, name, execution, state, key = null) => ({ id, name, execution, state, key });
+      const ai = (globalThis.__ai || { list: [] }).list, refs = globalThis.__refs || [], ag = globalThis.__agens || [];
+      return send(200, eng.generationReadinessEngine([
+        { id: "assistant", label: "Ask AuraStage (story & production assistant)", where: "Every workspace", href: `/projects/${P}/scriptwriter`, backends: [B("anthropic", "Anthropic Claude", "external", "not_configured", "ANTHROPIC_API_KEY"), B("aurastage-test", "AuraStage test planner", "test", "configured")], evidence: ev(ai, ["proposed", "applied", "rejected", "undone"], "provider", "created_at") },
+        { id: "storyboard", label: "Storyboard frames & still images", where: "Visual Generation", href: `/projects/${P}/visual`, backends: [B("aurastage-sketch", "AuraStage Sketch", "native", "configured"), B("runway", "Runway", "external", "not_configured", "RUNWAY_API_KEY"), B("openai", "OpenAI Images", "external", "not_configured", "OPENAI_API_KEY")], evidence: ev(takes.filter((t) => t.capability === "image")) },
+        { id: "character_refs", label: "Character reference views", where: "Casting → Look & References", href: `/projects/${P}/casting`, backends: [B("aurastage-sketch", "AuraStage Sketch", "native", "configured"), B("openai", "OpenAI Images", "external", "not_configured", "OPENAI_API_KEY")], evidence: ev(refs) },
+        { id: "video", label: "Video clips", where: "Visual Generation", href: `/projects/${P}/visual`, backends: [B("runway", "Runway", "external", "not_configured", "RUNWAY_API_KEY"), B("aurastage-animatic", "AuraStage animatic (built in)", "native", "not_built")], evidence: ev(takes.filter((t) => t.capability === "video")) },
+        { id: "sound", label: "Sound effects, Foley & ambience", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-synth", "AuraStage built-in sound", "native", "configured"), B("elevenlabs", "ElevenLabs sound effects", "external", "not_built", "ELEVENLABS_API_KEY")], evidence: ev(ag.filter((g) => g.kind !== "score")) },
+        { id: "music", label: "Music & score", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-synth", "AuraStage built-in sound", "native", "configured"), B("music-provider", "Music provider (official API)", "external", "not_built")], evidence: ev(ag.filter((g) => g.kind === "score")) },
+        { id: "voice", label: "Dialogue voices (text-to-speech)", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-voice", "AuraStage built-in voice", "native", "not_built"), B("elevenlabs", "ElevenLabs voices", "external", "not_built", "ELEVENLABS_API_KEY")], evidence: ev([]) },
+        { id: "delivery", label: "Rendering deliverables (MP4, subtitles, audio)", where: "Export & Deliver", href: `/projects/${P}/export`, backends: [B("render-worker", "AuraStage render worker (ffmpeg)", "native", "configured")], evidence: ev(renders, ["succeeded"], "profile_id") },
+      ]));
+    }
     // ---- Ask AuraStage (mirrors apps/api/src/modules/assistant; plans come from the REAL labelled test planner) ----
     const AI = globalThis.__ai || (globalThis.__ai = { list: [] });
     const aiLib = require(require("path").resolve(__dirname, "../../../packages/aura-intelligence/dist/index.js"));

@@ -204,6 +204,37 @@ async function api(method, path, body) {
     await page.getByRole("button", { name: "Save look" }).click();
     await page.getByText("this character already has a look with that name").waitFor();
   });
+  await step("Look & References: generate the look set from the profile; views appear; reload keeps them; a profile change marks them, never replaces them", async () => {
+    await page.getByRole("button", { name: "Look & References" }).click();
+    const panel = page.getByRole("region", { name: "Look and references" });
+    await panel.getByTestId("look-identity").getByText(/^Tunde Okafor/).waitFor();
+    await panel.getByText("0 of 16 made").waitFor();
+    await panel.getByLabel("Wardrobe for these views").selectOption({ label: "Field outfit" });
+    await panel.getByText(/Wearing: Field outfit — Khaki jacket, press badge, worn boots\./).first().waitFor();
+    await panel.getByRole("button", { name: "Generate look set (8 views)" }).click();
+    await panel.getByText(/Making 8 views with AuraStage Sketch/).waitFor();
+    await panel.getByText("8 of 16 made").waitFor({ timeout: 15000 });
+    await panel.getByTestId("look-front:CU").locator("img").waitFor();
+    await panel.getByTestId("look-back:FULL").locator("img").waitFor();
+    await panel.getByTestId("look-prompt").getByText(/Character reference sheet image, close-up of the face, front view.*Tunde Okafor.*Wearing: Field outfit/).waitFor({ state: "attached" });
+    await panel.screenshot({ path: `${OUT}/look-panel.png` });
+    await page.reload();
+    await page.getByRole("button", { name: "Look & References" }).click();
+    await panel.getByLabel("Wardrobe for these views").selectOption({ label: "Field outfit" });
+    await panel.getByText("8 of 16 made").waitFor();
+    await page.getByTestId("character-portrait").waitFor({ state: "attached" }).catch(() => null);
+    // A profile change: the views stay, marked "Profile changed".
+    await page.getByRole("button", { name: "Profile", exact: true }).click();
+    await page.getByLabel("Age", { exact: true }).fill("41");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Look & References" }).click();
+    await panel.getByLabel("Wardrobe for these views").selectOption({ label: "Field outfit" });
+    await panel.getByText("8 of 16 made · 8 need a refresh").waitFor();
+    await panel.getByTestId("look-front:CU").getByText("Profile changed").waitFor();
+    await panel.screenshot({ path: `${OUT}/look-panel-changed.png` });
+    const lib = await (await fetch(`${API}/api/projects/${P}/library`)).json();
+    if (lib.assets.filter((a) => /Tunde Okafor — .* reference$/.test(a.name)).length !== 8) throw new Error("references not in the Assets Library");
+  });
   await page.screenshot({ path: `${OUT}/casting.png` });
   console.log("ERRORS:", errors);
   await browser.close();

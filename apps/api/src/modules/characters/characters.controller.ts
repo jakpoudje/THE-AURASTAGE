@@ -2,6 +2,7 @@
 // HTTP/API transport only; validation/auth context; no business logic.
 // Domain: Casting & Characters
 
+import { generateCharacterLook, getCharacterLook } from "./characters.look";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   addCharacterAlias,
@@ -39,10 +40,10 @@ function handleError(err: unknown, reply: FastifyReply) {
 type P = { id: string };
 
 export async function registerCharactersRoutes(app: FastifyInstance) {
-  const route = <T>(fn: (req: { params: P; body: unknown; db: import("@supabase/supabase-js").SupabaseClient }) => Promise<T>, status = 200) =>
+  const route = <T>(fn: (req: { params: P; body: unknown; query: Record<string, string | undefined>; db: import("@supabase/supabase-js").SupabaseClient }) => Promise<T>, status = 200) =>
     async (request: import("fastify").FastifyRequest, reply: FastifyReply) => {
       try {
-        const out = await fn({ params: request.params as P, body: request.body, db: request.db });
+        const out = await fn({ params: request.params as P, body: request.body, query: (request.query ?? {}) as Record<string, string | undefined>, db: request.db });
         return reply.code(status).send(out);
       } catch (err) {
         return handleError(err, reply);
@@ -58,6 +59,8 @@ export async function registerCharactersRoutes(app: FastifyInstance) {
   app.post("/api/projects/:id/characters", route(({ params, body, db }) => createCharacter(db, params.id, body), 201));
   app.post("/api/projects/:id/relationships", route(({ params, body, db }) => setRelationship(db, params.id, body)));
   app.delete("/api/relationships/:id", route(({ params, db }) => deleteRelationship(db, params.id)));
+  app.get("/api/characters/:id/look", route(({ params, db, query }) => getCharacterLook(db, params.id, query.look_id || null)));
+  app.post("/api/characters/:id/look/generate", route(({ params, body, db }) => generateCharacterLook(db, params.id, body)));
   app.post("/api/characters/:id/looks", route(({ params, body, db }) => saveLook(db, params.id, body)));
   app.delete("/api/looks/:id", route(({ params, db }) => deleteLook(db, params.id)));
 }

@@ -57,3 +57,15 @@ merged / script changed · 412 script not approved · 500 unexpected.
 Visual/voice DNA, look images and casting options (need Visual Generation /
 Audio), CharacterState (Scene DNA), props (Scene/Asset domain). `commands/GenerateCharacters.ts`
 is still an empty stub (AI character development needs the Provider Gateway).
+
+## Look & References (migration 0027)
+`characters.look.ts` — the character look panel. `characterLookEngine` (1.0.0) builds one identity description from the
+profile (+ chosen wardrobe look + the project look from Project Settings) and a prompt per view (front / ¾ / profile /
+back × close-up / medium close-up / medium / full); the same identity text is in every prompt. `GET
+/api/characters/:id/look?look_id=` returns all 16 views with the latest request and the newest image, flagged `stale`
+when it was made from an older identity (never replaced automatically, rule 11). `POST /api/characters/:id/look/generate`
+`{ look_id?, views?, provider? }` requests the default 8 views (or the given ones) — built-in AuraStage Sketch by default
+(free, labelled "not AI"); a paid image provider only when chosen and connected. Requests are gated `casting:edit`;
+the generation worker makes each still through the Provider Gateway (`generateStill`), and the Assets domain registers
+it under Characters, linked to the character, with provenance (provider, model, engine version, identity hash, view).
+Tests: `tests/look.test.ts`, `tests/integration/char_refs_db.sql`, `tests/e2e/casting/run.cjs`.

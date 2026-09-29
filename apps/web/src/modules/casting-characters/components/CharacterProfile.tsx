@@ -4,7 +4,7 @@
 // identity, so edits here are the only place a character's profile changes.
 // Tabs that need image/voice generation are listed but marked Soon.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type {
   Character,
@@ -20,16 +20,19 @@ import type {
 import { RolePill } from "./RolePill";
 import { RelationshipsTab } from "./RelationshipsTab";
 import { WardrobeTab } from "./WardrobeTab";
+import { LookPanel, useReferenceImage } from "./LookPanel";
+import { lookApi } from "../api/lookApi";
+import { can, useProjectAccess } from "@/lib/useProjectAccess";
 
-type Tab = "profile" | "personality" | "relationships" | "wardrobe" | "scenes" | "names";
+type Tab = "profile" | "personality" | "look" | "relationships" | "wardrobe" | "scenes" | "names";
 const TABS: { key: Tab | string; label: string; soon?: boolean }[] = [
   { key: "profile", label: "Profile" },
   { key: "personality", label: "Personality & Backstory" },
+  { key: "look", label: "Look & References" },
   { key: "relationships", label: "Relationships" },
   { key: "wardrobe", label: "Wardrobe" },
   { key: "scenes", label: "Scenes & Continuity" },
   { key: "names", label: "Names & Merges" },
-  { key: "visual", label: "Appearance & Visual DNA", soon: true },
   { key: "voice", label: "Voice DNA", soon: true },
 ];
 const ROLES: CharacterRole[] = ["lead", "supporting", "minor", "extra"];
@@ -80,6 +83,16 @@ export function CharacterProfile({
   onDeleteLook: (id: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>("profile");
+  const [portrait, setPortrait] = useState<string | null>(null);
+  const portraitUrl = useReferenceImage(portrait);
+  const access = useProjectAccess(projectId);
+  const canEditLook = can(access, "casting", "edit");
+  // The header shows the front close-up reference once one exists.
+  useEffect(() => {
+    let alive = true;
+    lookApi.get(character.id, null).then((d) => alive && setPortrait(d.views.find((v) => v.key === "front:CU")?.image?.asset_id ?? null)).catch(() => null);
+    return () => { alive = false; };
+  }, [character.id]);
   const initial = useMemo(() => {
     const f = {} as Record<Field, string>;
     for (const k of [...PROFILE_FIELDS, ...STORY_FIELDS]) f[k] = (character[k] as string | null | undefined) ?? "";
@@ -118,9 +131,13 @@ export function CharacterProfile({
   return (
     <div className="rounded-xl border border-aura-border bg-aura-panel">
       <div className="flex flex-wrap items-center gap-4 border-b border-aura-border p-5">
-        <span className="flex h-16 w-16 items-center justify-center rounded-xl bg-aura-gold/15 font-display text-3xl text-aura-gold">
-          {character.name.charAt(0)}
-        </span>
+        {portraitUrl ? (
+          <img src={portraitUrl} alt={`${character.name} reference`} data-testid="character-portrait" className="h-16 w-16 rounded-xl bg-black object-cover" />
+        ) : (
+          <span className="flex h-16 w-16 items-center justify-center rounded-xl bg-aura-gold/15 font-display text-3xl text-aura-gold">
+            {character.name.charAt(0)}
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-display text-2xl">{character.name}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/50">
@@ -192,6 +209,8 @@ export function CharacterProfile({
         )}
 
         {tab === "personality" && <div className="grid gap-4 md:grid-cols-2">{STORY_FIELDS.map((k) => field(k, true))}</div>}
+
+        {tab === "look" && <LookPanel key={character.id} characterId={character.id} canEdit={canEditLook} onPortrait={setPortrait} />}
 
         {tab === "relationships" && (
           <RelationshipsTab

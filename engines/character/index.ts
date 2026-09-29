@@ -4,3 +4,5 @@ export { characterCandidateExtractionEngine } from "./characterCandidateExtracti
 export { characterIdentityResolutionEngine } from "./characterIdentityResolutionEngine";
 export type { CharacterCandidate, SceneAppearance } from "./characterCandidateExtractionEngine";
 export type { Resolution } from "./characterIdentityResolutionEngine";
+export * as characterLook from "./characterLookEngine";
+export { characterLookEngine } from "./characterLookEngine";

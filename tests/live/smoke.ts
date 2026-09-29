@@ -658,6 +658,31 @@ await check("overview: every stage reports real counts and its checks; flagged s
   assert(o.stages.every((s: any) => (s.done === null) === (s.total === null) || s.id === "export"), "counts are paired");
   return o.stages.map((s: any) => `${s.number}:${s.state}`).join(" ");
 });
+// ---- Character look panel: reference views from the Casting profile, made in the worker, kept as Assets ----
+await check("casting look: 8 reference views from the profile (one identity), real images in the Assets Library; a profile change marks them", async () => {
+  const lk0 = await api("GET", `/api/characters/${amaraId}/look`);
+  assert(lk0.views.length === 16 && lk0.identity.startsWith("Amara Bello") && lk0.backends.some((b: any) => b.id === "aurastage-sketch"), "look");
+  const g = await api("POST", `/api/characters/${amaraId}/look/generate`, {});
+  assert(g.requested.length === 8 && g.provider === "aurastage-sketch", JSON.stringify(g).slice(0, 200));
+  let lk: any;
+  for (let i = 0; i < 40; i++) {
+    lk = await api("GET", `/api/characters/${amaraId}/look`);
+    if (lk.views.filter((v: any) => v.in_default_set).every((v: any) => v.latest && ["succeeded", "failed"].includes(v.latest.status))) break;
+    await Bun.sleep(1500);
+  }
+  const made = lk.views.filter((v: any) => v.image);
+  assert(made.length === 8 && made.every((v: any) => !v.image.stale), `made ${made.length}: ${JSON.stringify(lk.views.map((v: any) => v.latest?.error).filter(Boolean))}`);
+  const bytes = new TextDecoder().decode(new Uint8Array(await (await fetch(`${API}/api/assets/${made[0].image.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer()));
+  assert(bytes.startsWith("<svg") && bytes.includes("Amara Bello") && bytes.includes("not AI"), "not the labelled sketch");
+  const lib = await api("GET", `/api/projects/${projectId}/library?category=characters`);
+  assert(lib.assets.filter((a: any) => /^Amara Bello — .* reference$/.test(a.name)).length === 8, "not in the Assets Library under Characters");
+  const before = await api("GET", `/api/projects/${projectId}/characters`);
+  const age = before.characters.find((c: any) => c.id === amaraId).age;
+  await api("PATCH", `/api/characters/${amaraId}`, { description: "Close-cropped hair, a thin scar over the left eyebrow" });
+  const after = await api("GET", `/api/characters/${amaraId}/look`);
+  assert(after.views.filter((v: any) => v.image).every((v: any) => v.image.stale), "a profile change should mark the views");
+  return `${made.length} views · identity ${lk.identity_hash} · age ${age}`;
+});
 // ---- Built-in sound: generate the scene's planned ambience/effects/score in the worker, real WAV in the Assets Library ----
 await check("audio: built-in generation makes real WAVs for the planned cues; a voice is refused (not built); use one on its cue", async () => {
   const ws0 = await api("GET", `/api/projects/${projectId}/audio`);
@@ -737,6 +762,15 @@ await check("assistant: a discarded suggestion changes nothing; recent requests 
   const list = await api("GET", `/api/projects/${projectId}/assistant`);
   assert(list.proposals.length >= 2 && list.proposals[0].id === q.id, "list");
   await api("GET", `/api/assistant/proposals/00000000-0000-4000-8000-000000000000`, undefined, [404]);
+});
+await check("AI & Generation readiness: states come from real results in this project (Claude, sketches, references, sound, renders proven; voice not built)", async () => {
+  const r = await api("GET", `/api/projects/${projectId}/generation-readiness`);
+  const st = Object.fromEntries(r.capabilities.map((c: any) => [c.id, c.state]));
+  assert(st.assistant === "proven" && st.storyboard === "proven" && st.character_refs === "proven" && st.sound === "proven" && st.delivery === "proven", JSON.stringify(st));
+  assert(st.voice === "not_built", "voice must say not built");
+  const video = r.capabilities.find((c: any) => c.id === "video");
+  assert(st.video === "needs_key" ? video.headline.includes("RUNWAY_API_KEY") : st.video === "proven" || st.video === "ready", `video ${st.video}`);
+  return Object.entries(st).map(([k, v]) => `${k}:${v}`).join(" ");
 });
 // ---- Phase 11: Team & permissions, with a second throwaway account ----
 let token2 = "", user2 = "";

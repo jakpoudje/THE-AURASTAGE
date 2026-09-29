@@ -32,3 +32,14 @@ export function providerStatuses(
     models: a.models,
   }));
 }
+
+/** Image backends that can make a still from a prompt (character / location references) and are configured here. */
+export function stillBackends(env: Record<string, string | undefined>) {
+  return ADAPTERS.filter((a) => a.generateStill && a.isConfigured(env)).map((a) => ({
+    id: a.id, name: a.name, model: a.models.find((m) => m.capability === "image")?.id ?? a.models[0].id, execution: a.id === "aurastage-sketch" ? ("native" as const) : ("external" as const), note: a.note,
+  }));
+}
+/** Every image backend that could make references, configured or not (for an honest list). */
+export function stillBackendStatuses(env: Record<string, string | undefined>) {
+  return ADAPTERS.filter((a) => a.generateStill).map((a) => ({ id: a.id, name: a.name, state: a.isConfigured(env) ? "configured" : "not_configured", note: a.note }));
+}

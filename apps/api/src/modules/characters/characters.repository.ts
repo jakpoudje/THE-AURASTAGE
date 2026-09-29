@@ -10,7 +10,7 @@ import { colForbiddenMessage } from "../../infrastructure/permissions";
 export function mapDbError(error: { message?: string; code?: string }): Error {
   const msg = error.message ?? "";
   const text = msg.replace(/^AURA-CHR-\d+:\s*/, "");
-  if (msg.startsWith("AURA-CHR-409")) return new CharacterConflictError(text);
+  if (msg.startsWith("AURA-CHR-409") || msg.startsWith("AURA-CHR-429")) return new CharacterConflictError(text);
   if (msg.startsWith("AURA-CHR-404")) return new CharacterNotFoundError(text);
   if (msg.startsWith("AURA-CHR-400")) return new CharacterValidationError([], text);
   if (msg.startsWith("AURA-CHR-403") || error.code === "42501") return new CharacterForbiddenError(colForbiddenMessage(error));
