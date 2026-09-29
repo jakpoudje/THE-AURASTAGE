@@ -265,6 +265,9 @@ await check("visual: honest provider status; compile a prompt from the approved 
   assert(ws.media_ready === true, "media storage not configured on the API");
   const sketch = ws.providers.find((p: any) => p.id === "aurastage-sketch");
   assert(sketch.state === "configured", "sketch should always be available");
+  const ids = ws.providers.map((p: any) => p.id);
+  for (const id of ["runway", "openai", "google", "stability", "bfl", "luma", "kling", "minimax"]) assert(ids.includes(id), `${id} missing from the gateway`);
+  assert(ws.providers.find((p: any) => p.id === "runway").video_needs_frame === true && ws.providers.find((p: any) => p.id === "luma").video_needs_frame === false, "video_needs_frame");
   const shot = ws.scenes[0].shots[0].shot;
   const c = await api("POST", `/api/projects/${projectId}/visual/shots/${shot.id}/compile`, { aspect_ratio: "16:9" });
   assert(/Cinematic film still/.test(c.prompt), "no prompt");
@@ -679,6 +682,7 @@ await check("overview: every stage reports real counts and its checks; flagged s
 await check("casting look: 8 reference views from the profile (one identity), real images in the Assets Library; a profile change marks them", async () => {
   const lk0 = await api("GET", `/api/characters/${amaraId}/look`);
   assert(lk0.views.length === 16 && lk0.identity.startsWith("Amara Bello") && lk0.backends.some((b: any) => b.id === "aurastage-sketch"), "look");
+  assert(Array.isArray(lk0.sketch_reads?.evidence) && Array.isArray(lk0.sketch_reads?.unspecified), "AuraSketch should say what it reads from the profile");
   const g = await api("POST", `/api/characters/${amaraId}/look/generate`, {});
   assert(g.requested.length === 8 && g.provider === "aurastage-sketch", JSON.stringify(g).slice(0, 200));
   let lk: any;
@@ -690,7 +694,7 @@ await check("casting look: 8 reference views from the profile (one identity), re
   const made = lk.views.filter((v: any) => v.image);
   assert(made.length === 8 && made.every((v: any) => !v.image.stale), `made ${made.length}: ${JSON.stringify(lk.views.map((v: any) => v.latest?.error).filter(Boolean))}`);
   const bytes = new TextDecoder().decode(new Uint8Array(await (await fetch(`${API}/api/assets/${made[0].image.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer()));
-  assert(bytes.startsWith("<svg") && bytes.includes("Amara Bello") && bytes.includes("not AI"), "not the labelled sketch");
+  assert(bytes.startsWith("<svg") && bytes.includes("Amara Bello") && bytes.includes("AURASKETCH (not AI)"), "not the labelled AuraSketch figure sheet");
   const lib = await api("GET", `/api/projects/${projectId}/library?category=characters`);
   assert(lib.assets.filter((a: any) => /^Amara Bello — .* reference$/.test(a.name)).length === 8, "not in the Assets Library under Characters");
   const before = await api("GET", `/api/projects/${projectId}/characters`);

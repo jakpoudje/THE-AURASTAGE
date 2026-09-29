@@ -88,6 +88,7 @@ await check("casting look panel: generate a character's reference views; images 
   await page.getByRole("button", { name: "Look & References" }).click();
   const panel = page.getByRole("region", { name: "Look and references" });
   await panel.getByTestId("look-identity").getByText(/^Tunde Okafor/).waitFor();
+  await panel.getByTestId("sketch-reads").getByText(/AuraSketch draws/).waitFor();
   await panel.getByRole("button", { name: /Generate look set \(8 views\)/ }).click();
   await panel.getByText("8 of 16 made").waitFor({ timeout: 90000 });
   await panel.getByTestId("look-front:CU").locator("img").waitFor();
@@ -456,6 +457,23 @@ await check("studio mixer: dialogue clean-up on the dialogue channel and hall re
   await page.getByRole("button", { name: /^Channel strip DX/ }).first().getByText(/HPF · EQ/).waitFor();
   if ((await page.getByRole("region", { name: "Buses and master" }).getByLabel("Reverb type").inputValue()) !== "hall") throw new Error("routing lost after reload");
   return "HPF + presence EQ on dialogue, hall reverb";
+});
+await check("mixer presets: phone-call channel preset (low-pass 3.4 kHz) and the Horror genre template; reload: kept", async () => {
+  await page.getByRole("button", { name: /^Channel strip DX/ }).first().click();
+  const ed = page.getByRole("region", { name: /^Channel strip editor DX/ });
+  await ed.getByLabel("Channel preset", { exact: true }).selectOption({ label: "Phone call" });
+  await ed.getByRole("button", { name: "Apply preset" }).click();
+  if ((await ed.getByLabel("Low-pass (0 = off)").inputValue()) !== "3400") throw new Error("low-pass not set");
+  await ed.getByRole("button", { name: "Save channel" }).click();
+  await page.getByText(/channel strip — measure the mix again/).waitFor();
+  const routing = page.getByRole("region", { name: "Buses and master" });
+  await routing.getByLabel("Mix template").selectOption({ label: "Horror" });
+  await routing.getByRole("button", { name: "Apply template" }).click();
+  await routing.getByRole("button", { name: "Save routing" }).click();
+  await page.getByText(/Mix routing saved/).waitFor();
+  await reload("Professional Sound for");
+  await page.getByRole("button", { name: /^Channel strip DX/ }).first().getByText(/LPF/).waitFor();
+  return "phone call on DX, horror template";
 });
 await check("AI & Generation page: every generator's state with proof from this project; reload: same", async () => {
   await page.goto(projectUrl + "/scriptwriter");
