@@ -9,3 +9,7 @@ export { screenplayImportEngine } from "./screenplayImportEngine";
 export type { SceneCandidate, ScriptAnalysis } from "./sceneBoundaryEngine";
 export * as storyDevelopment from "./storyDevelopmentEngine";
 export { storyDevelopmentEngine } from "./storyDevelopmentEngine";
+export * as scriptWriting from "./scriptWritingEngine";
+export { scriptWriting as scriptWritingEngine } from "./scriptWritingEngine";
+export * as continuityCheck from "./continuityCheckEngine";
+export { continuityCheckEngine } from "./continuityCheckEngine";

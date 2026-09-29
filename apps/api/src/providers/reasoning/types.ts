@@ -18,7 +18,7 @@ export interface ReasoningRequest<T> {
    * The structured task behind the prompt. Real models read the prompt; the labelled TestProvider reads this instead
    * (it can't understand language), so the whole flow can be exercised without a paid API.
    */
-  task?: { kind: "plan"; snapshot: unknown };
+  task?: { kind: "plan" | "develop_story" | "outline" | "write_scenes" | "rewrite_scene"; snapshot: unknown };
 }
 
 export interface ReasoningResult<T> {

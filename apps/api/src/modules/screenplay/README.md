@@ -51,11 +51,25 @@ clean 403 first.
 
 ## Known operational error codes
 AURA-SCR-002 invalid input · AURA-SCR-403 no access · AURA-SCR-404 script/version
-not found · AURA-SCR-409 concurrent edit · AURA-SCR-500 unexpected.
+not found · AURA-SCR-409 concurrent edit · AURA-SCR-412 writing needs an earlier step (story/outline) · AURA-SCR-429 too many
+writing requests · AURA-SCR-500 unexpected.
+
+## AuraScript (Phase 13-9, migration 0030)
+`screenplay.writing.ts` queues AI writing jobs in `script_generations` (never inline, rule 8); the generation worker
+runs them with `screenplay.writingJob.ts` through the reasoning gateway (rule 7), and every answer is checked by
+`engines/story/scriptWritingEngine` before it is stored. Kinds: `develop_story` (logline, synopsis, characters with
+name reasons, beats), `outline` (scene list; the writer can edit and save it as their own version), `write_script`
+(written in batches of scenes with real progress; a failure keeps what was written and a retry only writes what's
+missing), `rewrite_scene` (improve / expand / rephrase / condense / dialogue / new scene). Nothing is applied
+automatically: "Apply to Project Setup" and "Open as a new draft version" create normal versions with a provenance
+note, based on the version the job was derived from (rule 10; 409 if the script moved on). Approval stays a person's
+job. `GET /script/continuity` runs `continuityCheckEngine` on any version. Without an Anthropic key the labelled test
+writer (TEST OUTPUT) only arranges the brief, so the flow can be tested for free.
+
+Routes: `GET|POST /api/projects/:id/script/writing`, `POST /api/projects/:id/script/writing/outline`,
+`GET /api/projects/:id/script/continuity`, `GET /api/script-writing/:id`, `POST /api/script-writing/:id/apply-story`,
+`POST /api/script-writing/:id/open-draft`.
 
 ## Not built yet
-AI story development / outline / script generation (needs the Provider Gateway,
-Phase 7 — `commands/GenerateScreenplay.ts` is still an empty stub), PDF
-import, and the character-extraction job (Phase 3). Final Draft / Fountain
-import runs in the browser via `engines/story/screenplayImportEngine` and is
+PDF import. Final Draft / Fountain import runs in the browser via `engines/story/screenplayImportEngine` and is
 saved through the normal versions endpoint.

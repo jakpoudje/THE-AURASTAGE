@@ -11,6 +11,8 @@ import { runOnce, type Claim } from "./worker";
 import { planOnce, type PlanClaim } from "./planner";
 import { audioOnce, type AudioClaim } from "./audio";
 import { refOnce, type RefClaim } from "./refs";
+import { writingOnce, type WritingClaim } from "./writing";
+import { runWritingJob } from "@aurastage/api/dist/modules/screenplay/screenplay.writingJob";
 
 const env = process.env;
 for (const k of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "WORKER_TOKEN"]) if (!env[k]) throw new Error(`missing env ${k}`);
@@ -78,6 +80,19 @@ const worldRefDeps = {
   log,
 };
 
+// AuraScript writing jobs (migration 0030): story development, outline, full script (in batches), scene rewrites.
+const writingDeps = {
+  claim: () => rpc<WritingClaim | null>("worker_claim_script_generation", { p_token: token }),
+  progress: (id: string, progress: Record<string, unknown>, output: Record<string, unknown> | null) =>
+    rpc<void>("worker_progress_script_generation", { p_token: token, p_id: id, p_progress: progress, p_output: output }),
+  run: (job: WritingClaim, progress: (p: Record<string, unknown>, o: Record<string, unknown> | null) => Promise<void>) =>
+    runWritingJob(job as never, { reasoner: () => reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" }), progress: (_id, p, o) => progress(p, o), env }),
+  complete: (id: string, r: { output: unknown; checks: unknown[]; provider: string; model: string; test_output: boolean; usage: unknown }) =>
+    rpc<void>("worker_complete_script_generation", { p_token: token, p_id: id, p_output: r.output, p_checks: r.checks, p_provider: r.provider, p_model: r.model, p_test_output: r.test_output, p_usage: r.usage }),
+  fail: (id: string, error: string) => rpc<void>("worker_fail_script_generation", { p_token: token, p_id: id, p_error: error }),
+  log,
+};
+
 let stopping = false;
 process.on("SIGTERM", () => (stopping = true));
 process.on("SIGINT", () => (stopping = true));
@@ -91,7 +106,8 @@ process.on("SIGINT", () => (stopping = true));
       const sounded = await audioOnce(audioDeps);
       const drew = await refOnce(refDeps);
       const drewWorld = await refOnce(worldRefDeps);
-      const worked = (await runOnce(deps)) || planned || sounded || drew || drewWorld;
+      const wrote = await writingOnce(writingDeps);
+      const worked = (await runOnce(deps)) || planned || sounded || drew || drewWorld || wrote;
       if (!worked) await new Promise((r) => setTimeout(r, 3000));
     } catch (e) {
       log("worker.error", { error: (e as Error).message });

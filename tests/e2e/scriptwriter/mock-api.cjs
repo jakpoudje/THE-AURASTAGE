@@ -99,6 +99,86 @@ http.createServer((req, res) => {
       script = { ...script, status: "approved", approved_version_id: v.id }; return send(200, script);
     }
 
+    // ---- AuraScript (mirrors apps/api/src/modules/screenplay/screenplay.writing + migration 0030). The "worker" runs the REAL
+    // job runner with the REAL labelled test writer the first time a queued job is listed. ----
+    const WR = globalThis.__writing || (globalThis.__writing = []);
+    const wjob = require(require("path").resolve(__dirname, "../../../apps/api/dist/modules/screenplay/screenplay.writingJob.js"));
+    const wprov = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/reasoning/index.js"));
+    const wErr2 = (st, code, message) => send(st, { error: { code, message } });
+    const wCan = () => { const T0 = globalThis.__team || { as: "owner" }; return T0.as === "owner" || T0.as === "producer" || T0.as === "writer"; };
+    const wrDto = (g) => { const { input, ...rest } = g; return { ...rest, scene: g.kind === "rewrite_scene" ? { number: input.scene_number, mode: input.mode, before_text: input.scene_text } : undefined }; };
+    const wStory = (dev) => { const o = dev && dev.output; const cast = chars.filter((c) => !c.merged_into);
+      return { title: project.title, type: project.type || "feature_film", logline: project.logline ?? (o && o.logline) ?? null, synopsis: project.synopsis ?? (o && o.synopsis) ?? null, genre: project.genre ?? null,
+        tone: project.tone ?? null, setting: project.setting ?? null, time_period: project.time_period ?? null, target_runtime_minutes: project.target_runtime_minutes ?? null,
+        characters: o && o.characters ? o.characters : cast.map((c) => ({ name: c.name, role: c.role || "supporting", age: parseInt(c.age, 10) || null, description: c.description || "" })), beats: (o && o.beats) || [] }; };
+    const wDev = (id) => { for (let i = 0, cur = id; cur && i < 6; i++) { const g = WR.find((x) => x.id === cur); if (!g) return null; if (g.kind === "develop_story") return g.status === "succeeded" ? g : null; cur = g.parent_id; } return null; };
+    const wSpans = (v) => { const lines = v.source_text.replace(/\r\n?/g, "\n").split("\n"); const sc = eng.sceneBoundaryEngine({ elements: v.elements }).scenes;
+      return { lines, spans: sc.map((x, i) => ({ number: x.number, start: x.heading_line, end: (sc[i + 1] ? sc[i + 1].heading_line : lines.length + 1) - 1 })) }; };
+    const wText = (lines, a, b2) => lines.slice(a - 1, b2).join("\n").trim();
+    if (u === `/api/projects/${P}/script/writing` && req.method === "GET") {
+      for (const g of WR.filter((x) => x.status === "queued")) {
+        g.status = "running"; g.started_at = now();
+        wjob.runWritingJob({ id: g.id, kind: g.kind, input: g.input, output: null }, { reasoner: () => wprov.testReasoningAdapter, progress: async (_id, pr, o) => { g.progress = pr; if (o) g.output = o; }, env: {} })
+          .then((r) => Object.assign(g, { status: "succeeded", output: r.output, checks: r.checks, provider: r.provider, model: r.model, test_output: r.test_output, completed_at: now() }),
+            (e) => Object.assign(g, { status: "failed", error: e.message, completed_at: now() }));
+      }
+      return send(200, { writer: { id: "aurastage-test", name: "AuraStage test planner", test_output: true }, results: WR.map(wrDto) });
+    }
+    if (u === `/api/projects/${P}/script/writing` && req.method === "POST") {
+      if (!wCan()) return wErr2(403, "AURA-COL-403", "your role can't edit in Scriptwriter. Ask the project's producer for access.");
+      const find = (id) => WR.find((x) => x.id === id);
+      let input, parent = b.parent_id || null, base = null;
+      if (b.kind === "develop_story") input = { brief: { title: project.title, type: project.type || "feature_film", logline: project.logline ?? null, synopsis: project.synopsis ?? null, genre: project.genre ?? null, subgenre: project.subgenre ?? null,
+        tone: project.tone ?? null, setting: project.setting ?? null, time_period: project.time_period ?? null, target_runtime_minutes: project.target_runtime_minutes ?? null, request: b.request || "" } };
+      else if (b.kind === "outline") { const dev = parent ? find(parent) : WR.find((x) => x.kind === "develop_story" && x.status === "succeeded"); parent = dev ? dev.id : null; input = { story: wStory(dev), request: b.request || "" }; }
+      else if (b.kind === "write_script") { const ol = parent && find(parent); if (!ol || ol.kind !== "outline" || ol.status !== "succeeded") return wErr2(412, "AURA-SCR-412", "Write the script from a finished outline.");
+        input = { story: wStory(wDev(ol.parent_id)), outline: ol.output.scenes, request: b.request || "" }; }
+      else if (b.kind === "rewrite_scene") {
+        const v = script && versions.find((x) => x.id === script.current_version_id); if (!v) return wErr2(412, "AURA-SCR-412", "Write or import a script first — there's no scene to rework yet.");
+        const { lines, spans } = wSpans(v); const n = b.scene.number, i = spans.findIndex((x) => x.number === n);
+        if (b.scene.mode !== "new_scene" && i < 0) return wErr2(400, "AURA-SCR-400", `There's no scene ${n} in the current version.`);
+        const around = (k) => (k >= 0 && k < spans.length ? wText(lines, spans[k].start, spans[k].end).slice(0, 3500) : "");
+        base = v.id; const nw = b.scene.mode === "new_scene";
+        input = { story: wStory(WR.find((x) => x.kind === "develop_story" && x.status === "succeeded")), mode: b.scene.mode, instruction: b.scene.instruction || b.request || "",
+          scene_text: nw ? "" : around(i), before: nw ? around(i) : around(i - 1), after: nw ? around(i + 1) : around(i + 1), scene_number: n };
+      } else return wErr2(400, "AURA-SCR-400", "kind: unknown");
+      const g = { id: crypto.randomUUID(), kind: b.kind, parent_id: parent, request: b.request || "", source: "model", status: "queued", progress: {}, output: null, checks: [], provider: null, model: null, test_output: null,
+        error: null, base_version_id: base, result_version_id: null, accepted: null, input, created_at: now(), completed_at: null };
+      WR.unshift(g); return send(201, wrDto(g));
+    }
+    if (u === `/api/projects/${P}/script/writing/outline` && req.method === "POST") {
+      const r = eng.scriptWriting.OutlineOutputSchema.safeParse({ scenes: b.scenes, notes: [] }); if (!r.success) return wErr2(400, "AURA-SCR-400", r.error.issues[0].message);
+      const scenes2 = r.data.scenes.map((x, i) => ({ ...x, number: i + 1, location: x.location.toUpperCase() }));
+      const story = wStory(wDev(b.parent_id)); const output = { scenes: scenes2, notes: ["Edited by the writer."] };
+      const g = { id: crypto.randomUUID(), kind: "outline", parent_id: b.parent_id || null, request: "", source: "user", status: "succeeded", progress: {}, output, checks: eng.scriptWriting.checkOutline(story, output),
+        provider: "writer", model: null, test_output: false, error: null, base_version_id: null, result_version_id: null, accepted: null, input: { story, edited: true }, created_at: now(), completed_at: now() };
+      WR.unshift(g); return send(201, wrDto(g));
+    }
+    if (u === `/api/projects/${P}/script/continuity`) {
+      const v = script && versions.find((x) => x.id === script.current_version_id); if (!v) return wErr2(412, "AURA-SCR-412", "Write or import a script first.");
+      return send(200, { version_id: v.id, version_number: v.version_number, ...eng.continuityCheckEngine({ elements: v.elements }) });
+    }
+    let m0;
+    if ((m0 = u.match(/^\/api\/script-writing\/([^/]+)\/(apply-story|open-draft)$/))) {
+      const g = WR.find((x) => x.id === m0[1]); if (!g) return wErr2(404, "AURA-SCR-404", "Writing result not found");
+      if (m0[2] === "apply-story") {
+        const ch = {}; for (const f of b.fields) { if (f === "title") ch.title = b.title || g.output.title_options[0]; else ch[f] = g.output[f]; }
+        project = { ...project, ...ch, updated_at: now() }; g.accepted = { fields: b.fields }; return send(200, { applied: Object.keys(ch), project });
+      }
+      if ((script?.current_version_id ?? null) !== b.base_version_id) return wErr2(409, "AURA-SCR-409", "Someone saved a newer version since you opened this script. Reload to see it.");
+      let text, note;
+      if (g.kind === "write_script") { text = eng.scriptWriting.assembleScript(project.title, g.output.scenes); note = "AuraScript: full script written by the AuraStage test writer (TEST OUTPUT) from the outline"; }
+      else {
+        if (b.base_version_id !== g.base_version_id) return wErr2(409, "AURA-SCR-409", "The script changed after this scene was reworked — ask again from the current version.");
+        const v = versions.find((x) => x.id === g.base_version_id); const { lines, spans } = wSpans(v); const n = g.input.scene_number, t = String(g.output.fountain).trim();
+        if (g.input.mode === "new_scene") { const af = spans.find((x) => x.number === n); const at = af ? af.end : 0; text = [...lines.slice(0, at), "", t, "", ...lines.slice(at)].join("\n").replace(/\n{3,}/g, "\n\n"); note = `AuraScript: new scene after scene ${n}`; }
+        else { const sp = spans.find((x) => x.number === n); text = [...lines.slice(0, sp.start - 1), t, "", ...lines.slice(sp.end)].join("\n").replace(/\n{3,}/g, "\n\n"); note = `AuraScript: scene ${n} reworked`; }
+      }
+      if (!script) script = { id: S, org_id: ORG, project_id: P, status: "draft", current_version_id: null, approved_version_id: null, created_at: now(), updated_at: now() };
+      const v = { id: crypto.randomUUID(), script_id: S, org_id: ORG, version_number: versions.length + 1, source_text: text, elements: eng.screenplayFormatEngine({ source_text: text }).elements, parser_version: "p", note, created_at: now() };
+      versions.push(v); script = { ...script, current_version_id: v.id }; g.result_version_id = v.id; return send(201, { version: v });
+    }
+
     // ---- Casting (mirrors apps/api/src/modules/characters + migration 0006 semantics) ----
     const approved = () => script?.approved_version_id && versions.find((x) => x.id === script.approved_version_id);
     const resolve = (confirm = []) => {

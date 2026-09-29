@@ -182,6 +182,8 @@ export function useScriptwriter(projectId: string) {
   }
 
   return {
+    /** Re-reads the project and script (after AuraScript opened a new draft version or changed story fields). */
+    reload: load,
     conflict,
     recovered,
     discardRecovered,

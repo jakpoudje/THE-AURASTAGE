@@ -21,14 +21,16 @@ import { VersionHistory } from "./components/VersionHistory";
 import { SceneBreakdown } from "./components/SceneBreakdown";
 import { CharacterCandidates } from "./components/CharacterCandidates";
 import type { ScriptwriterStep } from "./types";
+import { GenerateScriptPanel, OutlinePanel, ScriptToolsPanel, StoryDevelopmentPanel } from "./components/AuraScript";
+import { useWriting } from "./hooks/useWriting";
+import { can, useProjectAccess } from "@/lib/useProjectAccess";
 
-// Steps 2 and 4 need an AI writing provider, which arrives with the Provider
-// Gateway (build phase 7). They are listed so the flow matches the design, but
-// they say so plainly instead of pretending to work.
+// Steps 2–4 are AuraScript (AI writing through the Provider Gateway, in the background worker); every result is
+// checked and changes nothing until the writer applies it or opens it as a new draft version.
 const STEPS: { key: ScriptwriterStep; label: string; needsAi?: boolean }[] = [
   { key: "setup", label: "Project Setup" },
   { key: "development", label: "Story Development", needsAi: true },
-  { key: "outline", label: "Outline & Structure" },
+  { key: "outline", label: "Outline & Structure", needsAi: true },
   { key: "generate", label: "Generate Script", needsAi: true },
   { key: "edit", label: "Edit & Refine" },
   { key: "breakdown", label: "Scene Breakdown" },
@@ -38,6 +40,9 @@ const STEPS: { key: ScriptwriterStep; label: string; needsAi?: boolean }[] = [
 export default function ScriptwriterPage() {
   const { id } = useParams<{ id: string }>();
   const sw = useScriptwriter(id);
+  const w = useWriting(id);
+  const access = useProjectAccess(id);
+  const canWrite = can(access, "script", "edit");
   const [step, setStep] = useState<ScriptwriterStep>("setup");
 
   if (sw.loading) return <div className="p-12 text-center text-white/50">Opening Scriptwriter…</div>;
@@ -104,7 +109,7 @@ export default function ScriptwriterPage() {
           >
             <span className="text-xs">{i + 1}</span>
             {s.label}
-            {s.needsAi && <span className="rounded bg-white/5 px-1.5 text-[9px] uppercase text-white/40">AI · soon</span>}
+            {s.needsAi && <span className="rounded bg-aura-gold/15 px-1.5 text-[9px] uppercase text-aura-gold">AI</span>}
           </button>
         ))}
       </nav>
@@ -148,20 +153,21 @@ export default function ScriptwriterPage() {
           </div>
         )}
 
-        {step === "outline" && <ScopePlanPanel plan={sw.plan} actualScenes={sw.live.analysis.scene_count} />}
+        {(w.error || w.notice) && step !== "setup" && (
+          <p role={w.error ? "alert" : "status"} className={`mb-4 rounded-md border px-4 py-2 text-sm ${w.error ? "border-red-400/40 text-red-300" : "border-emerald-400/40 text-emerald-300"}`}>{w.error ?? w.notice}</p>
+        )}
 
-        {(step === "development" || step === "generate") && (
-          <div className="max-w-2xl rounded-xl border border-dashed border-aura-border p-8">
-            <h2 className="font-display text-xl">{STEPS.find((s) => s.key === step)!.label}</h2>
-            <p className="mt-2 text-sm text-white/60">
-              AI story development and script generation will switch on once an AI writing service is connected to
-              The AuraStage. Until then, write, paste or import (Final Draft or Fountain) your screenplay in Edit & Refine — everything else on this page
-              already works with it.
-            </p>
-            <button onClick={() => setStep("edit")} className="mt-4 rounded-md border border-aura-gold/60 px-4 py-2 text-sm text-aura-gold">
-              Go to Edit & Refine →
-            </button>
+        {step === "development" && <StoryDevelopmentPanel w={w} canEdit={canWrite} onApplied={() => sw.reload().catch(() => null)} />}
+
+        {step === "outline" && (
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <OutlinePanel w={w} canEdit={canWrite} />
+            <ScopePlanPanel plan={sw.plan} actualScenes={sw.live.analysis.scene_count} />
           </div>
+        )}
+
+        {step === "generate" && (
+          <GenerateScriptPanel w={w} canEdit={canWrite} currentVersionId={currentId} onOpened={async () => { await sw.reload(); setStep("edit"); }} />
         )}
 
         {step === "edit" && (
@@ -179,6 +185,8 @@ export default function ScriptwriterPage() {
               onImport={sw.importFile}
             />
             <div className="space-y-4">
+              <ScriptToolsPanel w={w} projectId={id} canEdit={canWrite} sceneNumbers={sw.live.scenes.map((x) => x.number)} currentVersionId={currentId} dirty={sw.dirty}
+                onOpened={() => sw.reload().catch(() => null)} />
               <ScriptAnalysisPanel analysis={sw.live.analysis} />
               <VersionHistory versions={ws?.versions ?? []} currentId={currentId} approvedId={approvedId} />
             </div>

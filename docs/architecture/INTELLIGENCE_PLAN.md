@@ -74,8 +74,8 @@ Status: Phase 1 built (see apps/api/src/modules/assistant/README.md).
 
 ## 5. Later phases (directive order)
 
-2 AuraScript (story development — `storyDevelopmentEngine` written — outline, scene generate/rewrite/expand/condense,
-dialogue improvement, continuity), character/dialogue/Scene DNA assistance · 3 AuraSketch completion, AuraImage,
+2 AuraScript (BUILT, 13-9: story development, outline, full script generation, scene
+rewrite/expand/condense/dialogue, continuity), character/dialogue/Scene DNA assistance · 3 AuraSketch completion, AuraImage,
 character/location reference sets and aging · 4 AuraVoice + Performance DNA · 5 AuraSFX/Foley/Ambience + SoundEvent ·
 6 AuraMusic (music plan → generation, stems) · 7 AuraVideo (GenerationPackage 2.0, reference images) · 8 Editorial and
 Export commands, cross-production automation, advanced QC.

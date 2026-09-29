@@ -26,9 +26,9 @@ const SP = process.env.E2E_OUT || require("os").tmpdir(), BASE = "http://localho
     await page.getByText(/Act 1/).first().waitFor();
   });
   await page.screenshot({ path: `${SP}/1-setup.png`, fullPage: true });
-  await step("AI step is honest", async () => {
+  await step("Generate Script is honest: it needs an outline first", async () => {
     await page.locator("main nav button", { hasText: "Generate Script" }).click();
-    await page.getByText(/switch on once an AI writing service is connected/).waitFor();
+    await page.getByText(/Build a scene outline first/).waitFor();
   });
   await step("write, save v1, approve", async () => {
     await page.locator("main nav button", { hasText: "Edit & Refine" }).click();

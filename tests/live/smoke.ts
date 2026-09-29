@@ -1011,5 +1011,62 @@ await check("security: other project ids are refused", async () => {
   await api("GET", `/api/projects/00000000-0000-4000-8000-000000000000/delivery`, undefined, [403]);
 });
 
+// ---- AuraScript (migration 0030): the real writer (Claude when its key is on the server) in the generation worker ----
+async function written(id: string, minutes = 8) {
+  for (let i = 0; i < minutes * 20; i++) {
+    const g = await api("GET", `/api/script-writing/${id}`);
+    if (g.status === "succeeded" || g.status === "failed") return g;
+    await Bun.sleep(3000);
+  }
+  throw new Error(`writing job ${id} still running after ${minutes} minutes`);
+}
+let wProject = "";
+await check("aurascript: develop a story from a brief; apply the logline and synopsis to the project", async () => {
+  const p = await api("POST", "/api/projects", { org_id: orgId, title: "Smoke: The Last Ferry", genre: "Drama", setting: "Lagos lagoon", time_period: "Present day",
+    logline: "An old ferryman's last crossing reunites him with the son he abandoned.", target_runtime_minutes: 3 }, [201]);
+  wProject = p.id;
+  const q = await api("POST", `/api/projects/${wProject}/script/writing`, { kind: "develop_story" }, [201]);
+  const g = await written(q.id);
+  assert(g.status === "succeeded", `${g.status}: ${g.error ?? ""}`);
+  assert(g.output.characters.length >= 1 && g.output.beats.length >= 3 && g.output.synopsis.length > 50, "thin development");
+  const a = await api("POST", `/api/script-writing/${g.id}/apply-story`, { fields: ["synopsis"] });
+  assert(a.applied.includes("synopsis"), "not applied");
+  const proj = await api("GET", `/api/projects/${wProject}`);
+  assert(proj.synopsis === g.output.synopsis, "synopsis not on the project");
+  return `${g.test_output ? "TEST OUTPUT" : g.provider + " " + g.model}; ${g.output.characters.map((c: any) => c.name).join(", ")}; checks ${g.checks.filter((c: any) => c.ok).length}/${g.checks.length}`;
+});
+let wOutline: any = null;
+await check("aurascript: outline the story scene by scene, sized to the runtime", async () => {
+  const q = await api("POST", `/api/projects/${wProject}/script/writing`, { kind: "outline" }, [201]);
+  wOutline = await written(q.id);
+  assert(wOutline.status === "succeeded", `${wOutline.status}: ${wOutline.error ?? ""}`);
+  assert(wOutline.output.scenes.length >= 1 && wOutline.output.scenes.every((s: any, i: number) => s.number === i + 1), "bad outline");
+  return `${wOutline.output.scenes.length} scenes; ${wOutline.checks.map((c: any) => `${c.id}:${c.ok ? "ok" : "!"}`).join(" ")}`;
+});
+await check("aurascript: write the full script in the worker; progress recorded; opens as a DRAFT version (not approved) that parses into scenes", async () => {
+  const q = await api("POST", `/api/projects/${wProject}/script/writing`, { kind: "write_script", parent_id: wOutline.id }, [201]);
+  const g = await written(q.id, 10);
+  assert(g.status === "succeeded", `${g.status}: ${g.error ?? ""}`);
+  assert(g.progress.done === wOutline.output.scenes.length, `progress ${JSON.stringify(g.progress)}`);
+  const o = await api("POST", `/api/script-writing/${g.id}/open-draft`, { base_version_id: null }, [201]);
+  const ws = await api("GET", `/api/projects/${wProject}/script`);
+  assert(ws.current_version.id === o.version.id && !ws.script.approved_version_id, "should be a draft, not approved");
+  assert(/AuraScript: full script/.test(ws.current_version.note ?? ""), "provenance note missing");
+  assert((ws.analysis?.scene_count ?? 0) === wOutline.output.scenes.length, `scenes ${ws.analysis?.scene_count}`);
+  await api("POST", `/api/script-writing/${g.id}/open-draft`, { base_version_id: null }, [409]);
+  const words = (ws.current_version.source_text.match(/\S+/g) ?? []).length;
+  return `${ws.analysis.scene_count} scenes, ${words} words; ${g.checks.map((c: any) => `${c.id}:${c.ok ? "ok" : "!"}`).join(" ")}`;
+});
+await check("aurascript: condense a scene and use it as a new draft version; continuity check runs", async () => {
+  const ws0 = await api("GET", `/api/projects/${wProject}/script`);
+  const q = await api("POST", `/api/projects/${wProject}/script/writing`, { kind: "rewrite_scene", scene: { mode: "condense", number: 1 } }, [201]);
+  const g = await written(q.id);
+  assert(g.status === "succeeded" && /^(INT|EXT)/.test(g.output.fountain.trim()), `${g.status}: ${g.error ?? ""}`);
+  const o = await api("POST", `/api/script-writing/${g.id}/open-draft`, { base_version_id: ws0.current_version.id }, [201]);
+  assert(o.version.version_number === ws0.current_version.version_number + 1, "not a new version");
+  const c = await api("GET", `/api/projects/${wProject}/script/continuity`);
+  return `v${o.version.version_number}; continuity ${c.summary.warnings} warnings, ${c.summary.notes} notes`;
+});
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`SUMMARY ${results.length - failed}/${results.length} passed${failed ? " — FAILURES: " + results.filter((r) => !r.ok).map((r) => r.check).join("; ") : ""}`);

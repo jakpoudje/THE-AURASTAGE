@@ -5,6 +5,7 @@
 // end to end without a paid model. Everything it returns is marked test_output and labelled in the UI.
 import { ProviderError } from "../../types";
 import type { ReasoningAdapter, ReasoningRequest, ReasoningResult } from "../types";
+import * as writer from "./testWriter";
 
 type Item = { ref: { type: string; id: string; label: string }; data: Record<string, any> };
 type Snapshot = {
@@ -146,6 +147,15 @@ export const testReasoningAdapter: ReasoningAdapter = {
   note: "Deterministic development planner — no AI. Recognises common production requests so the flow can be tested without a paid API.",
   isConfigured: () => true,
   async complete<T>(req: ReasoningRequest<T>): Promise<ReasoningResult<T>> {
+    // AuraScript tasks: the test writer arranges the structured task into the right shape (labelled TEST OUTPUT).
+    if (req.task && req.task.kind !== "plan") {
+      const snap = req.task.snapshot as Record<string, any>;
+      const data = req.task.kind === "develop_story" ? writer.developStory(snap) : req.task.kind === "outline" ? writer.outline(snap)
+        : req.task.kind === "write_scenes" ? writer.writeScenes(snap) : writer.rewrite(snap);
+      const ok = req.schema.safeParse(data);
+      if (!ok.success) throw new ProviderError(`The test writer produced an invalid ${req.task.kind}: ${ok.error.issues[0]?.message}`);
+      return { data: ok.data, test_output: true, model: "aurastage-test-writer-1", provider_request_id: null, usage: { input_tokens: 0, output_tokens: 0 } };
+    }
     if (req.task?.kind !== "plan") throw new ProviderError("The test planner only handles Ask AuraStage plans.");
     const out = req.schema.safeParse(plan(req.task.snapshot as Snapshot));
     if (!out.success) throw new ProviderError("The test planner produced an invalid plan (bug).");
