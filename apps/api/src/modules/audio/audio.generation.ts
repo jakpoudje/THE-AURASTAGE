@@ -3,7 +3,7 @@
 // Generated files land in the Assets Library linked to the scene; using one on a cue is the person's choice (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { proceduralAudio } from "@aurastage/engines";
+import { proceduralAudio, voiceCasting } from "@aurastage/engines";
 import { audioBackendsFor, audioStatuses, getAudioAdapter, type AudioKind } from "../../providers";
 import { assertProjectAccess, assertSceneInProject } from "./audio.permissions";
 import * as repo from "./audio.repository";
@@ -17,8 +17,10 @@ export const FAMILY_KIND: Partial<Record<string, AudioKind>> = { BG: "ambience",
 
 const GenerateInput = z.object({
   clip_id: z.string().uuid().nullable().default(null),
+  /** For voice: the dialogue line to speak (defaults to the cue's line). */
+  line_id: z.string().uuid().optional(),
   kind: z.enum(["ambience", "fx", "foley", "score", "voice"]),
-  description: z.string().trim().min(1, "Describe the sound").max(500),
+  description: z.string().trim().max(500).default(""),
   duration_seconds: z.number().min(0.2).max(300),
   mood: z.array(z.string().trim().min(1).max(40)).max(8).default([]),
   provider: z.string().max(60).optional(),
@@ -31,7 +33,7 @@ export function generatorsFor(env: Env = process.env): Generator[] {
   const built: Generator[] = audioStatuses(env).map((a) => ({ id: a.id, label: a.name, note: a.note, state: a.state as Generator["state"], execution: a.execution, kinds: [...a.kinds] }));
   const kindsCovered = new Set(built.filter((b) => b.state === "configured").flatMap((b) => b.kinds));
   const missing: (Generator | false)[] = [
-    !kindsCovered.has("voice") && { id: "voice", label: "Dialogue / voice (text-to-speech)", note: "Not built yet: a voice provider (e.g. ElevenLabs) is the next step.", state: "not_connected", execution: "external", kinds: ["voice"] },
+    !kindsCovered.has("voice") && { id: "voice", label: "Dialogue / voice (text-to-speech)", note: "The built-in voice isn't installed on this server.", state: "not_connected", execution: "native", kinds: ["voice"] },
     { id: "cleanup", label: "Dialogue clean-up / stem separation", note: "Not built yet.", state: "not_connected", execution: "external", kinds: [] },
   ];
   return [...built, ...missing.filter((g): g is Generator => !!g)];
@@ -62,12 +64,30 @@ export async function generateSound(db: SupabaseClient, projectId: string, scene
   const p = GenerateInput.safeParse(body);
   if (!p.success) throw new AudioValidationError(p.error.issues, p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
   const a = pickBackend(p.data.kind, p.data.provider, env);
+  let description = p.data.description, params: Record<string, unknown> = {}, engineVersion = a.execution === "native" ? proceduralAudio.ENGINE_VERSION : "provider";
+  if (p.data.kind === "voice") {
+    // Voice DNA: the speaker's Casting profile + this line's emotion (Dialogue Intelligence). The words are the script's.
+    const lineId = p.data.line_id ?? (p.data.clip_id ? await clipLine(db, projectId, p.data.clip_id) : null);
+    if (!lineId) throw new AudioValidationError([], "Choose the dialogue line to speak.");
+    const ls = await repo.getLineWithSpeaker(db, lineId);
+    if (!ls || ls.line.scene_id !== sceneId) throw new AudioValidationError([], "That line isn't in this scene.");
+    const who = (ls.character ?? { name: ls.line.speaker_name }) as { name: string };
+    const voice = voiceCasting.voiceCastingEngine({ character: who, line: { emotion: ls.line.emotion, intensity: ls.line.intensity } });
+    description = String(ls.line.text).slice(0, 500);
+    params = { voice, line_id: lineId, character_id: ls.line.character_id ?? null };
+    engineVersion = voice.engine_version;
+  } else if (!description) throw new AudioValidationError([], "Describe the sound");
   const g = await repo.requestGeneration(db, {
-    project: projectId, scene: sceneId, clip: p.data.clip_id, kind: p.data.kind, description: p.data.description, duration: p.data.duration_seconds, mood: p.data.mood,
+    project: projectId, scene: sceneId, clip: p.data.clip_id, kind: p.data.kind, description, duration: p.data.duration_seconds, mood: p.data.mood,
     provider: a.id, model: a.models.find((m) => m.kinds.includes(p.data.kind))?.id ?? a.models[0].id, execution: a.execution,
-    seed: p.data.seed ?? Math.floor(Math.random() * 2 ** 31), engineVersion: a.execution === "native" ? proceduralAudio.ENGINE_VERSION : "provider",
+    seed: p.data.seed ?? Math.floor(Math.random() * 2 ** 31), engineVersion, params,
   });
   return dto(g);
+}
+
+async function clipLine(db: SupabaseClient, projectId: string, clipId: string) {
+  const c = (await repo.listClips(db, projectId)).find((x) => x.id === clipId);
+  return (c?.source?.dialogue_line_id as string | undefined) ?? null;
 }
 
 /** Suggest-and-generate: one request per planned cue (ambience, effects, Foley, score) that has no audio and no generation yet. */
@@ -83,11 +103,13 @@ export async function generateSceneCues(db: SupabaseClient, projectId: string, s
   for (const c of clips.filter((x) => x.session_id === session.id && x.kind === "cue")) {
     const t = tracks.find((x) => x.id === c.track_id);
     const kind = t && FAMILY_KIND[t.family];
-    if (!kind || kind === "voice") continue;
+    if (!kind) continue;
+    // Dialogue cues are spoken only when a voice backend is available and the cue knows its line.
+    if (kind === "voice" && !c.source?.dialogue_line_id) continue;
     if (pending.has(c.id)) { skipped.push(c.label); continue; }
     const a = audioBackendsFor(kind, env)[0];
     if (!a) { skipped.push(c.label); continue; }
-    out.push(await generateSound(db, projectId, sceneId, { clip_id: c.id, kind, description: String(c.label).slice(0, 500), duration_seconds: Math.min(300, Math.max(0.2, Number(c.duration_seconds))) }, env));
+    out.push(await generateSound(db, projectId, sceneId, { clip_id: c.id, kind, ...(kind === "voice" ? {} : { description: String(c.label).slice(0, 500) }), duration_seconds: Math.min(300, Math.max(0.2, Number(c.duration_seconds))) }, env));
   }
   return { requested: out, skipped };
 }

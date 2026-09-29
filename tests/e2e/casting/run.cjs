@@ -235,6 +235,21 @@ async function api(method, path, body) {
     const lib = await (await fetch(`${API}/api/projects/${P}/library`)).json();
     if (lib.assets.filter((a) => /Tunde Okafor — .* reference$/.test(a.name)).length !== 8) throw new Error("references not in the Assets Library");
   });
+  await step("Voice DNA: the voice comes from the saved profile, says why, and changes when the profile does", async () => {
+    await page.getByRole("button", { name: "Voice DNA" }).click();
+    const d = page.getByTestId("voice-description");
+    await d.getByText(/^Adult (male|female) voice/).waitFor();
+    await page.getByRole("list", { name: "Why this voice" }).getByText("Age 41 → adult voice").waitFor();
+    await page.screenshot({ path: `${OUT}/voice-dna.png` });
+    await page.getByRole("button", { name: "Profile", exact: true }).click();
+    await page.getByLabel("Age", { exact: true }).fill("68");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Voice DNA" }).click();
+    await page.getByRole("list", { name: "Why this voice" }).getByText("Age 68 → elder voice").waitFor();
+    await page.reload();
+    await page.getByRole("button", { name: "Voice DNA" }).click();
+    await page.getByTestId("voice-description").getByText(/^Elder (male|female) voice/).waitFor();
+  });
   await page.screenshot({ path: `${OUT}/casting.png` });
   console.log("ERRORS:", errors);
   await browser.close();

@@ -1,10 +1,14 @@
 import Fastify from "fastify";
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+
+const voiceInstalled = existsSync("/usr/bin/espeak-ng") || existsSync("/usr/local/bin/espeak-ng");
 import { registerAudioRoutes } from "../audio.controller";
 
 type Row = Record<string, any>;
 const P = "11111111-1111-4111-8111-111111111111", S1 = "22222222-2222-4222-8222-222222222222", SES = "33333333-3333-4333-8333-333333333333";
 const T = { dx: "44444444-4444-4444-8444-444444444441", bg: "44444444-4444-4444-8444-444444444442", fx: "44444444-4444-4444-8444-444444444443", sc: "44444444-4444-4444-8444-444444444444" };
+const LINE = "66666666-6666-4666-8666-666666666666", AMARA = "77777777-7777-4777-8777-777777777777";
 const C = { dx: "55555555-5555-4555-8555-555555555551", bg: "55555555-5555-4555-8555-555555555552", fx: "55555555-5555-4555-8555-555555555553", sc: "55555555-5555-4555-8555-555555555554", rec: "55555555-5555-4555-8555-555555555555" };
 
 function fakeDb(rows: Record<string, Row[]>) {
@@ -38,6 +42,8 @@ const rows = (): Record<string, Row[]> => ({
     { id: C.rec, project_id: P, session_id: SES, track_id: T.fx, kind: "asset", asset_id: "x", label: "recorded", duration_seconds: "1" },
   ],
   audio_generations: [{ id: "old", project_id: P, scene_id: S1, clip_id: C.fx, status: "succeeded" }],
+  dialogue_lines: [{ id: LINE, scene_id: S1, project_id: P, text: "You came.", speaker_name: "AMARA", character_id: AMARA, emotion: "anger", intensity: 8, estimated_seconds: 1.5 }],
+  characters: [{ id: AMARA, name: "Amara Bello", age: "32", gender: "Woman", nationality: "Nigerian", personality: "Calm" }],
 });
 async function app(fake: ReturnType<typeof fakeDb>) {
   const a = Fastify();
@@ -57,14 +63,24 @@ describe("Audio Studio — generate sound", () => {
     expect(reqs[0].p_description).toBe("Exterior lagos harbour ambience — rain, dawn");
     expect(r.skipped).toEqual(["door slams"]);
   });
-  it("one cue on request; a voice has no backend yet and says so (412), never a fake", async () => {
+  it("one cue on request; a voice is spoken in the speaker's Voice DNA where the built-in voice is installed, otherwise refused plainly (412)", async () => {
     const fake = fakeDb(rows());
     const a = await app(fake);
     const ok = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/generate`, payload: { clip_id: C.fx, kind: "fx", description: "door slams twice", duration_seconds: 3, seed: 9 } });
     expect(ok.json()).toMatchObject({ kind: "fx", provider: "aurastage-synth", seed: 9, status: "queued" });
-    const v = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/generate`, payload: { kind: "voice", description: "You came.", duration_seconds: 2 } });
-    expect(v.statusCode).toBe(412);
-    expect(v.json().error.message).toBe("No voice generator is connected yet.");
+    const v = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/generate`, payload: { kind: "voice", line_id: LINE, duration_seconds: 2 } });
+    if (voiceInstalled) {
+      // Voice DNA from Amara's Casting profile + the line's emotion; the words are the script's.
+      const args = fake.calls.filter((c) => c.fn === "request_audio_generation").at(-1)!.args;
+      expect(args).toMatchObject({ p_kind: "voice", p_description: "You came.", p_provider: "aurastage-voice", p_execution: "native" });
+      expect(args.p_params.voice).toMatchObject({ gender: "female", age_band: "adult" });
+      expect(args.p_params.voice.description).toMatch(/for anger \(intensity 8\/10\)\.$/);
+      const noLine = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/generate`, payload: { kind: "voice", duration_seconds: 2 } });
+      expect(noLine.json().error.message).toBe("Choose the dialogue line to speak.");
+    } else {
+      expect(v.statusCode).toBe(412);
+      expect(v.json().error.message).toBe("No voice generator is connected yet.");
+    }
     const bad = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/generate`, payload: { kind: "fx", description: "", duration_seconds: 3 } });
     expect(bad.statusCode).toBe(400);
     const paid = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/generate`, payload: { kind: "fx", description: "x", duration_seconds: 3, provider: "elevenlabs" } });

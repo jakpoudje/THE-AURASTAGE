@@ -511,21 +511,31 @@ http.createServer((req, res) => {
     const agenWork = (g) => {
       if (g.status === "queued" && g._polls++ >= 1) {
         g.status = "running";
-        aprov.getAudioAdapter(g.provider).generate({ kind: g.kind, model: g.model, description: g.description, duration_seconds: g.duration_seconds, mood: [], seed: g.seed, params: {} }, {}).then((r) => {
+        aprov.getAudioAdapter(g.provider).generate({ kind: g.kind, model: g.model, description: g.description, duration_seconds: g.duration_seconds, mood: [], seed: g.seed, params: g._params || {} }, {}).then((r) => {
           const a = { id: crypto.randomUUID(), project_id: P, type: "audio", name: `${g.kind[0].toUpperCase()}${g.kind.slice(1)} — ${g.description.slice(0, 150)}`, bytes: Buffer.from(r.bytes), media_type: r.media_type, duration_seconds: r.duration_seconds, created_at: now(), tags: ["generated"] };
           assets.push(a); Object.assign(g, { status: "succeeded", asset_id: a.id, layers: r.detail.layers, completed_at: now() });
-        });
+        }, (e) => Object.assign(g, { status: "failed", error: e.message, completed_at: now() }));
       }
-      const { _polls, ...out } = g; return out;
+      const { _polls, _params, ...out } = g; return out;
     };
     const agenReq = (sceneId, body) => {
-      const kinds = { ambience: 1, fx: 1, foley: 1, score: 1 };
-      if (body.kind === "voice") return { err: [412, "No voice generator is connected yet."] };
-      if (!kinds[body.kind] || !body.description || !(body.duration_seconds > 0)) return { err: [400, "Invalid audio input"] };
+      const kinds = { ambience: 1, fx: 1, foley: 1, score: 1, voice: 1 };
+      if (!kinds[body.kind] || !(body.duration_seconds > 0)) return { err: [400, "Invalid audio input"] };
+      const backend = aprov.audioBackendsFor(body.kind, {})[0];
+      if (!backend) return { err: [412, "No generator for that kind of sound is available on this server."] };
       const who = (globalThis.__team || { as: "owner" }).as; // the team state is defined further down
       if (who !== "owner" && who !== "producer") return { err: [403, "your role can't generate in Audio Studio. Ask the project's producer for access."] };
-      const g = { id: crypto.randomUUID(), scene_id: sceneId, clip_id: body.clip_id ?? null, kind: body.kind, description: String(body.description).slice(0, 500), duration_seconds: Math.min(300, body.duration_seconds),
-        provider: "aurastage-synth", model: "synth-1", execution: "native", seed: 7, status: "queued", asset_id: null, error: null, layers: [], created_at: now(), completed_at: null, _polls: 0 };
+      let description = String(body.description || "").trim(), params = {};
+      if (body.kind === "voice") { // Voice DNA from the speaker's Casting profile + the line's emotion (REAL voiceCastingEngine)
+        const clip = body.clip_id && aclips.find((c) => c.id === body.clip_id);
+        const line = dlines.find((l) => l.id === (body.line_id || (clip && clip.source && clip.source.dialogue_line_id)));
+        if (!line) return { err: [400, "Choose the dialogue line to speak."] };
+        const ch = chars.find((c) => c.id === line.character_id) || { name: line.speaker_name };
+        const voice = eng.voiceCastingEngine({ character: { name: ch.name, age: ch.age ?? null, gender: ch.gender ?? null, nationality: ch.nationality ?? null, personality: ch.personality ?? null, description: ch.description ?? null }, line: { emotion: line.emotion ?? null, intensity: line.intensity ?? null } });
+        description = line.text.slice(0, 500); params = { voice, line_id: line.id, character_id: line.character_id ?? null };
+      } else if (!description) return { err: [400, "Describe the sound"] };
+      const g = { id: crypto.randomUUID(), scene_id: sceneId, clip_id: body.clip_id ?? null, kind: body.kind, description: description.slice(0, 500), duration_seconds: Math.min(300, body.duration_seconds),
+        provider: backend.id, model: backend.models[0].id, execution: "native", seed: 7, status: "queued", asset_id: null, error: null, layers: [], created_at: now(), completed_at: null, _polls: 0, _params: params };
       agens.unshift(g); return { g };
     };
     if ((m = u.match(/^\/api\/projects\/[^/]+\/audio\/scenes\/([^/]+)\/generate$/)) && req.method === "POST") {
@@ -536,8 +546,8 @@ http.createServer((req, res) => {
       const requested = [], skipped = [];
       for (const c of aclips.filter((x) => x.session_id === s.id && x.kind === "cue")) {
         const t = atracks.find((x) => x.id === c.track_id); const kind = t && agen.FAMILY_KIND[t.family];
-        if (!kind || kind === "voice") continue;
-        if (agens.some((g) => g.clip_id === c.id && g.status !== "failed")) { skipped.push(c.label); continue; }
+        if (!kind || (kind === "voice" && !(c.source && c.source.dialogue_line_id))) continue;
+        if (agens.some((g) => g.clip_id === c.id && g.status !== "failed") || !aprov.audioBackendsFor(kind, {}).length) { skipped.push(c.label); continue; }
         const r = agenReq(m[1], { clip_id: c.id, kind, description: c.label, duration_seconds: c.duration_seconds }); if (r.err) return aerr(r.err[0], r.err[1]); requested.push(agenWork(r.g));
       }
       return send(200, { requested, skipped });
@@ -851,9 +861,9 @@ http.createServer((req, res) => {
         { id: "storyboard", label: "Storyboard frames & still images", where: "Visual Generation", href: `/projects/${P}/visual`, backends: [B("aurastage-sketch", "AuraStage Sketch", "native", "configured"), B("runway", "Runway", "external", "not_configured", "RUNWAY_API_KEY"), B("openai", "OpenAI Images", "external", "not_configured", "OPENAI_API_KEY")], evidence: ev(takes.filter((t) => t.capability === "image")) },
         { id: "character_refs", label: "Character reference views", where: "Casting → Look & References", href: `/projects/${P}/casting`, backends: [B("aurastage-sketch", "AuraStage Sketch", "native", "configured"), B("openai", "OpenAI Images", "external", "not_configured", "OPENAI_API_KEY")], evidence: ev(refs) },
         { id: "video", label: "Video clips", where: "Visual Generation", href: `/projects/${P}/visual`, backends: [B("runway", "Runway", "external", "not_configured", "RUNWAY_API_KEY"), B("aurastage-animatic", "AuraStage animatic (built in)", "native", "not_built")], evidence: ev(takes.filter((t) => t.capability === "video")) },
-        { id: "sound", label: "Sound effects, Foley & ambience", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-synth", "AuraStage built-in sound", "native", "configured"), B("elevenlabs", "ElevenLabs sound effects", "external", "not_built", "ELEVENLABS_API_KEY")], evidence: ev(ag.filter((g) => g.kind !== "score")) },
+        { id: "sound", label: "Sound effects, Foley & ambience", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-synth", "AuraStage built-in sound", "native", "configured"), B("elevenlabs", "ElevenLabs sound effects", "external", "not_built", "ELEVENLABS_API_KEY")], evidence: ev(ag.filter((g) => g.kind !== "score" && g.kind !== "voice")) },
         { id: "music", label: "Music & score", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-synth", "AuraStage built-in sound", "native", "configured"), B("music-provider", "Music provider (official API)", "external", "not_built")], evidence: ev(ag.filter((g) => g.kind === "score")) },
-        { id: "voice", label: "Dialogue voices (text-to-speech)", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-voice", "AuraStage built-in voice", "native", "not_built"), B("elevenlabs", "ElevenLabs voices", "external", "not_built", "ELEVENLABS_API_KEY")], evidence: ev([]) },
+        { id: "voice", label: "Dialogue voices (text-to-speech)", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-voice", "AuraStage built-in voice", "native", require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/audio/index.js")).audioBackendsFor("voice", {}).length ? "configured" : "not_configured"), B("elevenlabs", "ElevenLabs voices", "external", "not_built", "ELEVENLABS_API_KEY")], evidence: ev(ag.filter((g) => g.kind === "voice")) },
         { id: "delivery", label: "Rendering deliverables (MP4, subtitles, audio)", where: "Export & Deliver", href: `/projects/${P}/export`, backends: [B("render-worker", "AuraStage render worker (ffmpeg)", "native", "configured")], evidence: ev(renders, ["succeeded"], "profile_id") },
       ]));
     }
@@ -1114,7 +1124,7 @@ http.createServer((req, res) => {
       { id: "worker:render-worker", label: "Render worker", state: "down", evidence: "last checked in 9 min ago" },
     ], jobs_24h: [{ engine_id: "rendering.render", completed: 2, failed: 1, cancelled: 0, running: 0, queued: 0, oldest_queued_seconds: null }],
       providers: [{ id: "aurastage-sketch", name: "AuraStage Sketch", state: "configured", capabilities: ["image"] }, { id: "runway", name: "Runway", state: "not_configured", capabilities: ["video"] }],
-      not_connected: [{ id: "voice", name: "Voice / dialogue generation", note: "Not connected yet — needs a voice provider account" }] });
+      not_connected: [{ id: "voice", name: "Studio-quality voices", note: "Not connected yet — needs a voice provider account (the built-in robotic voice works meanwhile)" }] });
     if (u === "/api/help/guides") return send(200, { guides: eng.GUIDES, troubleshooting: eng.TROUBLESHOOTING });
     if (u === "/api/help/assistant") {
       const k = eng.knowledgeRetrievalEngine({ query: b.question, module: b.module ?? null, limit: 3 });

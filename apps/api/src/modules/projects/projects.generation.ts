@@ -40,16 +40,19 @@ export async function getGenerationReadiness(db: SupabaseClient, projectId: stri
       p.id === "aurastage-sketch" ? "Labelled storyboard sketches, not AI — for layout and blocking." : ""));
   const reasoning = reasoningStatuses(env).map((r) => b(r.id, r.name, r.execution === "test" ? "test" : "external", r.state === "configured" ? "configured" : "not_configured"));
   const refs = stillBackendStatuses(env).map((r) => b(r.id, r.name, r.id === "aurastage-sketch" ? "native" : "external", r.state as Backend["state"], r.id === "aurastage-sketch" ? "Labelled reference sketches, not AI." : ""));
-  const sound = audioStatuses(env).map((a) => b(a.id, a.name, a.execution === "native" ? "native" : "external", a.state as Backend["state"], a.execution === "native" ? "Synthesised placeholder sound — good for timing and testing." : ""));
+  const audioFor = (kind: "fx" | "score" | "voice") => audioStatuses(env).filter((a) => a.kinds.includes(kind)).map((a) =>
+    b(a.id, a.name, a.execution === "native" ? "native" : "external", a.state as Backend["state"],
+      a.execution !== "native" ? "" : kind === "voice" ? "Robotic built-in speech in each character's Voice DNA — good for timing and testing." : "Synthesised placeholder sound — good for timing and testing."));
   const planned = (id: string, name: string) => b(id, name, "external", "not_built");
 
-  const [assistant, stills, videos, looks, sounds, music, renders] = await Promise.all([
+  const [assistant, stills, videos, looks, sounds, music, voices, renders] = await Promise.all([
     evidence(db, "ai_proposals", projectId, (q) => q.not("provider", "is", null), ["proposed", "applied", "rejected", "undone"], ["failed"], "provider", "planned_at"),
     evidence(db, "takes", projectId, (q) => q.eq("capability", "image"), ["succeeded"], ["failed"]),
     evidence(db, "takes", projectId, (q) => q.eq("capability", "video"), ["succeeded"], ["failed"]),
     evidence(db, "character_reference_images", projectId, (q) => q, ["succeeded"], ["failed"]),
     evidence(db, "audio_generations", projectId, (q) => q.in("kind", ["ambience", "fx", "foley"]), ["succeeded"], ["failed"]),
     evidence(db, "audio_generations", projectId, (q) => q.eq("kind", "score"), ["succeeded"], ["failed"]),
+    evidence(db, "audio_generations", projectId, (q) => q.eq("kind", "voice"), ["succeeded"], ["failed"]),
     evidence(db, "renders", projectId, (q) => q, ["succeeded"], ["failed"], "profile_id"),
   ]);
   const P = `/projects/${projectId}`;
@@ -58,9 +61,9 @@ export async function getGenerationReadiness(db: SupabaseClient, projectId: stri
     { id: "storyboard", label: "Storyboard frames & still images", where: "Visual Generation", href: `${P}/visual`, backends: visFor("image"), evidence: stills },
     { id: "character_refs", label: "Character reference views", where: "Casting → Look & References", href: `${P}/casting`, backends: refs, evidence: looks },
     { id: "video", label: "Video clips", where: "Visual Generation", href: `${P}/visual`, backends: [...visFor("video"), planned("aurastage-animatic", "AuraStage animatic (built in)")].map((x) => x.id === "aurastage-animatic" ? { ...x, execution: "native" as const } : x), evidence: videos },
-    { id: "sound", label: "Sound effects, Foley & ambience", where: "Audio Studio", href: `${P}/audio`, backends: [...sound, planned("elevenlabs", "ElevenLabs sound effects")], evidence: sounds },
-    { id: "music", label: "Music & score", where: "Audio Studio", href: `${P}/audio`, backends: [...sound, planned("music-provider", "Music provider (official API)")], evidence: music },
-    { id: "voice", label: "Dialogue voices (text-to-speech)", where: "Audio Studio", href: `${P}/audio`, backends: [planned("aurastage-voice", "AuraStage built-in voice"), planned("elevenlabs", "ElevenLabs voices")].map((x) => x.id === "aurastage-voice" ? { ...x, execution: "native" as const } : x), evidence: { succeeded: 0, failed: 0, last_success_at: null, last_success_backend: null } },
+    { id: "sound", label: "Sound effects, Foley & ambience", where: "Audio Studio", href: `${P}/audio`, backends: [...audioFor("fx"), planned("elevenlabs", "ElevenLabs sound effects")], evidence: sounds },
+    { id: "music", label: "Music & score", where: "Audio Studio", href: `${P}/audio`, backends: [...audioFor("score"), planned("music-provider", "Music provider (official API)")], evidence: music },
+    { id: "voice", label: "Dialogue voices (text-to-speech)", where: "Audio Studio", href: `${P}/audio`, backends: [...audioFor("voice"), planned("elevenlabs", "ElevenLabs voices")], evidence: voices },
     { id: "delivery", label: "Rendering deliverables (MP4, subtitles, audio)", where: "Export & Deliver", href: `${P}/export`, backends: [b("render-worker", "AuraStage render worker (ffmpeg)", "native", "configured")], evidence: renders },
   ]);
   return out;

@@ -19,11 +19,13 @@ function Listen({ assetId }: { assetId: string }) {
 const input = "w-full rounded-md border border-aura-border bg-black/40 px-2 py-1 text-sm";
 
 export function ClipInspector({
-  clip, tracks, assets, busy, onSave, onDelete, onUpload, generations = [], canGenerate = false, onGenerate,
+  clip, tracks, assets, busy, onSave, onDelete, onUpload, generations = [], canGenerate = false, onGenerate, voiceReady = false,
 }: {
   clip: AudioClip; tracks: AudioTrack[]; assets: AudioAsset[]; busy: boolean;
   onSave: (patch: SaveAudioClipInput) => void; onDelete: () => void; onUpload: (file: File) => void;
   generations?: AudioGeneration[]; canGenerate?: boolean; onGenerate?: (body: { clip_id: string; kind: AudioGeneration["kind"]; description: string; duration_seconds: number }) => void;
+  /** The built-in (or a connected) voice generator is available on the server. */
+  voiceReady?: boolean;
 }) {
   const family = tracks.find((t) => t.id === clip.track_id)?.family;
   const genKind = family ? FAMILY_KIND[family] : undefined;
@@ -84,6 +86,31 @@ export function ClipInspector({
           </select>
         </label>
       </div>
+      {genKind === "voice" && onGenerate && voiceReady && (clip.source as Record<string, unknown>)?.dialogue_line_id != null && (
+        <section aria-label="Generate this voice" className="mt-3 rounded-md border border-aura-border p-3 text-xs">
+          <div className="mb-1 text-[11px] uppercase tracking-wider text-white/50">Generate this line's voice</div>
+          <p className="text-white/60">Speaks the line from the approved script in the character's Voice DNA (from their Casting profile), shaped by the line's emotion.</p>
+          <button onClick={() => onGenerate({ clip_id: clip.id, kind: "voice", description: "", duration_seconds: Math.min(300, clip.duration_seconds) })}
+            disabled={busy || !canGenerate} title={canGenerate ? undefined : "Your role can't generate audio"}
+            className="mt-2 rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold disabled:opacity-40">Generate voice</button>
+          {generations.length > 0 && (
+            <ul aria-label="Generated for this cue" className="mt-2 space-y-1">
+              {generations.map((g) => (
+                <li key={g.id} className="flex flex-wrap items-center gap-2" data-testid="generation">
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] ${g.status === "succeeded" ? "border-emerald-400/50 text-emerald-300" : g.status === "failed" ? "border-red-400/50 text-red-300" : "border-white/20 text-white/50"}`}>{STATUS[g.status]}</span>
+                  <span className="text-white/60">{g.execution === "native" ? "Built-in voice (robotic)" : g.provider}{g.layers.length ? ` · ${g.layers.map((l) => l.name.replace(/^Voice: /, "")).join(", ")}` : ""}</span>
+                  {g.error && <span className="text-red-300">{g.error}</span>}
+                  {g.asset_id && <Listen assetId={g.asset_id} />}
+                  {g.asset_id && (clip.asset_id === g.asset_id
+                    ? <span className="text-emerald-300">In use</span>
+                    : <button onClick={() => onSave({ asset_id: g.asset_id!, label: clip.label })} disabled={busy} className="rounded bg-aura-gold px-2 py-0.5 font-medium text-black">Use this</button>)}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-1 text-white/35">The built-in voice is free and robotic — good for timing and rhythm. Replace it with a recording or a voice provider for the film.</p>
+        </section>
+      )}
       {genKind && genKind !== "voice" && onGenerate && (
         <section aria-label="Generate this sound" className="mt-3 rounded-md border border-aura-border p-3 text-xs">
           <div className="mb-1 text-[11px] uppercase tracking-wider text-white/50">Generate this {genKind === "score" ? "music" : genKind === "ambience" ? "ambience" : "sound"}</div>

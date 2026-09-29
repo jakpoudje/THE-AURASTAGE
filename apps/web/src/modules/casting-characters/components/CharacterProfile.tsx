@@ -2,7 +2,7 @@
 
 // Character Profile (UI_REFERENCE §4 centre). Casting is the canonical owner of
 // identity, so edits here are the only place a character's profile changes.
-// Tabs that need image/voice generation are listed but marked Soon.
+// Tabs not built yet are listed but marked Soon.
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -21,19 +21,20 @@ import { RolePill } from "./RolePill";
 import { RelationshipsTab } from "./RelationshipsTab";
 import { WardrobeTab } from "./WardrobeTab";
 import { LookPanel, useReferenceImage } from "./LookPanel";
+import { VoiceDnaTab } from "./VoiceDnaTab";
 import { lookApi } from "../api/lookApi";
 import { can, useProjectAccess } from "@/lib/useProjectAccess";
 
-type Tab = "profile" | "personality" | "look" | "relationships" | "wardrobe" | "scenes" | "names";
+type Tab = "profile" | "personality" | "look" | "voice" | "relationships" | "wardrobe" | "scenes" | "names";
 const TABS: { key: Tab | string; label: string; soon?: boolean }[] = [
   { key: "profile", label: "Profile" },
   { key: "personality", label: "Personality & Backstory" },
   { key: "look", label: "Look & References" },
+  { key: "voice", label: "Voice DNA" },
   { key: "relationships", label: "Relationships" },
   { key: "wardrobe", label: "Wardrobe" },
   { key: "scenes", label: "Scenes & Continuity" },
   { key: "names", label: "Names & Merges" },
-  { key: "voice", label: "Voice DNA", soon: true },
 ];
 const ROLES: CharacterRole[] = ["lead", "supporting", "minor", "extra"];
 const PROFILE_FIELDS = ["name", "age", "gender", "nationality", "occupation", "description"] as const;
@@ -211,6 +212,8 @@ export function CharacterProfile({
         {tab === "personality" && <div className="grid gap-4 md:grid-cols-2">{STORY_FIELDS.map((k) => field(k, true))}</div>}
 
         {tab === "look" && <LookPanel key={character.id} characterId={character.id} canEdit={canEditLook} onPortrait={setPortrait} />}
+
+        {tab === "voice" && <VoiceDnaTab character={character} projectId={projectId} dirty={dirty} />}
 
         {tab === "relationships" && (
           <RelationshipsTab

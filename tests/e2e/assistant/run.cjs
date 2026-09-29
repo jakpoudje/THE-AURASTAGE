@@ -88,7 +88,8 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
     await cap("storyboard").getByText("OPENAI_API_KEY").waitFor();
     await cap("assistant").getByText("Needs a key").waitFor();
     await cap("assistant").getByText(/add ANTHROPIC_API_KEY to switch on Anthropic Claude/).waitFor();
-    await cap("voice").getByText("Not built yet", { exact: true }).waitFor();
+    await cap("voice").getByText("Ready — not tried yet").waitFor();
+    await cap("voice").getByText("AuraStage built-in voice — built in, free", { exact: false }).waitFor();
     await cap("sound").getByText("AuraStage built-in sound — built in, free", { exact: false }).waitFor();
     await page.getByTestId("readiness-summary").waitFor();
     await page.screenshot({ path: `${OUT}/ai-generation.png`, fullPage: true });

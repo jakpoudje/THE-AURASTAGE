@@ -318,7 +318,7 @@ await check("audio: spot the approved scene into tracks and cues (unplanned scen
   const sc = ws.scenes.find((x: any) => x.scene.id === s1);
   assert(sc.session.id === sessionId && sc.tracks.length >= 2 && sc.clips.some((c: any) => c.source.dialogue_line_id), "no dialogue cue");
   // Honest generators: the built-in synthesiser is ready; nothing unbuilt claims to be connected.
-  assert(ws.generators.every((g: any) => g.id === "aurastage-synth" ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
+  assert(ws.generators.every((g: any) => ["aurastage-synth", "aurastage-voice"].includes(g.id) ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
   return `${r.tracks} tracks, ${r.cues} cues from plan v${r.shot_plan_version_number}`;
 });
 await check("audio: upload a WAV to the private library (non-audio refused); bytes round-trip", async () => {
@@ -684,12 +684,17 @@ await check("casting look: 8 reference views from the profile (one identity), re
   return `${made.length} views · identity ${lk.identity_hash} · age ${age}`;
 });
 // ---- Built-in sound: generate the scene's planned ambience/effects/score in the worker, real WAV in the Assets Library ----
-await check("audio: built-in generation makes real WAVs for the planned cues; a voice is refused (not built); use one on its cue", async () => {
+await check("audio: built-in generation makes real WAVs for the planned cues and speaks a line in the character's Voice DNA; use one on its cue", async () => {
   const ws0 = await api("GET", `/api/projects/${projectId}/audio`);
-  assert(ws0.generators.some((g: any) => g.id === "aurastage-synth" && g.state === "configured") && ws0.generators.some((g: any) => g.id === "voice" && g.state === "not_connected"), "generators");
+  assert(ws0.generators.some((g: any) => g.id === "aurastage-synth" && g.state === "configured") && ws0.generators.some((g: any) => g.id === "aurastage-voice" && g.state === "configured"), "generators");
   const r = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate-cues`, {});
-  assert(r.requested.length >= 1 && r.requested.every((g: any) => g.provider === "aurastage-synth" && g.execution === "native"), JSON.stringify(r).slice(0, 300));
-  await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { kind: "voice", description: "You came.", duration_seconds: 2 }, [412]);
+  assert(r.requested.length >= 1 && r.requested.every((g: any) => ["aurastage-synth", "aurastage-voice"].includes(g.provider) && g.execution === "native"), JSON.stringify(r).slice(0, 300));
+  // Voice: the dialogue cue's line, spoken in the speaker's Voice DNA (Casting profile + the line's emotion).
+  const dx = ws0.scenes.find((x: any) => x.scene.id === s1).clips.find((c: any) => c.source?.dialogue_line_id);
+  await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { kind: "voice", duration_seconds: 2 }, [400]);
+  const v = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { clip_id: dx.id, kind: "voice", duration_seconds: 2 });
+  assert(v.provider === "aurastage-voice" && v.description.length > 0, JSON.stringify(v).slice(0, 300));
+  r.requested.push(v);
   let sc: any;
   for (let i = 0; i < 40; i++) {
     sc = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1);
@@ -698,7 +703,7 @@ await check("audio: built-in generation makes real WAVs for the planned cues; a 
   }
   const done = sc.generations.filter((g: any) => r.requested.some((q: any) => q.id === g.id));
   assert(done.every((g: any) => g.status === "succeeded" && g.asset_id && g.layers.length), JSON.stringify(done.map((g: any) => [g.status, g.error])));
-  const g = done[0];
+  const g = done.find((x: any) => x.kind !== "voice");
   const bytes = new Uint8Array(await (await fetch(`${API}/api/assets/${g.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
   const txt = new TextDecoder().decode(bytes.slice(0, 12));
   assert(txt.startsWith("RIFF") && txt.endsWith("WAVE") && bytes.length > 44 + 48000, `not a real WAV (${bytes.length} bytes)`);
@@ -708,6 +713,9 @@ await check("audio: built-in generation makes real WAVs for the planned cues; a 
   assert(clip.kind === "asset" && clip.asset_id === g.asset_id, "not placed");
   const again = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate-cues`, {});
   assert(!again.requested.some((x: any) => x.clip_id === g.clip_id), "regenerated a cue that already has a sound");
+  const spoken = done.find((x: any) => x.id === v.id);
+  const vb = new Uint8Array(await (await fetch(`${API}/api/assets/${spoken.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
+  assert(new TextDecoder().decode(vb.slice(0, 4)) === "RIFF" && vb.length > 44 + 8000, `voice not a real WAV (${vb.length} bytes)`);
   return `${done.length} sound(s): ${done.map((x: any) => `${x.kind} [${x.layers.map((l: any) => l.name).join(", ")}]`).join("; ")}`;
 });
 // ---- Phase 13-1: Ask AuraStage (plans in the generation worker; test planner until a Claude key is set) ----
@@ -763,11 +771,11 @@ await check("assistant: a discarded suggestion changes nothing; recent requests 
   assert(list.proposals.length >= 2 && list.proposals[0].id === q.id, "list");
   await api("GET", `/api/assistant/proposals/00000000-0000-4000-8000-000000000000`, undefined, [404]);
 });
-await check("AI & Generation readiness: states come from real results in this project (Claude, sketches, references, sound, renders proven; voice not built)", async () => {
+await check("AI & Generation readiness: states come from real results in this project (Claude, sketches, references, sound, voice, renders proven)", async () => {
   const r = await api("GET", `/api/projects/${projectId}/generation-readiness`);
   const st = Object.fromEntries(r.capabilities.map((c: any) => [c.id, c.state]));
   assert(st.assistant === "proven" && st.storyboard === "proven" && st.character_refs === "proven" && st.sound === "proven" && st.delivery === "proven", JSON.stringify(st));
-  assert(st.voice === "not_built", "voice must say not built");
+  assert(st.voice === "proven", `voice ${st.voice}`);
   const video = r.capabilities.find((c: any) => c.id === "video");
   assert(st.video === "needs_key" ? video.headline.includes("RUNWAY_API_KEY") : st.video === "proven" || st.video === "ready", `video ${st.video}`);
   return Object.entries(st).map(([k, v]) => `${k}:${v}`).join(" ");

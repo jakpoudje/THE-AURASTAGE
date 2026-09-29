@@ -67,9 +67,10 @@ async function api(method, p, body) {
     await page.getByRole("tablist", { name: "Scenes" }).waitFor();
     await page.getByText("Spot this scene to lay out dialogue").waitFor();
   });
-  await step("generators are shown honestly: built-in sound ready and free; voice not built yet", async () => {
+  await step("generators are shown honestly: built-in sound and built-in voice ready and free; clean-up not built yet", async () => {
     await page.getByTestId("generator-aurastage-synth").getByText("built in · free").waitFor();
-    await page.getByTestId("generator-voice").getByText("not built yet", { exact: true }).waitFor();
+    await page.getByTestId("generator-aurastage-voice").getByText("built in · free").waitFor();
+    await page.getByTestId("generator-cleanup").getByText("not built yet", { exact: true }).waitFor();
   });
   await step("spot audio from the approved shot plan: dialogue, ambience and score cues; survives reload", async () => {
     await page.getByRole("button", { name: "Spot audio from the shot plan" }).click();
@@ -152,7 +153,7 @@ async function api(method, p, body) {
 
   await step("generate the scene's planned sounds with the built-in synthesiser; listen; use one on its cue; reload: kept, and it's in the Assets Library", async () => {
     await page.getByRole("button", { name: "Generate all planned sounds for this scene" }).click();
-    await page.getByText(/Generating \d+ planned sounds? with the built-in synthesiser/).waitFor();
+    await page.getByText(/Generating \d+ planned sounds? with the built-in generators/).waitFor();
     await page.getByRole("button", { name: /Clip Score/ }).click();
     const gen = page.getByRole("region", { name: "Generate this sound" });
     await gen.getByTestId("generation").getByText("Ready").waitFor({ timeout: 20000 });
@@ -170,11 +171,23 @@ async function api(method, p, body) {
     await page.getByRole("button", { name: "Generate all planned sounds for this scene" }).click();
     await page.getByText(/Nothing new to generate|already generated/).waitFor();
   });
-  await step("a dialogue cue offers no fake voice generator", async () => {
+  await step("speak a dialogue line in the character's Voice DNA with the built-in voice; listen; it's in the Assets Library; reload: kept", async () => {
     await page.getByRole("button", { name: "Clip tunde-line" }).click();
-    if (await page.getByRole("region", { name: "Generate this sound" }).count()) throw new Error("dialogue clip offered generation");
-    const r = await api("POST", `/api/projects/${P}/audio/scenes/${s1}/generate`, { kind: "voice", description: "You came.", duration_seconds: 2 });
-    if (r.error?.message !== "No voice generator is connected yet.") throw new Error(JSON.stringify(r));
+    if (await page.getByRole("region", { name: "Generate this sound" }).count()) throw new Error("dialogue clip offered sound-effect generation");
+    const v = page.getByRole("region", { name: "Generate this voice" });
+    await v.getByRole("button", { name: "Generate voice" }).click();
+    await v.getByTestId("generation").getByText("Ready").waitFor({ timeout: 20000 });
+    await v.getByTestId("generation").getByText(/Built-in voice \(robotic\) · (Adult|Young|Elder|Child) (male|female) voice/).waitFor();
+    await v.getByRole("button", { name: "▶ Listen" }).click();
+    await v.getByLabel("Generated sound").waitFor();
+    await page.screenshot({ path: `${OUT}/audio-voice.png` });
+    const lib = await api("GET", `/api/projects/${P}/library`);
+    if (!lib.assets.some((a) => /^Voice — You came/.test(a.name))) throw new Error("generated voice not in the Assets Library");
+    await reload();
+    await page.getByRole("button", { name: "Clip tunde-line" }).click();
+    await page.getByRole("region", { name: "Generate this voice" }).getByTestId("generation").getByText("Ready").waitFor();
+    const r = await api("POST", `/api/projects/${P}/audio/scenes/${s1}/generate`, { kind: "voice", duration_seconds: 2 });
+    if (r.error?.message !== "Choose the dialogue line to speak.") throw new Error(JSON.stringify(r));
   });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();

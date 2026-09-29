@@ -8,6 +8,8 @@
 FROM node:22-slim
 
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
+# espeak-ng: the built-in voice (AuraStage built-in voice adapter, providers/audio/voice).
+RUN apt-get update && apt-get install -y --no-install-recommends espeak-ng && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

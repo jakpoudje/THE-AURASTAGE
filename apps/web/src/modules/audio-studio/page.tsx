@@ -220,6 +220,7 @@ export default function AudioStudioPage() {
                         generations={s.generations.filter((g) => g.clip_id === clip.id)}
                         canGenerate={canGenerate}
                         onGenerate={(body) => d.generate(s.scene.id, body)}
+                        voiceReady={ws.generators.some((g) => g.kinds.includes("voice") && g.state === "configured")}
                       />
                     )}
                     <Mixer tracks={s.tracks} player={player} busy={d.busy !== null} onChange={(tid, p) => d.updateTrack(tid, p)} />

@@ -67,6 +67,16 @@ export const listGenerations = (db: SupabaseClient, p: string) =>
   rows(db.from("audio_generations").select("id, scene_id, clip_id, kind, description, duration_seconds, provider, model, execution, seed, status, asset_id, result, error, created_at, completed_at")
     .eq("project_id", p).order("created_at", { ascending: false }).limit(300));
 export const requestGeneration = (db: SupabaseClient, a: { project: string; scene: string; clip: string | null; kind: string; description: string; duration: number; mood: string[];
-  provider: string; model: string; execution: string; seed: number; engineVersion: string }) =>
+  provider: string; model: string; execution: string; seed: number; engineVersion: string; params?: Record<string, unknown> }) =>
   rpc<Row>(db, "request_audio_generation", { p_project: a.project, p_scene: a.scene, p_clip: a.clip, p_kind: a.kind, p_description: a.description, p_duration: a.duration,
-    p_mood: a.mood, p_provider: a.provider, p_model: a.model, p_execution: a.execution, p_seed: a.seed, p_params: {}, p_engine_version: a.engineVersion });
+    p_mood: a.mood, p_provider: a.provider, p_model: a.model, p_execution: a.execution, p_seed: a.seed, p_params: a.params ?? {}, p_engine_version: a.engineVersion });
+// Read-only: the dialogue line and its speaker's Casting profile, for Voice DNA.
+export async function getLineWithSpeaker(db: SupabaseClient, lineId: string) {
+  const { data: l, error } = await db.from("dialogue_lines").select("id, scene_id, project_id, text, speaker_name, character_id, emotion, intensity, estimated_seconds").eq("id", lineId).maybeSingle();
+  if (error) throw mapDbError(error);
+  if (!l) return null;
+  const c = (l as Row).character_id
+    ? ((await db.from("characters").select("id, name, age, gender, nationality, personality, description").eq("id", (l as Row).character_id).maybeSingle()).data as Row | null)
+    : null;
+  return { line: l as Row, character: c };
+}

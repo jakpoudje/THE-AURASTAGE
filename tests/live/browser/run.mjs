@@ -98,6 +98,17 @@ await check("casting look panel: generate a character's reference views; images 
   await panel.getByText("8 of 16 made").waitFor();
   await panel.getByTestId("look-back:FULL").locator("img").waitFor();
 });
+await check("casting Voice DNA: the voice comes from the profile and says why; reload: same", async () => {
+  await page.getByRole("button", { name: "Voice DNA" }).click();
+  const d = await page.getByTestId("voice-description").innerText();
+  if (!/voice, (low|mid|high) register, (slow|medium|quick) pace/.test(d)) throw new Error("no voice description: " + d);
+  await page.getByRole("list", { name: "Why this voice" }).waitFor();
+  await page.reload();
+  await page.getByRole("button", { name: /Tunde Okafor/ }).first().click();
+  await page.getByRole("button", { name: "Voice DNA" }).click();
+  await page.getByTestId("voice-description").getByText(d).waitFor();
+  return d;
+});
 await check("dialogue: bring in + approve scene, reload: still approved", async () => {
   await page.goto(projectUrl + "/dialogue");
   await page.getByRole("button", { name: "Bring in dialogue" }).click();
@@ -192,6 +203,20 @@ await check("audio: spot, upload a WAV onto the line, measure, approve, export; 
   const b = fs.readFileSync(out);
   if (b.subarray(0, 4).toString() !== "RIFF" || b.readUInt32LE(24) !== 48000) throw new Error("export is not a 48 kHz WAV");
   return `${msg} · export ${b.length} bytes`;
+});
+await check("audio: speak the line in Tunde's Voice DNA with the built-in voice (worker); listen; reload: kept", async () => {
+  await page.getByRole("button", { name: "Clip live-line" }).click();
+  const v = page.getByRole("region", { name: "Generate this voice" });
+  await v.getByRole("button", { name: "Generate voice" }).click();
+  await v.getByTestId("generation").getByText("Ready").waitFor({ timeout: 90000 });
+  const label = await v.getByTestId("generation").first().innerText();
+  if (!/Built-in voice \(robotic\)/.test(label)) throw new Error("not labelled as the built-in voice: " + label);
+  await v.getByRole("button", { name: "▶ Listen" }).click();
+  await v.getByLabel("Generated sound").waitFor();
+  await reload("Professional Sound for");
+  await page.getByRole("button", { name: "Clip live-line" }).click();
+  await page.getByRole("region", { name: "Generate this voice" }).getByTestId("generation").getByText("Ready").waitFor();
+  return label.replace(/\s+/g, " ");
 });
 await check("editorial: build the assembly, blade, lift offline shots, lock; reload after each: kept", async () => {
   const marker = "Perfect Your Film";
@@ -398,7 +423,7 @@ await check("AI & Generation page: every generator's state with proof from this 
   await page.getByRole("link", { name: "AI & Generation" }).click();
   await page.waitForURL("**/generation");
   await page.getByTestId("cap-storyboard").getByText("Working — proven").waitFor();
-  await page.getByTestId("cap-voice").getByText("Not built yet", { exact: true }).waitFor();
+  await page.getByTestId("cap-voice").getByText("Working — proven").waitFor();
   await page.reload();
   await page.getByTestId("cap-assistant").getByText(/Working — proven|Ready — not tried yet/).first().waitFor();
   return await page.getByTestId("readiness-summary").innerText();

@@ -28,7 +28,7 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
     await s.getByTestId("status-worker:render-worker").getByText("Not responding").waitFor();
     await s.getByText("last checked in 9 min ago").waitFor();
     await s.getByTestId("status-media").getByText("Not connected").waitFor();
-    await page.getByRole("list", { name: "Provider status" }).getByText("Voice / dialogue generation").waitFor();
+    await page.getByRole("list", { name: "Provider status" }).getByText("Studio-quality voices").waitFor();
   });
   await step("search the guides and troubleshooting", async () => {
     await page.getByLabel("Search help").fill("invite");

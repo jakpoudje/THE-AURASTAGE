@@ -110,7 +110,7 @@ export function GeneratorsPanel({ generators, canGenerate, busy, onGenerateCues 
           Generate all planned sounds for this scene
         </button>
       )}
-      <p className="mt-2 text-[11px] text-white/35">Ambience, effects, Foley and score cues come from the script and Scene DNA. Generated sounds go to the Assets Library; you choose where to use them.</p>
+      <p className="mt-2 text-[11px] text-white/35">Dialogue, ambience, effects, Foley and score cues come from the script and Scene DNA. Generated sounds go to the Assets Library; you choose where to use them.</p>
     </div>
   );
 }

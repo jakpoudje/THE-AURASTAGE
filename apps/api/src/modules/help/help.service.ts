@@ -45,8 +45,8 @@ export async function systemStatus(db: SupabaseClient, env: Env = process.env, n
     }
   }
   const notBuilt = [
-    { id: "voice", name: "Voice / dialogue generation", note: "Not connected yet — needs a voice provider account" },
-    { id: "music", name: "Music generation", note: "Not connected yet — needs a music provider account" },
+    { id: "voice", name: "Studio-quality voices", note: "Not connected yet — needs a voice provider account (the built-in robotic voice works meanwhile)" },
+    { id: "music", name: "Studio-quality music", note: "Not connected yet — needs a music provider account (the built-in synthesised score works meanwhile)" },
     { id: "lipsync", name: "Lip-sync", note: "Not connected yet — needs a lip-sync provider account" },
   ];
   return {

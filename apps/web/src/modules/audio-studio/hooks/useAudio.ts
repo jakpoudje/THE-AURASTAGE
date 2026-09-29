@@ -137,7 +137,7 @@ export function useAudio(projectId: string) {
     generateCues: (sceneId: string) =>
       run("generate", () => audioApi.generateCues(projectId, sceneId), (r) =>
         r.requested.length
-          ? `Generating ${r.requested.length} planned sound${r.requested.length === 1 ? "" : "s"} with the built-in synthesiser${r.skipped.length ? ` (${r.skipped.length} already generated or not supported)` : ""}. Nothing is placed until you choose “Use this”.`
+          ? `Generating ${r.requested.length} planned sound${r.requested.length === 1 ? "" : "s"} with the built-in generators${r.skipped.length ? ` (${r.skipped.length} already generated or not supported)` : ""}. Nothing is placed until you choose “Use this”.`
           : "Nothing new to generate — every ambience, effect and score cue already has a generated sound or a recording."),
     approve: (sceneId: string) => run("approve", () => audioApi.approve(projectId, sceneId), (r) => `Scene mix approved as version ${r.version_number}.`),
     exportStem: async (s: AudioScene, bus?: Bus) => {

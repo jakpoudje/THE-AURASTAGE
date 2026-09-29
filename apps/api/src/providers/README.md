@@ -40,5 +40,7 @@ adapters — added with their phases (Audio Studio etc.).
 - `reasoning/` — Claude (`ANTHROPIC_API_KEY`, model `claude-opus-5-5`) and the labelled test planner. Structured-output
   schemas are sent with supported keywords only; limits go into descriptions and answers are validated with zod.
 - `audio/` — `AudioAdapter` contract (ambience, fx, foley, score, voice). `aurastage-synth` is native (free, always
-  configured) and never makes voices. `audioBackendsFor(kind, env)` only returns backends that can make that kind AND
-  are configured. Paid sound/voice providers will be added here.
+  configured) and never makes voices. `aurastage-voice` is native and speaks dialogue with espeak-ng using the Voice DNA
+  in `params.voice` (configured only where the espeak-ng program exists; arguments passed without a shell).
+  `audioBackendsFor(kind, env)` only returns backends that can make that kind AND are configured. Paid sound/voice
+  providers will be added here.

@@ -12,7 +12,7 @@ describe("AuraStage built-in sound", () => {
   it("never claims to make voices; routing only offers backends that can", async () => {
     await expect(aurastageSynthAdapter.generate({ kind: "voice", model: "synth-1", description: "hello", duration_seconds: 1, mood: [], seed: 1, params: {} }, {})).rejects.toThrow(/doesn't make voices/);
     expect(audioBackendsFor("score", {}).map((a) => a.id)).toEqual(["aurastage-synth"]);
-    expect(audioBackendsFor("voice", {})).toEqual([]);
+    expect(audioBackendsFor("voice", {}).map((a) => a.id)).not.toContain("aurastage-synth"); // voices come only from a voice backend
     expect(audioStatuses({})[0]).toMatchObject({ id: "aurastage-synth", execution: "native", state: "configured" });
   });
 });

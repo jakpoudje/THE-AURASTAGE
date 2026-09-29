@@ -40,7 +40,12 @@ of `approve_audio_session` checks the same rule).
 ambience / effect / Foley / score cue of a scene that has no recording and no generation yet (`.../generate-cues`).
 Only backends from the Provider Gateway's audio side that can make that kind of sound AND are configured are used —
 today AuraStage's built-in synthesiser (`aurastage-synth`, `proceduralAudioEngine` 1.0.0: native, free, placeholder
-quality, every layer explained). Voice isn't built yet and is refused with 412, never faked. `request_audio_generation`
+quality, every layer explained) and the built-in voice (`aurastage-voice`, espeak-ng, installed in the API and worker
+images). A voice request speaks the dialogue line of the cue (or `line_id`) — the words come from the approved script —
+in the speaker's Voice DNA (`voiceCastingEngine` 1.0.0: the Casting profile's gender, age, nationality and personality,
+adjusted by the line's emotion and intensity from Dialogue Intelligence); the Voice DNA is kept in the request's
+`params` (rule 10). It is labelled "robotic" everywhere; where espeak-ng isn't installed, voice is refused with 412,
+never faked. `request_audio_generation`
 is gated `audio:generate`; the generation worker makes the WAV, stores it privately and the Assets domain registers it
 (`app_private.register_generated_asset`) tagged `generated`, linked to the scene, with provenance (provider, model,
 engine version, seed). Using it on a cue is the person's choice ("Use this" = the normal clip save), so nothing is
@@ -52,12 +57,14 @@ Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 ## Relevant engines
 - `engines/audio/audioSpottingEngine` — tracks and cues from shots, lines and Scene DNA (evidence per cue).
 - `engines/audio/loudnessMeterEngine` — ITU-R BS.1770-4 / EBU R128 (integrated, true peak, LRA). Runs in the browser on the rendered mix.
+- `engines/audio/proceduralAudioEngine` — the built-in synthesiser's layer plan.
+- `engines/audio/voiceCastingEngine` — Voice DNA per character and line (also shown in Casting → Voice DNA).
 
 ## API endpoints
-- `GET  /api/projects/:id/audio` — scenes with approved plans, session, tracks, clips, latest measurement, readiness predicates, recordings, generators from evidence (built-in sound ready; voice not built yet), and each scene's generations
+- `GET  /api/projects/:id/audio` — scenes with approved plans, session, tracks, clips, latest measurement, readiness predicates, recordings, generators from evidence (built-in sound and voice where installed; clean-up not built yet), and each scene's generations
 - `POST /api/projects/:id/audio/scenes/:sceneId/spot` — 412 unless the shot plan is approved and current
 - `POST /api/projects/:id/audio/scenes/:sceneId/approve` — 412 with the failing blocking predicates
-- `POST /api/projects/:id/audio/scenes/:sceneId/generate` — `{ clip_id?, kind, description, duration_seconds, provider?, seed? }`; 412 when no backend can make it
+- `POST /api/projects/:id/audio/scenes/:sceneId/generate` — `{ clip_id?, line_id?, kind, description, duration_seconds, provider?, seed? }` (voice: no description — the line is spoken; 400 without a line); 412 when no backend can make it
 - `POST /api/projects/:id/audio/scenes/:sceneId/generate-cues` — `{ requested, skipped }`
 - `PATCH /api/audio-tracks/:id` — `UpdateAudioTrackInput`
 - `POST /api/audio-sessions/:id/clips`, `PATCH|DELETE /api/audio-clips/:id` — `SaveAudioClipInput`

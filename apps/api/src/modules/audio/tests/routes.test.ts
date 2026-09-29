@@ -107,7 +107,9 @@ describe("Audio Studio routes", () => {
     expect(ws.scenes[0].session.review_reason).toMatch(/Your recordings are kept/);
     // Built-in sound is always available; voice isn't built yet and says so (never a fake "connected").
     expect(ws.generators.find((g: Row) => g.id === "aurastage-synth")).toMatchObject({ state: "configured", execution: "native" });
-    expect(ws.generators.find((g: Row) => g.id === "voice")).toMatchObject({ state: "not_connected" });
+    // Voice: the built-in voice where espeak-ng is installed, otherwise an honest "not connected".
+    const v = ws.generators.find((g: Row) => g.id === "aurastage-voice" || g.id === "voice");
+    expect(v.state === "configured" ? v.id === "aurastage-voice" : v.state === "not_connected").toBe(true);
     expect(ws.target).toMatchObject({ integrated_lufs: -23 });
   });
 
