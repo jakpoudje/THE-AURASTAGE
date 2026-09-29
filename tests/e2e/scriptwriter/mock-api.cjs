@@ -720,7 +720,7 @@ http.createServer((req, res) => {
         const s = asessions.find((x) => x.scene_id === scene.id) || null;
         if (!pv && !s) continue;
         if (s) audioReview(s);
-        const st = s ? atracks.filter((t) => t.session_id === s.id) : []; const sc = s ? aclips.filter((c) => c.session_id === s.id) : [];
+        const st = s ? atracks.filter((t) => t.session_id === s.id).sort((a, b) => a.ordinal - b.ordinal) : []; const sc = s ? aclips.filter((c) => c.session_id === s.id) : [];
         const me = s ? [...ameasures].reverse().find((x) => x.session_id === s.id) || null : null; const r = s ? aud.audioReadiness(s, st, sc, me) : null;
         out.push({ scene: { id: scene.id, number: scene.number, heading: scene.heading },
           plan: pv ? { version_id: pv.id, version_number: pv.version_number, usable: plan.status === "approved" && plan.review_state === "current" } : null,
@@ -772,6 +772,26 @@ http.createServer((req, res) => {
       const p = cc0.UpdateAudioMixInputSchema.safeParse(b); if (!p.success) return aerr(400, p.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
       if (p.data.revision !== s.revision) return aerr(409, "the mix changed since you opened it — reload to see the latest");
       s.mix = p.data.mix; atouch(s); s.status = "draft"; return send(200, { session_id: s.id, revision: s.revision, mix: s.mix });
+    }
+    // Tracks added by hand (migration 0031).
+    if ((m = u.match(/^\/api\/audio-sessions\/([^/]+)\/tracks$/)) && req.method === "POST") {
+      const p = cc0.AddAudioTrackInputSchema.safeParse(b); if (!p.success) return aerr(400, "choose a name and a department");
+      const s = asessions.find((x) => x.id === m[1]); const mine = atracks.filter((t) => t.session_id === s.id);
+      if (mine.some((t) => t.name.toLowerCase() === p.data.name.toLowerCase())) return aerr(409, `there's already a track called ${p.data.name}`);
+      const t = { id: crypto.randomUUID(), session_id: s.id, ordinal: Math.max(0, ...mine.map((x) => x.ordinal)) + 1, name: p.data.name, family: p.data.family, gain_db: 0, pan: 0, mute: false, solo: false, fx: {}, added_by_hand: true };
+      atracks.push(t); atouch(s); s.status = "draft"; return send(200, t);
+    }
+    if ((m = u.match(/^\/api\/audio-tracks\/([^/]+)\/move$/)) && req.method === "POST") {
+      const t = atracks.find((x) => x.id === m[1]);
+      const list = atracks.filter((x) => x.session_id === t.session_id).sort((x1, x2) => x1.ordinal - x2.ordinal); list.forEach((x, i) => (x.ordinal = i + 1));
+      const o = list[list.indexOf(t) + (b.direction < 0 ? -1 : 1)]; if (o) { const k = t.ordinal; t.ordinal = o.ordinal; o.ordinal = k; }
+      const s = asessions.find((x) => x.id === t.session_id); atouch(s); s.status = "draft"; return send(200, { moved: true });
+    }
+    if ((m = u.match(/^\/api\/audio-tracks\/([^/]+)$/)) && req.method === "DELETE") {
+      const i = atracks.findIndex((x) => x.id === m[1]); const t = atracks[i];
+      if (!t.added_by_hand) return aerr(400, "tracks from spotting can't be removed — mute it instead");
+      const n = aclips.filter((c) => c.track_id === t.id).length; if (n) return aerr(409, `this track still holds ${n} clip(s) — move or delete them first`);
+      atracks.splice(i, 1); const s = asessions.find((x) => x.id === t.session_id); atouch(s); s.status = "draft"; return send(200, { deleted: true });
     }
     if ((m = u.match(/^\/api\/audio-tracks\/([^/]+)$/)) && req.method === "PATCH") {
       const pt = cc0.UpdateAudioTrackInputSchema.safeParse(b); if (!pt.success) return aerr(400, pt.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));

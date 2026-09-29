@@ -19,6 +19,7 @@ import { ClipInspector } from "./components/ClipInspector";
 import { Mixer } from "./components/Mixer";
 import { DeliveryPanel, GeneratorsPanel } from "./components/DeliveryPanel";
 import { Player } from "./state/mixEngine";
+import type { AudioTrack } from "@aurastage/contracts";
 
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 
@@ -29,6 +30,7 @@ export default function AudioStudioPage() {
   const canGenerate = can(access, "audio", "generate");
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [clipId, setClipId] = useState<string | null>(null);
+  const [trackId, setTrackId] = useState<string | null>(null);
   const [pps, setPps] = useState(60);
   const [pos, setPos] = useState(0);
   const player = useRef(new Player()).current;
@@ -60,6 +62,8 @@ export default function AudioStudioPage() {
   const ws = d.ws;
   const s = ws.scenes.find((x) => x.scene.id === sceneId) ?? ws.scenes[0] ?? null;
   const clip = s?.clips.find((c) => c.id === clipId) ?? null;
+  // New clips go on the chosen track (click a track name), else the first one.
+  const clipTrack = s?.tracks.find((t) => t.id === trackId) ?? s?.tracks[0] ?? null;
   const seconds = s?.session?.scene_seconds ?? 0;
 
   async function togglePlay() {
@@ -180,11 +184,11 @@ export default function AudioStudioPage() {
                       </label>
                       <span className="flex-1" />
                       <button
-                        onClick={() => d.createClip(s.session!.id, { track_id: s.tracks[0].id, label: "New clip", start_seconds: Math.round(pos * 100) / 100, duration_seconds: 2 })}
-                        disabled={d.busy !== null || !s.tracks.length}
+                        onClick={() => d.createClip(s.session!.id, { track_id: clipTrack!.id, label: "New clip", start_seconds: Math.round(pos * 100) / 100, duration_seconds: 2 })}
+                        disabled={d.busy !== null || !clipTrack}
                         className="rounded border border-aura-border px-3 py-1.5 text-xs disabled:opacity-40"
                       >
-                        + Add clip at playhead
+                        + Add clip on {clipTrack?.name ?? "a track"} at playhead
                       </button>
                     </>
                   )}
@@ -205,7 +209,16 @@ export default function AudioStudioPage() {
                       onSelectClip={setClipId}
                       onMoveClip={(cid, start) => d.updateClip(cid, { start_seconds: start }, `Moved to ${start.toFixed(2)}s.`)}
                       onSeek={(t) => (player.stop(), setPlaying(false), setPos(t))}
-                      onTrackChange={(tid, patch) => d.updateTrack(tid, patch)}
+                      onTrackChange={(tid, patch) => d.updateTrack(tid, patch, patch.name ? `Renamed to “${patch.name}”.` : null)}
+                      selectedTrackId={clipTrack?.id ?? null}
+                      onSelectTrack={setTrackId}
+                      onAddTrack={async (name, family) => {
+                        const t = await d.addTrack(s.session!.id, { name, family: family as AudioTrack["family"] });
+                        if (t) setTrackId(t.id);
+                        return t;
+                      }}
+                      onMoveTrack={(tid, dir) => d.moveTrack(tid, dir)}
+                      onRemoveTrack={(tid) => d.deleteTrack(tid)}
                     />
                     {clip && (
                       <ClipInspector

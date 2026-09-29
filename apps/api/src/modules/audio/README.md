@@ -63,6 +63,13 @@ revision, so the loudness measurement goes stale and the mix must be measured ag
 snapshot the strips and the routing. `engines/audio/mixAssistEngine` 1.0.0 computes dialogue ducking automation and the
 master correction for the loudness target.
 
+## Tracks added by hand (migration 0031)
+`POST /api/audio-sessions/:id/tracks` {name, family, after_track_id?} adds a track of any department (it routes to
+that department's bus); `POST /api/audio-tracks/:id/move` {direction: -1|1}; `DELETE /api/audio-tracks/:id` removes a
+track a person added, only when it holds no clips (AURA-AUD-409 otherwise; spotted tracks are muted instead). Names
+are unique per scene (409). Re-spotting never removes tracks added by hand and (bug fix) keeps clips placed by hand.
+All three are gated `audio:edit` and bump the session revision, so the mix must be measured again.
+
 ## Downstream consumers
 Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 

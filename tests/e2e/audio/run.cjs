@@ -232,6 +232,50 @@ async function api(method, p, body) {
     if (!(Math.abs(lufs - -23) <= 1.5)) throw new Error("not on target after correction: " + msg);
     await routing.getByTestId("loudness-fix").getByText(/Already on target|by 0\.|by 1\./).waitFor();
   });
+  await step("add your own tracks (any department), rename, move, put a clip on it; re-spot keeps them; remove an empty one; reload: kept", async () => {
+    const tl = page.getByLabel("Timeline");
+    await page.getByLabel("New track name").fill("Radio");
+    await page.getByLabel("New track department").selectOption("FX");
+    await page.getByRole("button", { name: "+ Add track" }).click();
+    await page.getByText(/Track “Radio” added/).waitFor();
+    await tl.getByRole("group", { name: "Track Radio" }).waitFor();
+    await page.getByLabel("New track name").fill("radio");
+    await page.getByRole("button", { name: "+ Add track" }).click();
+    await page.getByText(/already a track called radio/).waitFor();
+    await page.getByLabel("New track name").fill("Market walla");
+    await page.getByLabel("New track department").selectOption("WALLA");
+    await page.getByRole("button", { name: "+ Add track" }).click();
+    await page.getByText(/Track “Market walla” added/).waitFor();
+    // Rename, then move it up one place.
+    await tl.getByRole("button", { name: "Rename Radio" }).click();
+    await tl.getByLabel("Rename Radio").fill("Radio news");
+    await tl.getByLabel("Rename Radio").press("Enter");
+    await page.getByText(/Renamed to “Radio news”/).waitFor();
+    const before = await page.evaluate(() => [...document.querySelectorAll('[aria-label^="Track "]')].map((x) => x.getAttribute("aria-label")));
+    await tl.getByRole("button", { name: "Move Radio news up" }).click();
+    await page.waitForFunction((n) => { const g = [...document.querySelectorAll('[aria-label^="Track "]')].map((x) => x.getAttribute("aria-label")); return g.indexOf("Track Radio news") === n; }, before.indexOf("Track Radio news") - 1);
+    // New clips go on the chosen track (the newest track is chosen after adding; click a name to choose another).
+    await page.getByRole("button", { name: "+ Add clip on Market walla at playhead" }).waitFor();
+    await tl.getByRole("group", { name: "Track Radio news" }).locator("button[aria-pressed]").first().click();
+    await page.getByRole("button", { name: "+ Add clip on Radio news at playhead" }).click();
+    await page.getByText("Clip added.").waitFor();
+    await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip" }).waitFor();
+    // Re-spotting keeps both tracks and the clip placed by hand.
+    await page.getByRole("button", { name: /Re-spot from upstream/ }).click();
+    await page.getByText(/Spotted \d+ cues/).waitFor();
+    await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip" }).waitFor();
+    await tl.getByRole("group", { name: "Track Market walla" }).waitFor();
+    // A track with clips can't be removed; an empty one can. Spotted tracks have no remove button.
+    await tl.getByRole("button", { name: "Remove Radio news" }).click();
+    await page.getByText(/still holds 1 clip/).waitFor();
+    await tl.getByRole("button", { name: "Remove Market walla" }).click();
+    await page.getByText("Track removed.").waitFor();
+    if (await tl.getByRole("group", { name: "Track Market walla" }).count()) throw new Error("walla track still there");
+    if (await tl.getByRole("button", { name: /^Remove (DX|BG|MX)/ }).count()) throw new Error("spotted tracks must not be removable");
+    await page.screenshot({ path: `${OUT}/audio-tracks.png` });
+    await page.reload();
+    await page.getByLabel("Timeline").getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip" }).waitFor();
+  });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();
   console.log(failed ? `${failed} FAILED` : "ALL PASSED");

@@ -2,7 +2,8 @@
 
 // Multitrack timeline: ruler, playhead, one lane per track. Planned cues are
 // dashed outlines (no sound yet); recordings show their real waveform. Drag a
-// clip sideways to move it (saved on release); click to select.
+// clip sideways to move it (saved on release); click to select. Tracks can be added (any department), renamed,
+// reordered and — when added by hand and empty — removed.
 
 import { useRef, useState } from "react";
 import type { AudioClip, AudioTrack } from "@aurastage/contracts";
@@ -13,7 +14,55 @@ const FAMILY_COLOR: Record<string, string> = {
   FOLEY: "bg-amber-500/25 border-amber-400/60", FX: "bg-orange-500/25 border-orange-400/60", WALLA: "bg-orange-500/25 border-orange-400/60",
   BG: "bg-emerald-500/20 border-emerald-400/50", MX: "bg-fuchsia-500/20 border-fuchsia-400/50", SCORE: "bg-violet-500/25 border-violet-400/60",
 };
-const HEADER = 180;
+const HEADER = 236;
+export const FAMILY_LABEL: Record<string, string> = {
+  DX: "Dialogue", ADR: "ADR", VO: "Voice-over", FOLEY: "Foley", FX: "Effects", WALLA: "Walla", BG: "Backgrounds", MX: "Music", SCORE: "Score",
+};
+
+/** Header row under the lanes: name a new track and choose its department (it routes to that department's bus). */
+function AddTrackRow({ busy, onAdd }: { busy: boolean; onAdd: (name: string, family: string) => Promise<unknown> }) {
+  const [name, setName] = useState("");
+  const [family, setFamily] = useState("FX");
+  const submit = async () => {
+    if (!name.trim()) return;
+    if (await onAdd(name.trim(), family)) setName("");
+  };
+  return (
+    <div className="flex items-center gap-2 border-b border-aura-border/60 bg-aura-panel/60 px-2 py-2 text-xs" role="group" aria-label="Add a track">
+      <span className="text-white/50">New track</span>
+      <input aria-label="New track name" value={name} maxLength={80} placeholder="e.g. Radio, Crowd, Rain on glass"
+        onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
+        className="w-56 rounded border border-aura-border bg-black/30 px-2 py-1" />
+      <select aria-label="New track department" value={family} onChange={(e) => setFamily(e.target.value)} className="rounded border border-aura-border bg-black/30 px-2 py-1">
+        {Object.entries(FAMILY_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </select>
+      <button onClick={submit} disabled={busy || !name.trim()} className="rounded border border-aura-gold/60 px-3 py-1 text-aura-gold disabled:opacity-40">+ Add track</button>
+      <span className="text-white/40">Tracks you add stay when the scene is re-spotted.</span>
+    </div>
+  );
+}
+
+/** Track name: click to choose it for new clips, double-click (or ✎) to rename. */
+function TrackName({ t, selected, busy, onSelect, onRename }: { t: AudioTrack; selected: boolean; busy: boolean; onSelect: () => void; onRename: (name: string) => void }) {
+  const [edit, setEdit] = useState<string | null>(null);
+  if (edit !== null)
+    return (
+      <input autoFocus aria-label={`Rename ${t.name}`} value={edit} maxLength={80} onChange={(e) => setEdit(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); if (e.key === "Escape") setEdit(null); }}
+        onBlur={() => { const n = (edit ?? "").trim(); setEdit(null); if (n && n !== t.name) onRename(n); }}
+        className="min-w-0 flex-1 rounded border border-aura-gold/60 bg-black/40 px-1 text-xs" />
+    );
+  return (
+    <>
+      <button onClick={onSelect} onDoubleClick={() => !busy && setEdit(t.name)} aria-pressed={selected} title={`${FAMILY_LABEL[t.family] ?? t.family} · click to put new clips here, double-click to rename`}
+        className={`min-w-0 flex-1 truncate text-left text-xs ${selected ? "text-aura-gold" : ""}`}>
+        {t.name}
+        <span className="ml-1 text-[9px] uppercase text-white/35">{t.added_by_hand ? "yours" : FAMILY_LABEL[t.family] ?? t.family}</span>
+      </button>
+      <button aria-label={`Rename ${t.name}`} disabled={busy} onClick={() => setEdit(t.name)} className="text-[10px] text-white/40 hover:text-white">✎</button>
+    </>
+  );
+}
 
 function Wave({ buf, clip, width }: { buf: AudioBuffer; clip: AudioClip; width: number }) {
   const n = Math.max(8, Math.min(400, Math.floor(width / 2)));
@@ -28,11 +77,14 @@ function Wave({ buf, clip, width }: { buf: AudioBuffer; clip: AudioClip; width: 
 
 export function Timeline({
   seconds, tracks, clips, buffers, pps, position, selectedClipId, busy, onSelectClip, onMoveClip, onSeek, onTrackChange,
+  selectedTrackId, onSelectTrack, onAddTrack, onMoveTrack, onRemoveTrack,
 }: {
   seconds: number; tracks: AudioTrack[]; clips: AudioClip[]; buffers: Map<string, AudioBuffer>; pps: number; position: number;
   selectedClipId: string | null; busy: boolean;
   onSelectClip: (id: string | null) => void; onMoveClip: (id: string, start: number) => void; onSeek: (t: number) => void;
-  onTrackChange: (id: string, patch: { mute?: boolean; solo?: boolean }) => void;
+  onTrackChange: (id: string, patch: { mute?: boolean; solo?: boolean; name?: string }) => void;
+  selectedTrackId: string | null; onSelectTrack: (id: string) => void;
+  onAddTrack: (name: string, family: string) => Promise<unknown>; onMoveTrack: (id: string, direction: -1 | 1) => void; onRemoveTrack: (id: string) => void;
 }) {
   const [drag, setDrag] = useState<{ id: string; x0: number; start0: number; start: number } | null>(null);
   const moved = useRef(false);
@@ -57,10 +109,15 @@ export function Timeline({
             ))}
           </div>
         </div>
-        {tracks.map((t) => (
+        {tracks.map((t, ti) => (
           <div key={t.id} className="flex h-14 border-b border-aura-border/60" role="group" aria-label={`Track ${t.name}`}>
-            <div style={{ width: HEADER }} className="flex shrink-0 items-center gap-1.5 border-r border-aura-border bg-aura-panel px-2">
-              <span className="min-w-0 flex-1 truncate text-xs">{t.name}</span>
+            <div style={{ width: HEADER }} className={`flex shrink-0 items-center gap-1 border-r border-aura-border px-2 ${selectedTrackId === t.id ? "bg-aura-gold/10" : "bg-aura-panel"}`}>
+              <TrackName t={t} selected={selectedTrackId === t.id} busy={busy} onSelect={() => onSelectTrack(t.id)} onRename={(name) => onTrackChange(t.id, { name })} />
+              <button aria-label={`Move ${t.name} up`} disabled={busy || ti === 0} onClick={() => onMoveTrack(t.id, -1)} className="text-[10px] text-white/50 disabled:opacity-20">▲</button>
+              <button aria-label={`Move ${t.name} down`} disabled={busy || ti === tracks.length - 1} onClick={() => onMoveTrack(t.id, 1)} className="text-[10px] text-white/50 disabled:opacity-20">▼</button>
+              {t.added_by_hand && (
+                <button aria-label={`Remove ${t.name}`} disabled={busy} title="Remove this track (only when it has no clips)" onClick={() => onRemoveTrack(t.id)} className="text-[11px] text-white/40 hover:text-red-300">✕</button>
+              )}
               <button
                 aria-label={`Mute ${t.name}`}
                 aria-pressed={t.mute}
@@ -127,6 +184,7 @@ export function Timeline({
             </div>
           </div>
         ))}
+        <AddTrackRow busy={busy} onAdd={onAddTrack} />
         <div className="pointer-events-none absolute bottom-0 top-0 w-px bg-aura-gold" style={{ left: HEADER + position * pps }} aria-hidden />
       </div>
     </div>
