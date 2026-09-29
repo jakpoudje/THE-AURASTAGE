@@ -13,3 +13,5 @@ Planned (SRS §15): `dialogueDrivenEditEngine`, `pacingEditEngine`, `continuityE
 
 Each engine has its own folder (see `_template/`) with `index.ts`, `engine.ts`,
 `input.schema.ts`, `output.schema.ts`, `rules.ts`, `validator.ts`, `version.ts`, `tests/`.
+
+- `timelineAutomationEngine` v1.0.0 — volume automation of the final assembly (level at a frame; draw, set, move, remove, dip, clear), shared by Editorial playback and the render worker.

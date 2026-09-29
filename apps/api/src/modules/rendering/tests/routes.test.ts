@@ -92,7 +92,7 @@ describe("Export & Deliver routes", () => {
     expect(a).toMatchObject({ p_picture_lock_id: LOCK, p_profile_id: "review_copy", p_profile_version: "1.0.0", p_options: { watermark: "FOR REVIEW", burn_timecode: true } });
     expect(a.p_manifest_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(a.p_manifest.picture_lock).toEqual({ id: LOCK, lock_number: 1, timeline_version_id: LV });
-    expect(a.p_manifest.sources).toEqual({ take_ids: [TK1], audio_session_version_ids: [AV1], asset_ids: [AS1], dialogue_line_ids: [L1] });
+    expect(a.p_manifest.sources).toEqual({ take_ids: [TK1], audio_session_version_ids: [AV1], asset_ids: [AS1], dialogue_line_ids: [L1], automation_revision: null });
     expect(a.p_manifest.assets[AS1]).toEqual({ storage_key: "o/p/assets/a.wav", media_type: "audio/wav" });
   });
 

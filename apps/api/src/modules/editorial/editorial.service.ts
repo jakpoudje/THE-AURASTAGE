@@ -9,7 +9,7 @@
 // confirmation and records the impact.
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { TIMELINE_FPS, type EditOperation, type TimelineClip } from "@aurastage/contracts";
+import { TIMELINE_FPS, TimelineAutomationSchema, type EditOperation, type TimelineClip } from "@aurastage/contracts";
 import {
   assemblyTimeline, assemblyTimelineEngine, editDecision, editDecisionEngine, EditRejectedError, editorialQC, editorialQCEngine,
   edlExportEngine, pictureLockEngine, type EngineClip,
@@ -22,7 +22,7 @@ import * as repo from "./editorial.repository";
 import { toClipDTO } from "./editorial.mapper";
 import {
   EditorialConflictError, EditorialLockedError, EditorialNotFoundError, EditorialNotReadyError,
-  validateAssemble, validateEditRequest, validateLock, validateRestore, validateSaveVersion,
+  validateAssemble, validateAutomation, validateEditRequest, validateLock, validateRestore, validateSaveVersion,
 } from "./editorial.validator";
 
 type Row = Record<string, any>;
@@ -158,6 +158,7 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
       ? {
           id: timeline.id, status: timeline.status, revision: timeline.revision, review_state: timeline.review_state, review_reason: timeline.review_reason,
           lock: lock ? { lock_number: lock.lock_number, locked_at: lock.locked_at } : null, updated_at: timeline.updated_at,
+          automation: TimelineAutomationSchema.parse(timeline.automation ?? {}), automation_revision: timeline.automation_revision,
         }
       : null,
     clips: ctx.clips,
@@ -304,7 +305,19 @@ export async function restoreTimelineVersion(db: SupabaseClient, projectId: stri
   await persist(db, ctx, (v.clips as Row[]).map(toClipDTO), {
     action: "restore", summary: `Restored version ${v.version_number} — ${v.label}`, engineVersion: editDecision.ENGINE_VERSION, baseRevision: req.base_revision, breakLock: !!req.break_lock,
   });
+  // The version's sound automation comes back with it (versions keep a copy since migration 0032).
+  const fresh = await repo.getTimeline(db, projectId);
+  if (fresh && v.automation && JSON.stringify(v.automation) !== JSON.stringify(fresh.automation ?? {}))
+    await repo.saveAutomation(db, projectId, TimelineAutomationSchema.parse(v.automation), fresh.automation_revision);
   return { summary: `Restored version ${v.version_number} (“${v.label}”). The cut before it was kept as a version.` };
+}
+
+/** Volume automation of the cut's sound: sound, not picture, so it can change after Picture Lock (stale → 409). */
+export async function saveAutomation(db: SupabaseClient, projectId: string, payload: unknown) {
+  const req = validateAutomation(payload);
+  await assertProjectAccess(db, projectId);
+  const t = await repo.saveAutomation(db, projectId, req.automation, req.base_revision);
+  return { automation: TimelineAutomationSchema.parse(t.automation ?? {}), automation_revision: t.automation_revision as string, points: req.automation.A1.length };
 }
 
 export async function lockPicture(db: SupabaseClient, projectId: string, payload: unknown) {

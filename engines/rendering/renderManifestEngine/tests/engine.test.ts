@@ -34,7 +34,7 @@ describe("renderManifestEngine", () => {
     expect(manifest!.mixes[U(30)].clips).toHaveLength(1);
     expect(manifest!.subtitles!.cues[0]).toMatchObject({ start_frame: 24, text: "You came." });
     expect(manifest!.files).toEqual(["streaming_1080p24.mp4", "captions.srt"]);
-    expect(manifest!.sources).toEqual({ take_ids: [U(20), U(21)], audio_session_version_ids: [U(30)], asset_ids: [U(40)], dialogue_line_ids: ["l1"] });
+    expect(manifest!.sources).toEqual({ take_ids: [U(20), U(21)], audio_session_version_ids: [U(30)], asset_ids: [U(40)], dialogue_line_ids: ["l1"], automation_revision: null });
     expect(manifest!.options).toEqual({ watermark: null, burn_timecode: false }); // streaming masters never carry review marks
   });
   it("review copies keep the watermark and timecode options", () => {

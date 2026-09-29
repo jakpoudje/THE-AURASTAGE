@@ -59,6 +59,8 @@ export async function getVersion(db: SupabaseClient, timelineId: string, version
 export const listLocks = (db: SupabaseClient, timelineId: string) =>
   rows(db.from("picture_locks").select("*").eq("timeline_id", timelineId).order("lock_number", { ascending: false }));
 
+export const saveAutomation = (db: SupabaseClient, p: string, automation: unknown, baseRevision: string) =>
+  rpc<Row>(db, "save_timeline_automation", { p_project_id: p, p_automation: automation, p_base_revision: baseRevision });
 export const saveTimeline = (db: SupabaseClient, a: { projectId: string; baseRevision: string | null; clips: unknown[]; action: string; summary: string; engineVersion: string; breakLock: boolean; impact: unknown }) =>
   rpc(db, "save_timeline", {
     p_project_id: a.projectId, p_base_revision: a.baseRevision, p_clips: a.clips, p_action: a.action, p_summary: a.summary,

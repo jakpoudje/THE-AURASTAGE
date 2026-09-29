@@ -33,7 +33,7 @@ const media: Record<string, { bytes: Uint8Array; contentType: string }> = {
   "k/take.svg": { bytes: Buffer.from(svg), contentType: "image/svg+xml" },
   "k/line.wav": { bytes: wav(1.5, 0.3), contentType: "audio/wav" },
 };
-function manifest(profile: string): RenderManifest {
+function manifest(profile: string, extra: Record<string, unknown> = {}): RenderManifest {
   const clip = (n: number, over: Record<string, unknown>) => ({ id: U(n), source_in: 0, source_frames: null, scene_id: U(90), shot_id: U(80), take_id: null, audio_session_version_id: null, grade: NEUTRAL_GRADE, label: `C${n}`, ...over });
   const r = renderManifestEngine({
     project: { id: U(1), title: "Render Test" }, profile: getDeliveryProfile(profile), options: { watermark: "FOR REVIEW", burn_timecode: true },
@@ -51,14 +51,15 @@ function manifest(profile: string): RenderManifest {
       ] } },
     assets: { [U(40)]: { storage_key: "k/line.wav", media_type: "audio/wav" } },
     lines: { l1: { speaker: "TUNDE", text: "You came." } },
+    ...extra,
   });
   if (!r.manifest) throw new Error(r.missing.join("; "));
   return r.manifest;
 }
-async function render(profile: string) {
+async function render(profile: string, extra: Record<string, unknown> = {}) {
   const store = mkdtempSync(join(tmpdir(), "store-"));
   const stages: string[] = [];
-  const claim: RenderClaim = { render: { id: U(99), org_id: U(7), project_id: U(1), profile_id: profile, attempt: 1 }, manifest: manifest(profile) };
+  const claim: RenderClaim = { render: { id: U(99), org_id: U(7), project_id: U(1), profile_id: profile, attempt: 1 }, manifest: manifest(profile, extra) };
   const out = await renderDeliverable(claim, {
     fetchMedia: async (k) => media[k],
     putFile: async (key, path) => (copyFileSync(path, join(store, key.split("/").pop()!)), statSync(path).size),
@@ -116,6 +117,15 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
     expect(maxDb("stem_FX.wav")).toBeLessThan(-90);
     const size = (f: string) => statSync(join(r.store, f)).size;
     expect(size("mix.wav")).toBe(44 + 2 * 48000 * 2 * 3);
+  }, 120000);
+  it("timeline volume automation drawn in Editorial shapes the delivered sound (manifest 1.3.0)", async () => {
+    const r = await render("audio_package", { automation: { A1: [{ frame: 0, db: -6 }] }, automation_revision: U(55) });
+    expect(r.qc.passed).toBe(true);
+    const maxDb = (f: string) => {
+      const res = execFileSync("sh", ["-c", `ffmpeg -hide_banner -i '${join(r.store, f)}' -af volumedetect -f null - 2>&1`], { encoding: "utf8" });
+      return Number(/max_volume: (-?[\d.]+) dB/.exec(res)?.[1]);
+    };
+    expect(maxDb("stem_DX.wav")).toBeCloseTo(-13.5 + 1.14 - 6, 0); // 6 dB lower than without automation
   }, 120000);
   it("subtitles and EDL", async () => {
     const s = await render("subtitles");

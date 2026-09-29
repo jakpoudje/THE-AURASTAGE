@@ -36,7 +36,7 @@ async function rpc<T = Row>(db: SupabaseClient, fn: string, args: Row): Promise<
 }
 const inList = (ids: string[]) => (ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
 
-export const getTimeline = (db: SupabaseClient, p: string) => one(db.from("timelines").select("id, status, current_lock_id, fps").eq("project_id", p).maybeSingle());
+export const getTimeline = (db: SupabaseClient, p: string) => one(db.from("timelines").select("id, status, current_lock_id, fps, automation, automation_revision").eq("project_id", p).maybeSingle());
 export const getLock = (db: SupabaseClient, id: string) => one(db.from("picture_locks").select("*").eq("id", id).maybeSingle());
 export const getVersion = (db: SupabaseClient, id: string) => one(db.from("timeline_versions").select("*").eq("id", id).maybeSingle());
 export const listScenes = (db: SupabaseClient, p: string) => rows(db.from("scenes").select("id, number, heading").eq("project_id", p));

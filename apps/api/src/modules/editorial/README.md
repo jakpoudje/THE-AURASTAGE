@@ -26,6 +26,8 @@ finished takes of their shot, mixes must be of their scene, no overlaps),
 - `editorialQCEngine` — blocking: picture present, no offline media, sources current, no overlaps; recommended: flash frames, gaps, A/V sync per scene, scenes without sound, runtime vs target. Each with timecodes.
 - `pictureLockEngine` — impact of changing a locked picture, per scene.
 - `edlExportEngine` — CMX 3600 EDL.
+- `timelineAutomationEngine` 1.0.0 — volume automation of the cut (points joined by straight lines in dB), and the
+  edits a person makes: draw a stroke (thinned), set / move / remove a point, dip under a clip, clear a range.
 
 ## API endpoints
 - `GET  /api/projects/:id/editorial` — timeline, clips, upstream issues, QC, versions, locks, media bin, signed media links, mix snapshots for playback
@@ -35,6 +37,17 @@ finished takes of their shot, mixes must be of their scene, no overlaps),
 - `POST /api/projects/:id/editorial/versions/:versionId/restore` — `{base_revision, break_lock?}`; keeps the current cut as a version first
 - `POST /api/projects/:id/editorial/lock` — `{base_revision}`; 412 with the failing checks
 - `GET  /api/projects/:id/editorial/edl` — text/plain EDL
+- `PUT  /api/projects/:id/editorial/automation` — `{automation: {A1: [{frame, db}]}, base_revision}` (the automation
+  revision, not the picture revision). Sound, not picture: allowed after Picture Lock and never breaks it. Versions keep
+  a copy (restore brings it back); renders record the exact curve and `automation_revision` in their manifest.
+
+## Screen
+The page opens with the assembly overview: the finishing steps from the stored cut, its checks and its lock (Assemble →
+Picture → Sound → Levels → Lock picture → Deliver) and one card per scene (shots, offline shots, its mix, length; click
+to go there). The timeline shows a Scenes row, Picture (V1), Sound (A1) and the Volume lane; the "✎ Draw volume" tool
+draws on it, other tools click to add / drag to move / double-click to remove points, and the Volume automation panel
+sets a level at the playhead, dips under the selected clip or clears. Playback follows the curve frame by frame, as
+the render does.
 
 ## Invalidation (rule 11)
 A newer approved take/mix, an unapproved plan edit or a removed shot flags the timeline

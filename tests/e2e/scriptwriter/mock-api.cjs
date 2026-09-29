@@ -859,10 +859,10 @@ http.createServer((req, res) => {
         if (!breakLock) { edErr(423, `The picture is locked. This change touches ${r.impact.map((i) => i.label).join(", ")} — confirm to break Picture Lock ${lock.lock_number}.`, r.impact); return false; }
         Object.assign(lock, { broken_at: now(), impact: r.impact }); Object.assign(timeline, { status: "draft", current_lock_id: null });
       }
-      if (!timeline) timeline = { id: crypto.randomUUID(), status: "draft", current_lock_id: null, review_state: "current", review_reason: null };
+      if (!timeline) timeline = { id: crypto.randomUUID(), status: "draft", current_lock_id: null, review_state: "current", review_reason: null, automation: { A1: [] }, automation_revision: crypto.randomUUID() };
       tclips = withIds; Object.assign(timeline, { revision: crypto.randomUUID(), updated_at: now() }); return true;
     };
-    const edVersion = (label, kind, qc) => { const v = { id: crypto.randomUUID(), version_number: tversions.length + 1, label, kind, clips: tclips.map((c) => ({ ...c })), qc, duration_frames: tclips.reduce((mx, c) => Math.max(mx, c.record_in + c.duration), 0), created_at: now() }; tversions.push(v); return v; };
+    const edVersion = (label, kind, qc) => { const v = { id: crypto.randomUUID(), version_number: tversions.length + 1, label, kind, clips: tclips.map((c) => ({ ...c })), automation: JSON.parse(JSON.stringify((timeline && timeline.automation) || { A1: [] })), qc, duration_frames: tclips.reduce((mx, c) => Math.max(mx, c.record_in + c.duration), 0), created_at: now() }; tversions.push(v); return v; };
     if (u === `/api/projects/${P}/editorial` && req.method === "GET") {
       runWorker(); const rows = edScenes(); const issues = edIssues(rows);
       if (timeline) Object.assign(timeline, issues.length ? { review_state: "review_required", review_reason: `${issues.length} clip${issues.length === 1 ? " uses" : "s use"} a take or mix that changed upstream. Your cut is unchanged — Conform to update it.` } : { review_state: "current", review_reason: null });
@@ -917,7 +917,16 @@ http.createServer((req, res) => {
       const v = tversions.find((x) => x.id === m[1]);
       if (timeline.status !== "locked") edVersion(`Before restoring v${v.version_number}`, "auto", edQC(edScenes(), tclips));
       if (!edPersist(v.clips.map((c) => ({ ...c })), "restore", !!b.break_lock)) return;
+      if (v.automation && JSON.stringify(v.automation) !== JSON.stringify(timeline.automation)) Object.assign(timeline, { automation: JSON.parse(JSON.stringify(v.automation)), automation_revision: crypto.randomUUID() });
       return send(200, { summary: `Restored version ${v.version_number} (“${v.label}”). The cut before it was kept as a version.` });
+    }
+    if (u === `/api/projects/${P}/editorial/automation` && req.method === "PUT") {
+      const p = cc0.SaveTimelineAutomationSchema.safeParse(b); if (!p.success) return edErr(400, p.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+      if (!timeline) return edErr(412, "Build the first assembly first.");
+      if (timeline.automation_revision !== p.data.base_revision) return edErr(409, "The automation changed — reload and try again.");
+      const pts = p.data.automation.A1; if (pts.some((x, i) => i > 0 && x.frame <= pts[i - 1].frame)) return edErr(400, "points must be in time order, one per frame");
+      Object.assign(timeline, { automation: p.data.automation, automation_revision: crypto.randomUUID() }); // the picture and its lock are untouched
+      return send(200, { automation: timeline.automation, automation_revision: timeline.automation_revision, points: pts.length });
     }
     if (u === `/api/projects/${P}/editorial/lock`) {
       if (timeline.revision !== b.base_revision) return edErr(409, "The timeline changed — reload and try again.");

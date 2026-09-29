@@ -23,6 +23,7 @@ export type Bus = "DX" | "FX" | "BG" | "MX" | "ME" | null;
 /** Writes the cut's mix (or one stem) as a 48 kHz 24-bit stereo WAV, 10 s at a time. */
 export function mixToWav(m: RenderManifest, pcm: Map<string, Pcm>, bus: Bus, path: string, onProgress?: (fraction: number) => void) {
   const total = Math.round((m.duration_frames / m.fps) * SAMPLE_RATE);
-  const input = { fps: m.fps, sample_rate: SAMPLE_RATE, audio: m.audio, mixes: m.mixes, pcm, bus };
+  // The timeline's volume automation (manifest ≥ 1.3.0) shapes the whole cut, every stem alike.
+  const input = { fps: m.fps, sample_rate: SAMPLE_RATE, audio: m.audio, mixes: m.mixes, pcm, bus, automation: m.automation?.A1 ?? [] };
   return writeWav24(path, SAMPLE_RATE, total, SAMPLE_RATE * 10, (s, n) => timelineAudioMixEngine(input, s, n), (done) => onProgress?.(done / Math.max(1, total)));
 }

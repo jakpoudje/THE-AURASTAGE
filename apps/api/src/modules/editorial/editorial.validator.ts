@@ -1,6 +1,6 @@
 // apps/api/src/modules/editorial/editorial.validator.ts
 // Domain: Editorial & Timeline
-import { AssembleRequestSchema, EditRequestSchema, PictureLockRequestSchema, RestoreTimelineVersionSchema, SaveTimelineVersionSchema } from "@aurastage/contracts";
+import { AssembleRequestSchema, EditRequestSchema, PictureLockRequestSchema, RestoreTimelineVersionSchema, SaveTimelineVersionSchema, SaveTimelineAutomationSchema } from "@aurastage/contracts";
 import { z } from "zod";
 
 export class EditorialValidationError extends Error {
@@ -42,3 +42,4 @@ export const validateAssemble = (p: unknown) => parse(AssembleRequestSchema, p);
 export const validateSaveVersion = (p: unknown) => parse(SaveTimelineVersionSchema, p);
 export const validateRestore = (p: unknown) => parse(RestoreTimelineVersionSchema, p);
 export const validateLock = (p: unknown) => parse(PictureLockRequestSchema, p);
+export const validateAutomation = (p: unknown) => parse(SaveTimelineAutomationSchema, p);

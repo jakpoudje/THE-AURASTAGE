@@ -7,13 +7,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { EditOperation, PictureImpact, Project } from "@aurastage/contracts";
+import type { AutomationPoint, EditOperation, PictureImpact, Project } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ApiError, apiGet } from "@/lib/apiClient";
 import { editorialApi } from "../api/editorialApi";
 import type { EditorialWorkspace } from "../types";
 
-type Busy = null | "assemble" | "edit" | "version" | "restore" | "lock" | "export";
+type Busy = null | "assemble" | "edit" | "version" | "restore" | "lock" | "export" | "automation";
 export interface PendingBreak { message: string; impact: PictureImpact[]; retry: () => Promise<unknown> }
 
 export function useEditorial(projectId: string) {
@@ -87,6 +87,9 @@ export function useEditorial(projectId: string) {
     edit: (op: EditOperation) => run("edit", (b) => editorialApi.edit(projectId, rev()!, op, b), (r) => r.summary),
     saveVersion: (label: string) => run("version", () => editorialApi.saveVersion(projectId, label), (r) => `Saved version ${r.version_number} — “${r.label}”.`),
     restore: (versionId: string) => run("restore", (b) => editorialApi.restore(projectId, versionId, rev()!, b), (r) => r.summary),
+    /** Volume automation: sound, not picture — saved against its own revision, never breaks the Picture Lock. */
+    saveAutomation: (points: AutomationPoint[], summary: string) =>
+      run("automation", () => editorialApi.saveAutomation(projectId, { A1: points }, ws!.timeline!.automation_revision), () => `${summary} — saved.`),
     lock: () => run("lock", () => editorialApi.lock(projectId, rev()!), (r) => `Picture locked (lock ${r.lock_number}). Sound, subtitles and delivery can now work from this exact cut.`),
     exportEdl: async () => {
       setBusy("export");

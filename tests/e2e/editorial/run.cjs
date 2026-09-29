@@ -67,7 +67,7 @@ async function approveTakeFor(shotId) {
   page.on("dialog", (d) => d.accept());
   let failed = 0;
   const step = async (name, fn) => {
-    try { await fn(); console.log("PASS", name); } catch (e) { failed++; console.log("FAIL", name, e.message.split("\n")[0]); await page.screenshot({ path: `${OUT}/fail-editorial-${name.replace(/\W+/g, "_")}.png`, fullPage: true }); }
+    try { await fn(); console.log("PASS", name); } catch (e) { failed++; console.log("FAIL", name, e.message.split("\n").slice(0, 6).join(" | ")); await page.screenshot({ path: `${OUT}/fail-editorial-${name.replace(/\W+/g, "_")}.png`, fullPage: true }); }
   };
   const reload = async () => { await page.reload(); await page.getByText("Perfect Your Film").waitFor(); };
   const v1Clips = () => page.getByRole("group", { name: "Track V1" }).getByRole("button", { name: /^Clip / });
@@ -127,6 +127,7 @@ async function approveTakeFor(shotId) {
   await step("ripple trim by dragging an edge moves what follows on all tracks", async () => {
     await page.getByRole("radio", { name: "Ripple" }).click();
     const first = v1Clips().first();
+    await page.getByLabel("Timeline", { exact: true }).scrollIntoViewIfNeeded();
     const box = await first.boundingBox();
     await page.mouse.move(box.x + box.width - 3, box.y + box.height / 2);
     await page.mouse.down();
@@ -191,6 +192,61 @@ async function approveTakeFor(shotId) {
     if ((await v1Clips().count()) !== clipsAtLock) throw new Error("restore not saved");
     await page.getByRole("list", { name: "Versions" }).getByText(/Before restoring v\d+/).waitFor();
   });
+  const points = () => page.getByRole("application", { name: "Volume automation lane" }).getByRole("button", { name: /^Automation point / });
+  await step("assembly overview: the finishing steps from the real cut, one card per scene; a card jumps to its scene", async () => {
+    const guide = page.getByRole("region", { name: "Assembly overview" });
+    await guide.getByRole("list", { name: "Finishing steps" }).getByText("Every scene has its approved mix").waitFor();
+    await guide.getByText(/1 of 1 scene in the cut/).waitFor();
+    const card = guide.getByRole("button", { name: "Scene 1 overview" });
+    await card.getByText(/Picture: \d+ shots?/).waitFor();
+    await card.getByText(/Sound: Scene 1 mix v1/).waitFor();
+    await page.getByRole("group", { name: "Scenes in the cut" }).getByRole("button", { name: "Go to scene 1" }).waitFor();
+    for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowRight");
+    await card.click();
+    await page.waitForFunction(() => document.querySelector('[aria-label="Playhead"]')?.textContent === "00:00:00:00");
+    await page.screenshot({ path: `${OUT}/editorial-assembly.png` });
+  });
+  await step("draw volume on the Volume lane with the Draw tool; saved as a curve; kept after reload", async () => {
+    await page.getByRole("radio", { name: "✎ Draw volume" }).click();
+    const lane = page.getByRole("application", { name: "Volume automation lane" });
+    await lane.scrollIntoViewIfNeeded();
+    const box = await lane.boundingBox();
+    await page.mouse.move(box.x + 30, box.y + 20);
+    await page.mouse.down();
+    for (let i = 1; i <= 20; i++) await page.mouse.move(box.x + 30 + i * 8, box.y + 20 + i * 2);
+    await page.mouse.up();
+    await notice(/Volume drawn — saved\./);
+    const n = await points().count();
+    if (n < 2) throw new Error(`expected a drawn curve, got ${n} points`);
+    await reload();
+    if ((await points().count()) !== n) throw new Error("drawn volume not kept");
+    await page.getByRole("radio", { name: "Select" }).click();
+    await page.screenshot({ path: `${OUT}/editorial-automation.png` });
+  });
+  await step("set a level at the playhead precisely; double-click removes a point; kept after reload", async () => {
+    const panel = page.getByRole("region", { name: "Volume automation" });
+    for (let i = 0; i < 36; i++) await page.keyboard.press("ArrowRight"); // 00:00:01:12
+    await panel.getByLabel("Level at playhead (dB)").fill("-12");
+    await panel.getByRole("button", { name: "Set at playhead" }).click();
+    await notice(/Set -12\.0 dB at 00:00:01:12 — saved\./);
+    await panel.getByTestId("automation-at-playhead").getByText("-12.0 dB").waitFor();
+    const before = await points().count();
+    await page.getByRole("application", { name: "Volume automation lane" }).getByRole("button", { name: "Automation point 00:00:01:12 -12.0 dB" }).dblclick();
+    await notice(/Point at 00:00:01:12 removed — saved\./);
+    await reload();
+    if ((await points().count()) !== before - 1) throw new Error("removal not kept");
+  });
+  await step("after Picture Lock the volume can still change and the lock stays", async () => {
+    await page.getByRole("button", { name: "Lock picture" }).click();
+    await notice(/Picture locked \(lock 2\)/);
+    const panel = page.getByRole("region", { name: "Volume automation" });
+    await panel.getByLabel("Level at playhead (dB)").fill("-3");
+    await panel.getByRole("button", { name: "Set at playhead" }).click();
+    await notice(/Set -3\.0 dB at .* — saved\./);
+    await reload();
+    await page.getByText("Locked · Picture Lock 2 ✓").waitFor();
+    if (await page.getByRole("dialog").count()) throw new Error("the lock should not be questioned for a sound change");
+  });
   await step("export the cut as a CMX 3600 EDL", async () => {
     const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export EDL" }).click()]);
     const p = path.join(OUT, "cut.edl"); await dl.saveAs(p); const t = fs.readFileSync(p, "utf8");
@@ -198,9 +254,9 @@ async function approveTakeFor(shotId) {
   });
   await step("play the timeline: the playhead advances with the scene mix", async () => {
     await page.getByRole("button", { name: "⏮" }).click();
-    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("button", { name: "Play", exact: true }).click();
     await page.waitForFunction(() => { const t = document.querySelector('[aria-label="Playhead"]')?.textContent || ""; return t > "00:00:00:12"; }, null, { timeout: 10000 });
-    await page.getByRole("button", { name: "Stop" }).click();
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
   });
 
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }

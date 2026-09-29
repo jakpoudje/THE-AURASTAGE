@@ -2,7 +2,9 @@
 // Renders one range of the locked cut's sound to stereo float PCM. Ranges let the render worker process long films in
 // chunks with bounded memory. Every scene mix is rendered once (per stem) with the Audio Studio's full chain and
 // reused by the chunks that overlap it.
+import type { AutomationPoint } from "@aurastage/contracts";
 import { studioMixRenderEngine } from "../../audio/studioMixRenderEngine";
+import { automationDbAt } from "../../editorial/timelineAutomationEngine";
 import { SCENE_CACHE_SIZE } from "./rules";
 import { TimelineAudioMixError } from "./validator";
 import type { MixBus, Pcm, SceneMix, TimelineAudioEntry } from "./input.schema";
@@ -14,6 +16,8 @@ export interface MixRangeInput {
   mixes: Record<string, SceneMix>;
   pcm: Map<string, Pcm>;
   bus: MixBus;
+  /** Volume automation drawn on the timeline (A1), applied to the whole cut's sound (every stem alike). */
+  automation?: AutomationPoint[];
 }
 
 const rendered = new WeakMap<MixRangeInput["mixes"], Map<string, [Float32Array, Float32Array]>>();
@@ -54,5 +58,23 @@ export function timelineAudioMixEngine(inp: MixRangeInput, start: number, length
       R[tl - start] += sr2[s];
     }
   }
+  applyAutomation(inp.automation ?? [], spf, start, L, R);
   return [L, R];
+}
+
+/** Multiplies the range by the timeline automation (straight lines in dB between points, frames → samples). */
+function applyAutomation(points: AutomationPoint[], spf: number, start: number, L: Float32Array, R: Float32Array) {
+  if (!points.length) return;
+  // Walk the segments once per range (same result as automationDbAt at every sample, without a search per sample).
+  let seg = 0;
+  for (let o = 0; o < L.length; o++) {
+    const f = (start + o) / spf;
+    while (seg < points.length && points[seg].frame < f) seg++;
+    const db = seg === 0 ? points[0].db : seg === points.length ? points[points.length - 1].db
+      : points[seg - 1].db + ((points[seg].db - points[seg - 1].db) * (f - points[seg - 1].frame)) / (points[seg].frame - points[seg - 1].frame);
+    if (db !== 0) {
+      const g = Math.pow(10, db / 20);
+      L[o] *= g; R[o] *= g;
+    }
+  }
 }

@@ -91,6 +91,15 @@ export const SaveTimelineVersionSchema = z.object({ label: z.string().trim().min
 export const RestoreTimelineVersionSchema = z.object({ base_revision: z.string().uuid(), break_lock: z.boolean().optional() }).strict();
 export const PictureLockRequestSchema = z.object({ base_revision: z.string().uuid() }).strict();
 
+/** One automation point on the timeline: a level (dB, relative to the scene mixes) at a frame (migration 0032). */
+export const AutomationPointSchema = z.object({ frame: z.number().int().min(0), db: z.number().min(-60).max(12) }).strict();
+export type AutomationPoint = z.infer<typeof AutomationPointSchema>;
+/** Volume automation of the cut's sound (A1). Points are in frame order, one per frame; straight lines in dB between. */
+export const TimelineAutomationSchema = z.object({ A1: z.array(AutomationPointSchema).max(2000).default([]) }).strict();
+export type TimelineAutomation = z.infer<typeof TimelineAutomationSchema>;
+export const SaveTimelineAutomationSchema = z.object({ automation: TimelineAutomationSchema, base_revision: z.string().uuid() }).strict();
+export type SaveTimelineAutomationInput = z.infer<typeof SaveTimelineAutomationSchema>;
+
 /** Where picture changes after a Picture Lock land (SRS §12 impact analysis). */
 export const PictureImpactSchema = z.object({
   scene_id: z.string().uuid().nullable(),

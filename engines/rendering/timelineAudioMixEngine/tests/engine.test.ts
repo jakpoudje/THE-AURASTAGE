@@ -66,6 +66,19 @@ describe("timelineAudioMixEngine", () => {
     expect(Ll[sr / 2]).toBeLessThan(1); // full scale is held down by the limiter
     expect(Ll[sr / 2]).toBeGreaterThan(0.8);
   });
+  it("timeline volume automation shapes the cut (dB lines between frames), the same in every chunk", () => {
+    const automation = [{ frame: 0, db: 0 }, { frame: 24, db: -20 }];
+    const i = inp({ automation, mixes: { m: { seconds: 2, tracks: [track({ pan: -1 })], clips: [clip({ duration_seconds: 2 })] } } });
+    const [L] = timelineAudioMixEngine(i, 0, sr);
+    expect(L[0]).toBeCloseTo(1, 5);
+    expect(L[sr / 2]).toBeCloseTo(Math.pow(10, -10 / 20), 4); // frame 12 of 24: half-way down the ramp, -10 dB
+    expect(L[sr / 4]).toBeCloseTo(Math.pow(10, -5 / 20), 4); // frame 6: -5 dB
+    const [L2] = timelineAudioMixEngine(i, sr, 200);
+    expect(L2[100]).toBeCloseTo(0.1, 5); // after the last point the level holds at -20 dB
+    const a = timelineAudioMixEngine(i, 0, sr / 2)[0], b = timelineAudioMixEngine(i, sr / 2, sr / 2)[0];
+    expect(a[sr / 4]).toBeCloseTo(L[sr / 4], 7);
+    expect(b[10]).toBeCloseTo(L[sr / 2 + 10], 7);
+  });
   it("refuses missing recordings and odd sample rates", () => {
     expect(() => timelineAudioMixEngine(inp({ pcm: new Map() }), 0, 10)).toThrow(/Missing recording/);
     expect(() => timelineAudioMixEngine(inp({ sample_rate: 44100, fps: 23 }), 0, 10)).toThrow(/whole number/);

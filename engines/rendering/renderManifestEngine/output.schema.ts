@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ProjectCreditsSchema } from "./input.schema";
-import { AudioFamilySchema, ClipGradeSchema, RenderOptionsSchema, SessionMixSchema, TrackFxSchema } from "@aurastage/contracts";
+import { AudioFamilySchema, ClipGradeSchema, RenderOptionsSchema, SessionMixSchema, TimelineAutomationSchema, TrackFxSchema } from "@aurastage/contracts";
 import { DeliveryProfileSchema } from "../deliveryProfileEngine/output.schema";
 import { SubtitleOutputSchema } from "../subtitleTimelineEngine/output.schema";
 
@@ -37,11 +37,14 @@ export const RenderManifestSchema = z.object({
     mix: SessionMixSchema,
   })),
   assets: z.record(z.object({ storage_key: z.string(), media_type: z.string().nullable() })),
+  /** Timeline volume automation applied to the whole cut's sound (renderManifest ≥ 1.3.0). */
+  automation: TimelineAutomationSchema,
   subtitles: SubtitleOutputSchema.nullable(),
   edl: z.string().nullable(),
   /** Files this render must produce (QC checks the package against this list). */
   files: z.array(z.string()),
-  sources: z.object({ take_ids: z.array(z.string()), audio_session_version_ids: z.array(z.string()), asset_ids: z.array(z.string()), dialogue_line_ids: z.array(z.string()) }),
+  sources: z.object({ take_ids: z.array(z.string()), audio_session_version_ids: z.array(z.string()), asset_ids: z.array(z.string()), dialogue_line_ids: z.array(z.string()),
+    automation_revision: z.string().nullable().default(null) }),
   engine_versions: z.record(z.string()),
 });
 export type RenderManifest = z.infer<typeof RenderManifestSchema>;

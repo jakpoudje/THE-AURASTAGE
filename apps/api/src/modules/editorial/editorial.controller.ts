@@ -3,7 +3,7 @@
 // Domain: Editorial & Timeline
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { assembleTimeline, editTimeline, exportEdl, getEditorialWorkspace, lockPicture, restoreTimelineVersion, saveTimelineVersion } from "./editorial.service";
+import { assembleTimeline, editTimeline, exportEdl, getEditorialWorkspace, lockPicture, restoreTimelineVersion, saveTimelineVersion, saveAutomation } from "./editorial.service";
 import { EditorialConflictError, EditorialLockedError, EditorialNotFoundError, EditorialNotReadyError, EditorialValidationError } from "./editorial.validator";
 import { EditorialForbiddenError } from "./editorial.permissions";
 
@@ -35,6 +35,7 @@ export async function registerEditorialRoutes(app: FastifyInstance) {
   app.post("/api/projects/:id/editorial/edit", route(({ params, body, db }) => editTimeline(db, params.id, body)));
   app.post("/api/projects/:id/editorial/versions", route(({ params, body, db }) => saveTimelineVersion(db, params.id, body)));
   app.post("/api/projects/:id/editorial/versions/:versionId/restore", route(({ params, body, db }) => restoreTimelineVersion(db, params.id, params.versionId, body)));
+  app.put("/api/projects/:id/editorial/automation", route(({ params, body, db }) => saveAutomation(db, params.id, body)));
   app.post("/api/projects/:id/editorial/lock", route(({ params, body, db }) => lockPicture(db, params.id, body)));
   app.get("/api/projects/:id/editorial/edl", async (request: FastifyRequest, reply: FastifyReply) => {
     try {

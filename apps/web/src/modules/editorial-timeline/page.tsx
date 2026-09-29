@@ -19,6 +19,8 @@ import { Viewer } from "./components/Viewer";
 import { Bin } from "./components/Bin";
 import { Inspector } from "./components/Inspector";
 import { BreakLockDialog, QCPanel, VersionsPanel } from "./components/Panels";
+import { AssemblyGuide, sceneSpans } from "./components/AssemblyGuide";
+import { AutomationPanel } from "./components/AutomationPanel";
 import { TimelinePlayer } from "./state/playback";
 import { clipAt, timelineLength, tc } from "./state/timelineMath";
 import type { Tool } from "./types";
@@ -30,6 +32,7 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: "slip", label: "Slip", hint: "Drag a video clip to show a different part of its take" },
   { id: "slide", label: "Slide", hint: "Drag a clip between its neighbours" },
   { id: "blade", label: "Blade", hint: "Click a clip to cut it in two (B cuts at the playhead)" },
+  { id: "draw", label: "✎ Draw volume", hint: "Drag across the Volume lane to draw the level of the whole cut's sound" },
 ];
 
 export default function EditorialPage() {
@@ -49,6 +52,8 @@ export default function EditorialPage() {
   const issueIds = useMemo(() => new Set((d.ws?.issues ?? []).map((i) => i.clip_id)), [d.ws]);
   const clip = clips.find((c) => c.id === selected) ?? null;
   const canEdit = !!d.ws?.timeline;
+  const automation = useMemo(() => d.ws?.timeline?.automation?.A1 ?? [], [d.ws]);
+  const spans = useMemo(() => sceneSpans(clips, d.ws?.bin ?? []), [clips, d.ws]);
 
   useEffect(() => {
     if (!playing) return;
@@ -78,7 +83,7 @@ export default function EditorialPage() {
     }
     const from = frame >= length ? 0 : frame;
     setFrame(from);
-    await player.current!.play(from, clips, d.ws.mixes);
+    await player.current!.play(from, clips, d.ws.mixes, automation);
     setPlaying(true);
   }
   const seek = (f: number) => {
@@ -155,8 +160,8 @@ export default function EditorialPage() {
           Assemble, Edit and <span className="text-aura-gold">Perfect Your Film</span>
         </h1>
         <p className="mt-3 max-w-2xl text-white/60">
-          The first assembly is cut from your approved takes over each scene's approved shot timing, with the approved scene mix underneath. Trim, ripple,
-          roll, slip, slide and blade it, then lock the picture.
+          Your whole film in one place: every scene's approved shots on the Picture track, its approved mix on the Sound track, and a Volume lane to
+          draw or set the level of the final sound. Trim, ripple, roll, slip, slide and blade the cut, then lock the picture and deliver.
         </p>
       </section>
 
@@ -185,6 +190,8 @@ export default function EditorialPage() {
             )}
           </div>
         )}
+
+        {ws.bin.length > 0 && <AssemblyGuide ws={ws} projectId={id} clips={clips} automation={automation} fps={fps} onSeek={seek} />}
 
         {!ws.bin.length ? (
           <div className="rounded-xl border border-dashed border-aura-border p-10 text-center text-sm text-white/50">
@@ -244,6 +251,7 @@ export default function EditorialPage() {
                   <TimelineView
                     clips={clips} fps={fps} ppf={ppf} frame={frame} length={length} selectedId={selected} tool={tool} issueIds={issueIds} media={ws.media}
                     busy={d.busy !== null} onSeek={seek} onSelect={setSelected} onOp={edit}
+                    scenes={spans} automation={automation} onAutomation={(pts, summary) => d.saveAutomation(pts, summary)}
                   />
                   <p className="text-[11px] text-white/40">
                     {TOOLS.find((x) => x.id === tool)!.hint}. Space plays, ←/→ step a frame (Shift: a second), B cuts at the playhead, Delete lifts and Shift+Delete extracts the selected clip. Sync lock is on: ripple edits move picture and sound together.
@@ -258,6 +266,10 @@ export default function EditorialPage() {
 
             <div className="space-y-4">
               {clip && <Inspector key={`${clip.id}:${JSON.stringify(clip)}`} clip={clip} fps={fps} issue={issueFor(clip.id)} busy={d.busy !== null} onOp={edit} />}
+              {t && (
+                <AutomationPanel points={automation} frame={frame} fps={fps} busy={d.busy !== null} onChange={(pts, summary) => d.saveAutomation(pts, summary)}
+                  selection={clip ? { from: clip.record_in, to: clip.record_in + clip.duration, label: clip.label } : null} />
+              )}
               {t && <VersionsPanel ws={ws} busy={d.busy} onSave={d.saveVersion} onRestore={(vid, label) => window.confirm(`Restore “${label}”? The current cut is kept as a version first.`) && d.restore(vid)} onLock={d.lock} />}
               <QCPanel qc={ws.qc} onJump={(f, cid) => (seek(f), setSelected(cid))} />
             </div>

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RenderOptionsSchema, SessionMixSchema, TimelineClipSchema } from "@aurastage/contracts";
+import { RenderOptionsSchema, SessionMixSchema, TimelineAutomationSchema, TimelineClipSchema } from "@aurastage/contracts";
 import { DeliveryProfileSchema } from "../deliveryProfileEngine/output.schema";
 
 const num = z.coerce.number();
@@ -34,6 +34,9 @@ export const RenderManifestInputSchema = z.object({
     })
   ),
   assets: z.record(z.object({ storage_key: z.string().nullable(), media_type: z.string().nullable() })),
+  /** Volume automation of the cut's sound and the revision it was read at (migration 0032). */
+  automation: TimelineAutomationSchema.default({}),
+  automation_revision: z.string().nullable().default(null),
   lines: z.record(z.object({ speaker: z.string(), text: z.string() })),
 });
 export type RenderManifestInput = z.infer<typeof RenderManifestInputSchema>;

@@ -516,6 +516,19 @@ await check("delivery: renders need the current Picture Lock; re-lock and the pr
   await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "dcp_theatrical" }, [400]);
   return `Picture Lock ${d.picture_lock.lock_number}, ${d.preflight.filter((c: any) => c.ok).length}/${d.preflight.length} checks`;
 });
+await check("editorial automation: draw/set the cut's volume after Picture Lock (lock stays); invalid 400, stale 409", async () => {
+  const ws = await edWs();
+  assert(ws.timeline.status === "locked" && ws.timeline.automation && typeof ws.timeline.automation_revision === "string", "automation not in the workspace");
+  const url = `/api/projects/${projectId}/editorial/automation`;
+  await api("PUT", url, { automation: { A1: [{ frame: 1.5, db: 0 }] }, base_revision: ws.timeline.automation_revision }, [400]);
+  const saved = await api("PUT", url, { automation: { A1: [{ frame: 0, db: 0 }, { frame: 24, db: -6 }, { frame: 48, db: -3 }] }, base_revision: ws.timeline.automation_revision });
+  assert(saved.points === 3 && saved.automation_revision !== ws.timeline.automation_revision, JSON.stringify(saved));
+  await api("PUT", url, { automation: { A1: [] }, base_revision: ws.timeline.automation_revision }, [409]);
+  const after = await edWs();
+  assert(after.timeline.status === "locked" && after.timeline.lock.lock_number === ws.timeline.lock.lock_number, "the lock should stay");
+  assert(after.timeline.automation.A1.length === 3, "not kept");
+  return `3 points saved on Picture Lock ${after.timeline.lock.lock_number}`;
+});
 await check("delivery: queue Streaming Master, Subtitles and Audio Package from the lock (checksummed manifests)", async () => {
   for (const id of ["streaming_master", "subtitles", "audio_package"]) {
     const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: id });
@@ -524,6 +537,10 @@ await check("delivery: queue Streaming Master, Subtitles and Audio Package from 
   }
   const m = await api("GET", `/api/renders/${renderIds.streaming_master}/manifest`);
   assert(m.manifest.picture_lock.lock_number >= 1 && m.manifest.sources.take_ids.length > 0 && m.manifest.sources.asset_ids.length > 0, "manifest sources");
+  // Downstream: the approved mix's routing and channel strips, and the timeline's automation, reach the render.
+  const mix: any = Object.values(m.manifest.mixes)[0];
+  assert(mix && mix.mix && mix.mix.master && mix.tracks.every((t: any) => t.fx && t.fx.eq), "mix routing / channel strips missing from the manifest");
+  assert(m.manifest.automation?.A1?.length === 3 && typeof m.manifest.sources.automation_revision === "string", "automation missing from the manifest");
   const c = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "edit_decision_list" });
   const x = await api("POST", `/api/renders/${c.render_id}/cancel`, {});
   assert(x.status === "cancelled" || x.cancel_requested, "cancel");

@@ -192,4 +192,25 @@ describe("Editorial routes", () => {
     withTimeline();
     expect((await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/edit`, payload: { base_revision: REV, operation: { op: "explode" } } })).statusCode).toBe(400);
   });
+
+  it("volume automation: saved against its own revision, returned with the workspace, refused when invalid or stale; a locked picture stays locked", async () => {
+    const AREV = "cccc0000-cccc-4ccc-8ccc-cccccccccccc";
+    withTimeline({ status: "locked", current_lock_id: LOCK, automation: { A1: [{ frame: 0, db: -3 }] }, automation_revision: AREV });
+    rows.picture_locks = [{ id: LOCK, timeline_id: TL, lock_number: 1, version_id: LV, locked_at: "2026-09-28T00:00:00Z", broken_at: null }];
+    let res = await (await app(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/editorial` });
+    expect(res.json().timeline).toMatchObject({ automation: { A1: [{ frame: 0, db: -3 }] }, automation_revision: AREV });
+    const saved = { ...rows.timelines[0], automation: { A1: [{ frame: 0, db: 0 }, { frame: 48, db: -12 }] }, automation_revision: "dddd0000-dddd-4ddd-8ddd-dddddddddddd" };
+    let fake = fakeDb(rows, (fn) => (fn === "save_timeline_automation" ? { data: saved } : { data: {} }));
+    const body = { automation: { A1: [{ frame: 0, db: 0 }, { frame: 48, db: -12 }] }, base_revision: AREV };
+    res = await (await app(fake)).inject({ method: "PUT", url: `/api/projects/${P}/editorial/automation`, payload: body });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ points: 2, automation_revision: saved.automation_revision });
+    expect(fake.calls).toEqual([{ fn: "save_timeline_automation", args: { p_project_id: P, p_automation: body.automation, p_base_revision: AREV } }]);
+    expect(fake.calls.some((c) => c.fn === "save_timeline")).toBe(false); // the picture (and its lock) is untouched
+    res = await (await app(fake)).inject({ method: "PUT", url: `/api/projects/${P}/editorial/automation`, payload: { ...body, automation: { A1: [{ frame: 1.5, db: 0 }] } } });
+    expect(res.statusCode).toBe(400);
+    fake = fakeDb(rows, () => ({ error: { message: "AURA-EDT-409: the automation changed — reload and try again" } }));
+    res = await (await app(fake)).inject({ method: "PUT", url: `/api/projects/${P}/editorial/automation`, payload: body });
+    expect(res.statusCode).toBe(409);
+  });
 });

@@ -98,6 +98,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
     audio,
     mixes,
     assets,
+    automation: i.automation,
     subtitles: subtitles.cues.length ? subtitles : null,
     edl: p.id === "edit_decision_list" ? edlExportEngine({ title: i.project.title, fps: i.fps, clips: i.clips }).edl : null,
     files,
@@ -106,6 +107,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
       audio_session_version_ids: Object.keys(mixes),
       asset_ids: Object.keys(assets),
       dialogue_line_ids: [...new Set(subtitles.cues.map((c) => c.line_id))],
+      automation_revision: i.automation.A1.length ? i.automation_revision : null,
     },
     engine_versions: { manifest: ENGINE_VERSION, subtitles: SUB_V, audio_mix: MIX_V, profile: p.version },
   };

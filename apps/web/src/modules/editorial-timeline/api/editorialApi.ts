@@ -1,6 +1,6 @@
 // Thin client for the Editorial API. No logic here.
-import type { EditOperation } from "@aurastage/contracts";
-import { apiGet, apiGetBytes, apiPost } from "@/lib/apiClient";
+import type { EditOperation, TimelineAutomation } from "@aurastage/contracts";
+import { apiGet, apiGetBytes, apiPost, apiPut } from "@/lib/apiClient";
 import type { EditorialWorkspace } from "../types";
 
 const base = (p: string) => `/api/projects/${p}/editorial`;
@@ -14,5 +14,7 @@ export const editorialApi = {
   restore: (projectId: string, versionId: string, base_revision: string, break_lock = false) =>
     apiPost<{ summary: string }>(`${base(projectId)}/versions/${versionId}/restore`, { base_revision, ...(break_lock ? { break_lock } : {}) }),
   lock: (projectId: string, base_revision: string) => apiPost<{ lock_number: number }>(`${base(projectId)}/lock`, { base_revision }),
+  saveAutomation: (projectId: string, automation: TimelineAutomation, base_revision: string) =>
+    apiPut<{ automation: TimelineAutomation; automation_revision: string; points: number }>(`${base(projectId)}/automation`, { automation, base_revision }),
   edl: (projectId: string) => apiGetBytes(`${base(projectId)}/edl`),
 };

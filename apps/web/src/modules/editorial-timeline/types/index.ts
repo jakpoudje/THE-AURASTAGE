@@ -1,4 +1,4 @@
-import type { AudioClip, AudioTrack, PictureImpact, SessionMix, TimelineClip } from "@aurastage/contracts";
+import type { AudioClip, AudioTrack, PictureImpact, SessionMix, TimelineAutomation, TimelineClip } from "@aurastage/contracts";
 
 export interface QCCheck {
   id: string; label: string; ok: boolean; blocking: boolean; evidence: string;
@@ -25,6 +25,8 @@ export interface EditorialWorkspace {
   timeline: {
     id: string; status: "draft" | "locked"; revision: string; review_state: "current" | "review_required"; review_reason: string | null;
     lock: { lock_number: number; locked_at: string } | null; updated_at: string;
+    /** Volume automation of the cut's sound (migration 0032) and its own revision. */
+    automation: TimelineAutomation; automation_revision: string;
   } | null;
   clips: TimelineClip[];
   issues: { clip_id: string; code: string; message: string }[];
@@ -36,4 +38,4 @@ export interface EditorialWorkspace {
   media: Record<string, { url: string | null; media_type: string | null; capability: string; take_number: number }>;
   mixes: Record<string, MixSnapshot>;
 }
-export type Tool = "select" | "ripple" | "roll" | "slip" | "slide" | "blade";
+export type Tool = "select" | "ripple" | "roll" | "slip" | "slide" | "blade" | "draw";

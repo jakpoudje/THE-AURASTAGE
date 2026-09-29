@@ -4,21 +4,27 @@
 // the chosen tool; nothing changes locally — each gesture becomes ONE edit
 // operation sent to the API (engines/editorial/editDecisionEngine).
 import { useRef, useState } from "react";
-import type { EditOperation, TimelineClip, TimelineTrack } from "@aurastage/contracts";
+import type { AutomationPoint, EditOperation, TimelineClip, TimelineTrack } from "@aurastage/contracts";
+import { AutomationLane, LANE_HEIGHT } from "./AutomationLane";
 import { clipEnd, onTrack, tc } from "../state/timelineMath";
 import type { EditorialWorkspace, Tool } from "../types";
 
-const HEADER = 72;
+const HEADER = 96;
 const EDGE = 7;
 type Zone = "body" | "in" | "out";
 interface Drag { id: string; zone: Zone; x0: number; dx: number }
 
 export function TimelineView({
   clips, fps, ppf, frame, length, selectedId, tool, issueIds, media, busy, onSeek, onSelect, onOp,
+  scenes, automation, onAutomation,
 }: {
   clips: TimelineClip[]; fps: number; ppf: number; frame: number; length: number; selectedId: string | null; tool: Tool;
   issueIds: Set<string>; media: EditorialWorkspace["media"]; busy: boolean;
   onSeek: (f: number) => void; onSelect: (id: string | null) => void; onOp: (op: EditOperation) => void;
+  /** Scene spans on the cut, for the scene row (number, heading, first and last frame). */
+  scenes: { scene_id: string; number: number; heading: string; from: number; to: number }[];
+  automation: AutomationPoint[];
+  onAutomation: (next: AutomationPoint[], summary: string) => void;
 }) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const lane = useRef<HTMLDivElement>(null);
@@ -75,11 +81,29 @@ export function TimelineView({
             ))}
           </div>
         </div>
+        {/* Scenes: where each scene sits in the cut (click to go there). */}
+        <div className="flex h-6 border-b border-aura-border/60 text-[10px]" role="group" aria-label="Scenes in the cut">
+          <div style={{ width: HEADER }} className="shrink-0 border-r border-aura-border bg-aura-panel px-2 py-1 text-white/50">Scenes</div>
+          <div className="relative flex-1">
+            {scenes.map((sc, i) => (
+              <button
+                key={sc.scene_id}
+                onClick={() => onSeek(sc.from)}
+                title={`Scene ${sc.number} · ${sc.heading} · ${tc(sc.from, fps)} – ${tc(sc.to, fps)}`}
+                aria-label={`Go to scene ${sc.number}`}
+                style={{ left: sc.from * ppf, width: Math.max(14, (sc.to - sc.from) * ppf) }}
+                className={`absolute inset-y-0.5 truncate rounded-sm px-1 text-left ${i % 2 ? "bg-white/10" : "bg-aura-gold/15"} text-white/80 hover:bg-aura-gold/30`}
+              >
+                {sc.number}. {sc.heading}
+              </button>
+            ))}
+          </div>
+        </div>
         {(["V1", "A1"] as TimelineTrack[]).map((track) => (
           <div key={track} role="group" aria-label={`Track ${track}`} className={`flex border-b border-aura-border/60 ${track === "V1" ? "h-20" : "h-12"}`}>
             <div style={{ width: HEADER }} className="flex shrink-0 flex-col justify-center border-r border-aura-border bg-aura-panel px-2 text-xs">
-              <span className="font-medium">{track}</span>
-              <span className="text-[9px] text-white/40">{track === "V1" ? "Picture" : "Scene mixes"}</span>
+              <span className="font-medium">{track === "V1" ? "Picture" : "Sound"} <span className="text-white/40">{track}</span></span>
+              <span className="text-[9px] leading-tight text-white/40">{track === "V1" ? "approved takes, shot by shot" : "each scene's approved mix"}</span>
             </div>
             <div className="relative flex-1" onClick={(e) => e.target === e.currentTarget && (onSelect(null), onSeek(frameAt(e.clientX)))}>
               {onTrack(clips, track).map((c) => {
@@ -142,6 +166,15 @@ export function TimelineView({
             </div>
           </div>
         ))}
+        <div role="group" aria-label="Track Volume" className="flex border-b border-aura-border/60" style={{ height: LANE_HEIGHT }}>
+          <div style={{ width: HEADER }} className="flex shrink-0 flex-col justify-center border-r border-aura-border bg-aura-panel px-2 text-xs">
+            <span className="font-medium">Volume <span className="text-white/40">A1</span></span>
+            <span className="text-[9px] leading-tight text-white/40">{tool === "draw" ? "drag to draw the level" : "click: add · drag: move · double-click: remove"}</span>
+          </div>
+          <div className="relative flex-1">
+            <AutomationLane points={automation} fps={fps} ppf={ppf} width={width} draw={tool === "draw"} busy={busy} onChange={onAutomation} />
+          </div>
+        </div>
         <div className="pointer-events-none absolute bottom-0 top-0 w-px bg-aura-gold" style={{ left: HEADER + frame * ppf }} aria-hidden />
       </div>
     </div>

@@ -10,3 +10,5 @@ export * as pictureLock from "./pictureLockEngine";
 export { pictureLockEngine } from "./pictureLockEngine";
 export * as edlExport from "./edlExportEngine";
 export { edlExportEngine } from "./edlExportEngine";
+export * as timelineAutomation from "./timelineAutomationEngine";
+export { automationDbAt, automationGainAt } from "./timelineAutomationEngine";
