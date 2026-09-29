@@ -591,7 +591,10 @@ http.createServer((req, res) => {
         if (t.status === "running") {
           const pkg = packages.find((x) => x.id === t.package_id);
           const svg = gw.renderSketch({ capability: "image", model: t.model, package: pkg.content, aspect_ratio: t.params.aspect_ratio || "16:9", duration_seconds: null, seed: t.seed });
-          Object.assign(t, { status: "succeeded", media_type: "image/svg+xml", media_url: "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64"), cost_actual: 0, completed_at: now() });
+          // The worker's reference decision (real gateway code): the shot's characters, as a provider-less sketch would see them.
+          const refs = (pkg.content.characters || []).map((c) => ({ kind: "character", object_id: c.id, name: c.name, view: "front:MCU", asset_id: c.id, asset: { storage_path: "k", media_type: "image/png", size_bytes: 10, version: 1 } }));
+          const references_used = refs.length ? gw.chooseReferences(gw.getAdapter(t.provider), t.capability, refs) : null;
+          Object.assign(t, { status: "succeeded", media_type: "image/svg+xml", media_url: "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64"), cost_actual: 0, completed_at: now(), references_used });
         } else if (t.status === "queued") { t.status = "running"; }
       }
     };

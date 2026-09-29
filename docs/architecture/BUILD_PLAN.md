@@ -97,7 +97,8 @@ changes, the shots that used it are flagged "needs review".
 ### Stage 7 — Visual Generation
 - ✅ Prompt compiled for every shot from all the canonical records; built-in sketch; Runway and OpenAI images when keys
   are added; takes, compare, approve.
-- 🟡 Reference images are chosen per shot and shown — ⬜ they still need to be **sent** to providers that accept them.
+- ✅ Reference images are chosen per shot, shown, and **sent** to providers that accept them (Runway: 3, OpenAI: 6 —
+  characters first, then the place, then props); each take lists what it sent and why anything was left out.
 - ⬜ More video providers (Luma, Google Veo); ⬜ image-to-video from the approved still; ⬜ in-painting fixes.
 
 ### Stage 8 — Audio Studio
@@ -153,7 +154,7 @@ Every one of these is recorded in the render's manifest, so any frame can be tra
 
 | # | Work | Why first | Needs from the owner |
 |---|---|---|---|
-| 1 | Send reference images to image/video providers that accept them | Same faces and places in every shot | — |
+| 1 | ✅ Send reference images to image providers that accept them (done 2026-09-29) | Same faces and places in every shot | — |
 | 2 | Story-driven aging (age per scene, reference sets per age) | Time jumps and flashbacks look right | — |
 | 3 | Built-in SFX/ambience library + auto-placement + mix presets | Better sound without paid services | — |
 | 4 | Music suggestions per scene + built-in library; music provider | Background music in every film | Music provider key |

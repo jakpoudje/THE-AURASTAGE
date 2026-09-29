@@ -2,8 +2,9 @@
 // Runway API adapter (images: gen4_image; video: gen4_turbo from a start frame).
 // Only this file knows Runway's endpoints, headers and task states. Configured
 // by RUNWAY_API_KEY on the server; never called from the browser.
-import type { GenerateRequest, GenerateResult, ProviderAdapter } from "../../types";
+import type { GenerateRequest, GenerateResult, ProviderAdapter, ReferenceImage } from "../../types";
 import { ProviderError } from "../../types";
+import { describeReferences } from "../../references";
 
 const BASE = "https://api.dev.runwayml.com/v1";
 const VERSION = "2024-11-06";
@@ -16,10 +17,23 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener("abort", () => (clearTimeout(t), rej(new ProviderError("Cancelled"))));
   });
 
-/** Runway accepts at most 1000 characters of prompt text. */
+/** Runway reference tags: 3–16 letters/digits/underscores, starting with a letter; the prompt names them as @tag. */
+export function runwayTags(refs: Pick<ReferenceImage, "kind">[]) {
+  const n: Record<string, number> = {};
+  return refs.map((r) => {
+    const base = r.kind === "character" ? "char" : r.kind === "location" ? "place" : "prop";
+    n[base] = (n[base] ?? 0) + 1;
+    return base === "place" && n[base] === 1 ? "place" : `${base}${n[base]}`;
+  });
+}
+
+/** Runway accepts at most 1000 characters of prompt text; the reference sentence is kept, the prompt is trimmed. */
 export function runwayPrompt(req: GenerateRequest) {
   const p = req.package;
-  const text = `${p.prompt} Avoid: ${p.negative.join("; ")}.`;
+  const refs = req.capability === "image" ? (req.reference_images ?? []) : [];
+  const tags = runwayTags(refs);
+  const lead = describeReferences(refs, (i) => `@${tags[i]}`);
+  const text = `${lead}${p.prompt} Avoid: ${p.negative.join("; ")}.`;
   return text.length > 1000 ? text.slice(0, 997) + "…" : text;
 }
 
@@ -31,7 +45,9 @@ export const runwayAdapter: ProviderAdapter = {
     { id: "gen4_image", capability: "image", label: "Gen-4 Image" },
     { id: "gen4_turbo", capability: "video", label: "Gen-4 Turbo (video from an approved frame)" },
   ],
-  note: "Cinematic stills and image-to-video. Needs RUNWAY_API_KEY on the server.",
+  note: "Cinematic stills (with up to 3 reference images: characters, location, props) and image-to-video. Needs RUNWAY_API_KEY on the server.",
+  // Gen-4 Image conditions on up to 3 tagged references (data URIs up to ~5 MB encoded).
+  references: { image: { max: 3, media_types: ["image/png", "image/jpeg", "image/webp"], max_bytes: 3_500_000 } },
   isConfigured: (env) => !!env.RUNWAY_API_KEY,
   async generate(req, env, opts = {}): Promise<GenerateResult> {
     const key = env.RUNWAY_API_KEY;
@@ -42,7 +58,13 @@ export const runwayAdapter: ProviderAdapter = {
     let path: string;
     if (req.capability === "image") {
       path = "/text_to_image";
-      body = { model: req.model, promptText: runwayPrompt(req), ratio: IMAGE_RATIO[req.aspect_ratio] ?? "1920:1080", ...(req.seed !== null ? { seed: req.seed } : {}) };
+      const refs = (req.reference_images ?? []).slice(0, 3);
+      const tags = runwayTags(refs);
+      body = {
+        model: req.model, promptText: runwayPrompt({ ...req, reference_images: refs }), ratio: IMAGE_RATIO[req.aspect_ratio] ?? "1920:1080",
+        ...(refs.length ? { referenceImages: refs.map((r, i) => ({ uri: `data:${r.media_type};base64,${Buffer.from(r.bytes).toString("base64")}`, tag: tags[i] })) } : {}),
+        ...(req.seed !== null ? { seed: req.seed } : {}),
+      };
     } else {
       if (!req.source_image) throw new ProviderError("Runway video starts from a finished frame — generate and pick an image take first.");
       path = "/image_to_video";

@@ -18,6 +18,26 @@ export interface GenerateRequest {
   seed: number | null;
   /** For video: the starting frame (image bytes) from an earlier take. */
   source_image?: { bytes: Uint8Array; media_type: string } | null;
+  /**
+   * Reference images the provider conditions on (characters in frame, the location, props), already chosen for this
+   * adapter by `chooseReferences` — only adapters that declare `references` receive any.
+   */
+  reference_images?: ReferenceImage[];
+}
+
+export interface ReferenceImage {
+  kind: "character" | "location" | "prop";
+  name: string;
+  view: string;
+  bytes: Uint8Array;
+  media_type: string;
+}
+
+/** What an adapter accepts as reference images, per capability. Absent = it can't use any (they are not sent). */
+export interface ReferenceSupport {
+  max: number;
+  media_types: string[];
+  max_bytes: number;
 }
 
 export interface GenerateResult {
@@ -57,6 +77,7 @@ export interface ProviderAdapter {
   /** Credentials present on this server (never calls out, never guesses health). */
   isConfigured(env: Record<string, string | undefined>): boolean;
   note: string;
+  references?: Partial<Record<ProviderCapability, ReferenceSupport>>;
   generate(req: GenerateRequest, env: Record<string, string | undefined>, opts?: { signal?: AbortSignal; fetchImpl?: typeof fetch; pollMs?: number }): Promise<GenerateResult>;
   generateStill?(req: StillRequest, env: Record<string, string | undefined>, opts?: { signal?: AbortSignal; fetchImpl?: typeof fetch }): Promise<GenerateResult>;
 }

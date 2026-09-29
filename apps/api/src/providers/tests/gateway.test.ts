@@ -114,4 +114,61 @@ describe("Provider Gateway", () => {
     expect(r.provider_request_id).toBe("req_9");
     expect(JSON.parse(String(calls[0].init!.body))).toMatchObject({ model: "gpt-image-1", size: "1536x1024", n: 1 });
   });
+
+  describe("reference images", () => {
+    const png = (n: number) => new Uint8Array([137, 80, 78, 71, n]);
+    const refs = [
+      { kind: "character" as const, name: "Amara", view: "front:MCU", bytes: png(1), media_type: "image/png" },
+      { kind: "character" as const, name: "Tunde", view: "front:MCU", bytes: png(2), media_type: "image/png" },
+      { kind: "location" as const, name: "HARBOUR", view: "wide:NIGHT", bytes: png(3), media_type: "image/jpeg" },
+    ];
+
+    it("runway image: sends tagged references and names them in the prompt (kept within 1000 characters)", async () => {
+      const { f, calls } = fakeFetch([
+        (u) => (u.endsWith("/text_to_image") ? json({ id: "task-r" }) : undefined),
+        (u) => (u.endsWith("/tasks/task-r") ? json({ status: "SUCCEEDED", output: ["https://cdn.example/r.png"] }) : undefined),
+        (u) => (u === "https://cdn.example/r.png" ? new Response(new Uint8Array([1]), { headers: { "content-type": "image/png" } }) : undefined),
+      ]);
+      const long = { ...pkg, prompt: "x".repeat(2000) };
+      await getAdapter("runway")!.generate(req({ model: "gen4_image", package: long, reference_images: refs }), { RUNWAY_API_KEY: "s" }, { fetchImpl: f, pollMs: 1 });
+      const body = JSON.parse(String(calls[0].init!.body));
+      expect(body.referenceImages.map((r: { tag: string }) => r.tag)).toEqual(["char1", "char2", "place"]);
+      expect(body.referenceImages[2].uri).toBe(`data:image/jpeg;base64,${Buffer.from(png(3)).toString("base64")}`);
+      expect(body.promptText.startsWith("Keep these consistent with the reference images: @char1 is Amara; @char2 is Tunde; @place is the location (HARBOUR).")).toBe(true);
+      expect(body.promptText.length).toBeLessThanOrEqual(1000);
+    });
+
+    it("runway video: no reference field (it starts from the approved frame)", async () => {
+      const { f, calls } = fakeFetch([
+        (u) => (u.endsWith("/image_to_video") ? json({ id: "task-v" }) : undefined),
+        (u) => (u.endsWith("/tasks/task-v") ? json({ status: "SUCCEEDED", output: ["https://cdn.example/v.mp4"] }) : undefined),
+        (u) => (u === "https://cdn.example/v.mp4" ? new Response(new Uint8Array([1]), { headers: { "content-type": "video/mp4" } }) : undefined),
+      ]);
+      await getAdapter("runway")!.generate(
+        req({ capability: "video", model: "gen4_turbo", source_image: { bytes: png(9), media_type: "image/png" }, reference_images: refs }),
+        { RUNWAY_API_KEY: "s" }, { fetchImpl: f, pollMs: 1 });
+      const body = JSON.parse(String(calls[0].init!.body));
+      expect(body.referenceImages).toBeUndefined();
+      expect(body.promptText).not.toContain("@char1");
+    });
+
+    it("openai image with references: uses the edits endpoint with every reference as an input image", async () => {
+      const { f, calls } = fakeFetch([(u) => (u.endsWith("/images/edits") ? json({ data: [{ b64_json: Buffer.from([4]).toString("base64") }] }) : undefined)]);
+      const r = await getAdapter("openai")!.generate(req({ model: "gpt-image-1", reference_images: refs }), { OPENAI_API_KEY: "s" }, { fetchImpl: f });
+      expect([...r.bytes]).toEqual([4]);
+      const form = calls[0].init!.body as FormData;
+      expect(form.get("model")).toBe("gpt-image-1");
+      expect(String(form.get("prompt"))).toMatch(/^Keep these consistent with the reference images: reference image 1 is Amara; reference image 2 is Tunde; reference image 3 is the location \(HARBOUR\)\. Cinematic film still/);
+      const images = form.getAll("image[]") as File[];
+      expect(images.map((i) => [i.name, i.type])).toEqual([["reference-1.png", "image/png"], ["reference-2.png", "image/png"], ["reference-3.jpg", "image/jpeg"]]);
+      expect([...new Uint8Array(await images[2].arrayBuffer())]).toEqual([...png(3)]);
+    });
+
+    it("the adapters declare what they accept; the sketch declares nothing", () => {
+      expect(getAdapter("runway")!.references?.image?.max).toBe(3);
+      expect(getAdapter("runway")!.references?.video).toBeUndefined();
+      expect(getAdapter("openai")!.references?.image?.max).toBe(6);
+      expect(getAdapter("aurastage-sketch")!.references).toBeUndefined();
+    });
+  });
 });

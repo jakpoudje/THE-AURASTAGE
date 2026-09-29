@@ -58,7 +58,15 @@ AURA-GEN-002 invalid input · 010 compiler input · 401 worker not authorised ·
 412 not ready (plan not approved, provider not connected, storage missing, stale package) ·
 502 provider error (recorded on the take) · 500 unexpected.
 
+## Reference images sent to providers (migration 0034)
+The package lists each shot's references (characters in frame, the location at its time of day, props) as Assets
+Library ids. `worker_claim_take` returns each one's file, type, size and version (only assets in the take's own project,
+not archived); the worker asks the gateway's `chooseReferences` what the provider accepts (characters first, then the
+place, then props, up to its limit; sketch SVG views and unsupported files are left out with the reason), sends them,
+and records every decision on `takes.references_used` (asset id + version, sent or not and why). Visual Generation shows
+it under the take. Runway Gen-4 Image takes 3 tagged references; OpenAI Images takes 6 (edits endpoint); the built-in
+sketch and Runway video (which starts from the approved frame) take none.
+
 ## Not built yet
-Visual QC (identity/wardrobe/lighting checks on the result), targeted repair,
-reference images from Assets, character-consistency references, cost estimates
+Visual QC (identity/wardrobe/lighting checks on the result), targeted repair, cost estimates
 before generating (providers don't return prices; we never guess).

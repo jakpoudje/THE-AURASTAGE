@@ -4,6 +4,27 @@ import type { Take } from "@aurastage/contracts";
 
 const PROVIDER: Record<string, string> = { "aurastage-sketch": "AuraStage Sketch", runway: "Runway", openai: "OpenAI" };
 
+/** Which reference images this take actually sent to the provider, and why any were left out. */
+function ReferencesUsed({ refs }: { refs: NonNullable<Take["references_used"]> }) {
+  const sent = refs.filter((r) => r.sent);
+  return (
+    <details className="rounded border border-aura-border bg-black/30 px-3 py-2 text-xs" aria-label="References sent">
+      <summary className="cursor-pointer text-white/70">
+        {sent.length ? `Sent ${sent.length} reference image${sent.length === 1 ? "" : "s"}: ${sent.map((r) => r.name).join(", ")}` : "No reference images were sent"}
+        {refs.length > sent.length ? ` · ${refs.length - sent.length} not sent` : ""}
+      </summary>
+      <ul className="mt-2 space-y-1">
+        {refs.map((r) => (
+          <li key={`${r.kind}:${r.object_id}:${r.asset_id}`} className={r.sent ? "text-emerald-300" : "text-white/50"}>
+            {r.sent ? "✓" : "–"} {r.name} <span className="text-white/40">({r.kind} · {r.view}{r.asset_version ? ` · v${r.asset_version}` : ""})</span>
+            {!r.sent && r.reason ? <span className="block pl-4 text-white/40">{r.reason}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function Media({ take, className = "" }: { take: Take; className?: string }) {
   if (take.status === "queued" || take.status === "running") {
     return <div className={`flex aspect-video items-center justify-center bg-black/60 text-sm text-sky-300 ${className}`}>{take.status === "queued" ? "Waiting in the queue…" : "Generating…"}</div>;
@@ -87,6 +108,7 @@ export function TakeViewer({
           </button>
         )}
       </div>
+      {sel.references_used && sel.references_used.length > 0 && <ReferencesUsed refs={sel.references_used} />}
       <div>
         <p className="mb-1 text-[11px] uppercase tracking-wider text-white/40">Takes (click to view · shift-click to compare)</p>
         <ul className="grid grid-cols-4 gap-2" aria-label="Takes">

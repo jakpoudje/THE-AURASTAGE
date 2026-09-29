@@ -47,6 +47,12 @@ adapters — added with their phases (Audio Studio etc.).
   character's Voice DNA (`audio/neural/voices.ts`). `audioBackendsFor(kind, env)` only returns backends that can make
   that kind AND are configured. Paid sound/voice providers will be added here.
 
+## Reference images (task 35, migration 0034)
+Adapters declare `references` per capability (`max`, accepted media types, `max_bytes`); `references.ts`
+`chooseReferences` decides what each provider receives and explains everything it leaves out; adapters name each
+reference in the prompt (Runway `@char1` / `@place` / `@prop1` tags; OpenAI "reference image 1…"). Runway Gen-4 Image:
+up to 3 (`referenceImages`); OpenAI Images: up to 6 via `/v1/images/edits`; sketch and Runway video: none.
+
 ## Third-party voice credits
 - Piper text-to-speech — © Michael Hansen, MIT licence (https://github.com/rhasspy/piper).
 - en_GB-vctk-medium — trained on the CSTR VCTK Corpus (Yamagishi, Veaux, MacDonald; University of Edinburgh), CC BY 4.0.

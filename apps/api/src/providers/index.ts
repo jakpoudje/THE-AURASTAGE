@@ -9,6 +9,7 @@ import type { ProviderAdapter } from "./types";
 export * from "./types";
 export * from "./reasoning";
 export * from "./audio";
+export * from "./references";
 export { renderSketch } from "./sketch/sketchAdapter";
 
 const ADAPTERS: ProviderAdapter[] = [sketchAdapter, runwayAdapter, openaiImageAdapter];

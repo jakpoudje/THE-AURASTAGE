@@ -83,6 +83,12 @@ async function api(method, path, body) {
     await page.getByRole("img", { name: "Take V2" }).waitFor({ timeout: 20000 });
     await page.getByRole("list", { name: "Takes" }).getByRole("button", { name: "V1" }).waitFor();
   });
+  await step("the take says which reference images were sent (the sketch takes none, and says why)", async () => {
+    const refs = page.getByLabel("References sent");
+    await refs.getByText(/No reference images were sent · \d+ not sent/).waitFor();
+    await refs.locator("summary").click();
+    await refs.getByText(/draws from the prompt only/).first().waitFor();
+  });
   await step("reload: takes and prompt are still there", async () => {
     await reload();
     await page.getByRole("img", { name: "Take V2" }).waitFor();

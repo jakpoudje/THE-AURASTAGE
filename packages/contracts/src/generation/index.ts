@@ -133,6 +133,11 @@ export const TakeSchema = z.object({
   error: z.string().nullable(),
   cost_actual: z.number().nullable(),
   provider_request_id: z.string().nullable(),
+  /** The reference images this take sent to the provider (asset + version) and why any were not sent (migration 0034). */
+  references_used: z.array(z.object({
+    kind: z.enum(["character", "location", "prop"]), object_id: z.string(), name: z.string(), view: z.string(), asset_id: z.string(),
+    asset_version: z.number().int().nullable(), sent: z.boolean(), reason: z.string().nullable(),
+  })).nullable().optional(),
   created_at: z.string(),
   completed_at: z.string().nullable(),
 });
