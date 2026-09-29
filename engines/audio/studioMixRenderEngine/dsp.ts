@@ -8,7 +8,7 @@
 export const dbToGain = (db: number) => Math.pow(10, db / 20);
 
 // ---------- Biquad filters ----------
-export type BiquadType = "highpass" | "lowshelf" | "peaking" | "highshelf";
+export type BiquadType = "highpass" | "lowpass" | "lowshelf" | "peaking" | "highshelf";
 export interface Biquad { b0: number; b1: number; b2: number; a1: number; a2: number }
 
 export function biquad(type: BiquadType, sr: number, freq: number, q: number, gainDb: number): Biquad {
@@ -18,6 +18,9 @@ export function biquad(type: BiquadType, sr: number, freq: number, q: number, ga
   if (type === "highpass") {
     const alpha = sin / (2 * Math.pow(10, q / 20)); // Web Audio: Q of lowpass/highpass is in dB
     b0 = (1 + cos) / 2; b1 = -(1 + cos); b2 = (1 + cos) / 2; a0 = 1 + alpha; a1 = -2 * cos; a2 = 1 - alpha;
+  } else if (type === "lowpass") {
+    const alpha = sin / (2 * Math.pow(10, q / 20));
+    b0 = (1 - cos) / 2; b1 = 1 - cos; b2 = (1 - cos) / 2; a0 = 1 + alpha; a1 = -2 * cos; a2 = 1 - alpha;
   } else if (type === "peaking") {
     const alpha = sin / (2 * q);
     b0 = 1 + alpha * A; b1 = -2 * cos; b2 = 1 - alpha * A; a0 = 1 + alpha / A; a1 = -2 * cos; a2 = 1 - alpha / A;

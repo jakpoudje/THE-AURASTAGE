@@ -8,5 +8,7 @@ export * as voiceCasting from "./voiceCastingEngine";
 export { voiceCastingEngine } from "./voiceCastingEngine";
 export * as mixAssist from "./mixAssistEngine";
 export { duckUnderDialogue, loudnessCorrection } from "./mixAssistEngine";
+export * as mixPreset from "./mixPresetEngine";
+export { applyChannelPreset, applyMixTemplate, applySpacePreset, channelPresetsFor, CHANNEL_PRESETS, MIX_TEMPLATES, SPACE_PRESETS } from "./mixPresetEngine";
 export * as studioMixRender from "./studioMixRenderEngine";
 export { studioMixRenderEngine } from "./studioMixRenderEngine";

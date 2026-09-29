@@ -7,7 +7,7 @@
 // target". Everything is saved with the session and drives playback, measurement and export through one graph.
 import { useEffect, useMemo, useState } from "react";
 import { FAMILY_BUS, type AudioClip, type AudioTrack, type SessionMix, type TrackFx, type UpdateAudioTrackInput } from "@aurastage/contracts";
-import { duckUnderDialogue, loudnessCorrection } from "@aurastage/engines";
+import { applyChannelPreset, applyMixTemplate, applySpacePreset, channelPresetsFor, duckUnderDialogue, loudnessCorrection, MIX_TEMPLATES, SPACE_PRESETS } from "@aurastage/engines";
 import { meterDb, SAMPLE_RATE, type Player } from "../state/mixEngine";
 import type { AudioMeasurement } from "../types";
 
@@ -40,7 +40,7 @@ function Strip({ t, player, busy, selected, onSelect, onChange }: { t: AudioTrac
   const an = player.playing ? player.analysers.get(t.id) : undefined;
   const comp = player.playing ? player.meters.comps.get(t.id) : undefined;
   const fx = t.fx;
-  const badges = [fx.hpf_hz > 0 && "HPF", (fx.eq.low.gain_db || fx.eq.mid.gain_db || fx.eq.high.gain_db) && "EQ", fx.comp.on && "COMP",
+  const badges = [fx.hpf_hz > 0 && "HPF", fx.lpf_hz > 0 && "LPF", (fx.eq.low.gain_db || fx.eq.mid.gain_db || fx.eq.high.gain_db) && "EQ", fx.comp.on && "COMP",
     fx.reverb_send_db > -60 && "REV", fx.delay_send_db > -60 && "DLY", fx.automation.length > 0 && "AUTO"].filter(Boolean) as string[];
   return (
     <div className={`flex w-24 shrink-0 flex-col items-center gap-2 rounded-lg border bg-black/30 p-2 ${selected ? "border-aura-gold" : "border-aura-border"}`} aria-label={`Channel ${t.name}`}>
@@ -93,6 +93,7 @@ function EqCurve({ fx }: { fx: TrackFx }) {
       mag.forEach((m, i) => (total[i] += 20 * Math.log10(Math.max(1e-6, m))));
     };
     if (fx.hpf_hz > 0) add("highpass", fx.hpf_hz, 0, 0.707);
+    if (fx.lpf_hz > 0) add("lowpass", fx.lpf_hz, 0, 0.707);
     add("lowshelf", fx.eq.low.freq, fx.eq.low.gain_db);
     add("peaking", fx.eq.mid.freq, fx.eq.mid.gain_db, fx.eq.mid.q);
     add("highshelf", fx.eq.high.freq, fx.eq.high.gain_db);
@@ -124,7 +125,15 @@ function ChannelEditor({ t, clips, tracks, seconds, busy, onSave, position }: {
 }) {
   const [fx, setFx] = useState<TrackFx>(t.fx);
   const [pt, setPt] = useState<{ t: number; db: number }>({ t: Math.round(position * 10) / 10, db: -6 });
-  useEffect(() => setFx(t.fx), [t.id, t.fx]);
+  const presets = useMemo(() => channelPresetsFor(t.family), [t.family]);
+  const [presetId, setPresetId] = useState(presets[0].id);
+  const [applied, setApplied] = useState<string | null>(null);
+  useEffect(() => { setFx(t.fx); setApplied(null); }, [t.id, t.fx]);
+  const choosePreset = (id: string) => {
+    const r = applyChannelPreset(fx, id);
+    setFx(r.fx);
+    setApplied(`${r.preset.name}: ${r.preset.description}${r.space ? ` Suggested space: ${r.space.name} (Buses & master → Space).` : ""} Save the channel to keep it.`);
+  };
   const dirty = JSON.stringify(fx) !== JSON.stringify(t.fx);
   const set = (patch: Partial<TrackFx>) => setFx({ ...fx, ...patch });
   const dialogue = clips.filter((c) => c.kind === "asset" && c.asset_id && tracks.some((x) => x.id === c.track_id && FAMILY_BUS[x.family] === "DX"))
@@ -143,10 +152,21 @@ function ChannelEditor({ t, clips, tracks, seconds, busy, onSave, position }: {
       </div>
       <div className="grid gap-4 lg:grid-cols-4">
         <div className="space-y-2 lg:col-span-2">
+          <div className="flex flex-wrap items-end gap-2 rounded border border-aura-border/60 bg-black/20 p-2" aria-label="Built-in presets for this channel">
+            <label className="text-[10px] text-white/50">Built-in preset
+              <select aria-label="Channel preset" value={presetId} onChange={(e) => setPresetId(e.target.value)} className="block rounded border border-aura-border bg-black px-1 py-0.5 text-white">
+                {presets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <button onClick={() => choosePreset(presetId)} className="rounded border border-aura-gold/60 px-2 py-1 text-aura-gold">Apply preset</button>
+            {isDialogue && <button onClick={() => choosePreset("dialogue_clean")} className="rounded border border-aura-border px-2 py-1 text-white/70">Dialogue clean-up preset (HPF 80 Hz, +2 dB presence)</button>}
+            {applied && <p role="status" className="w-full text-[10px] text-emerald-300">{applied}</p>}
+          </div>
           <div className="text-[10px] uppercase tracking-wider text-white/50">Filter & EQ</div>
           <EqCurve fx={fx} />
           <div className="grid grid-cols-2 gap-x-3 gap-y-1">
             <Num label="High-pass (0 = off)" value={fx.hpf_hz} min={0} max={500} step={10} unit="Hz" onChange={(v) => set({ hpf_hz: v })} />
+            <Num label="Low-pass (0 = off)" value={fx.lpf_hz} min={0} max={20000} step={100} unit="Hz" onChange={(v) => set({ lpf_hz: v })} />
             <Num label="Low shelf gain" value={fx.eq.low.gain_db} min={-15} max={15} step={0.5} unit="dB" onChange={(v) => set({ eq: { ...fx.eq, low: { ...fx.eq.low, gain_db: v } } })} />
             <Num label="Low shelf frequency" value={fx.eq.low.freq} min={40} max={500} step={10} unit="Hz" onChange={(v) => set({ eq: { ...fx.eq, low: { ...fx.eq.low, freq: v } } })} />
             <Num label="Mid gain" value={fx.eq.mid.gain_db} min={-15} max={15} step={0.5} unit="dB" onChange={(v) => set({ eq: { ...fx.eq, mid: { ...fx.eq.mid, gain_db: v } } })} />
@@ -155,7 +175,6 @@ function ChannelEditor({ t, clips, tracks, seconds, busy, onSave, position }: {
             <Num label="High shelf gain" value={fx.eq.high.gain_db} min={-15} max={15} step={0.5} unit="dB" onChange={(v) => set({ eq: { ...fx.eq, high: { ...fx.eq.high, gain_db: v } } })} />
             <Num label="High shelf frequency" value={fx.eq.high.freq} min={1500} max={16000} step={100} unit="Hz" onChange={(v) => set({ eq: { ...fx.eq, high: { ...fx.eq.high, freq: v } } })} />
           </div>
-          {isDialogue && <button onClick={() => set({ hpf_hz: 80, eq: { ...fx.eq, mid: { freq: 3000, gain_db: 2, q: 1 } } })} className="rounded border border-aura-border px-2 py-1 text-white/70">Dialogue clean-up preset (HPF 80 Hz, +2 dB presence)</button>}
         </div>
         <div className="space-y-1">
           <div className="text-[10px] uppercase tracking-wider text-white/50">Compressor</div>
@@ -200,6 +219,9 @@ function RoutingPanel({ mix, measurement, target, busy, player, onSave }: {
   const [m, setM] = useState<SessionMix>(mix);
   useEffect(() => setM(mix), [mix]);
   const dirty = JSON.stringify(m) !== JSON.stringify(mix);
+  const [templateId, setTemplateId] = useState(MIX_TEMPLATES[0].id);
+  const [spaceId, setSpaceId] = useState(SPACE_PRESETS[0].id);
+  const [note, setNote] = useState<string | null>(null);
   const fix = measurement?.integrated_lufs != null && measurement.true_peak_dbtp != null
     ? loudnessCorrection({ measured_lufs: measurement.integrated_lufs, true_peak_dbtp: measurement.true_peak_dbtp, target_lufs: target.integrated_lufs, max_true_peak_dbtp: target.max_true_peak_dbtp, current_master_db: mix.master.gain_db, limiter: mix.master.limiter, ceiling_db: mix.master.ceiling_db })
     : null;
@@ -212,6 +234,23 @@ function RoutingPanel({ mix, measurement, target, busy, player, onSave }: {
           {dirty && <button onClick={() => setM(mix)} className="rounded border border-aura-border px-2 py-1">Discard</button>}
           <button onClick={() => onSave(m, "Mix routing saved — measure the mix again before approving.")} disabled={!dirty || busy} className="rounded bg-aura-gold px-3 py-1 font-medium text-black disabled:opacity-40">Save routing</button>
         </div>
+      </div>
+      <div className="mb-3 flex flex-wrap items-end gap-3 rounded border border-aura-border/60 bg-black/20 p-2" aria-label="Genre templates and spaces">
+        <label className="text-[10px] text-white/50">Genre mix template
+          <select aria-label="Mix template" value={templateId} onChange={(e) => setTemplateId(e.target.value)} className="block rounded border border-aura-border bg-black px-1 py-0.5 text-white">
+            {MIX_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </label>
+        <button onClick={() => { const r = applyMixTemplate(m, templateId); setM(r.mix); setNote(`${r.template.name}: ${r.template.description} Bus mutes and the master stay as they were. Save routing to keep it.`); }}
+          className="rounded border border-aura-gold/60 px-2 py-1 text-aura-gold">Apply template</button>
+        <label className="text-[10px] text-white/50">Space
+          <select aria-label="Space preset" value={spaceId} onChange={(e) => setSpaceId(e.target.value)} className="block rounded border border-aura-border bg-black px-1 py-0.5 text-white">
+            {SPACE_PRESETS.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
+        <button onClick={() => { setM(applySpacePreset(m, spaceId)); const s = SPACE_PRESETS.find((x) => x.id === spaceId)!; setNote(`${s.name}: ${s.description} Save routing to keep it.`); }}
+          className="rounded border border-aura-border px-2 py-1 text-white/70">Apply space</button>
+        {note && <p role="status" className="w-full text-[10px] text-emerald-300">{note}</p>}
       </div>
       <div className="grid gap-4 lg:grid-cols-4">
         <div className="space-y-1">

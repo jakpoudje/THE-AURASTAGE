@@ -17,6 +17,8 @@ export const FAMILY_BUS: Record<AudioFamily, "DX" | "FX" | "BG" | "MX"> = {
 /** Per-track channel strip: filter, 3-band EQ, compressor, effect sends and volume automation. */
 export const TrackFxSchema = z.object({
   hpf_hz: z.number().min(0).max(500).default(0),
+  /** Low-pass filter (0 = off): phone, radio, next-room and muffled sounds. */
+  lpf_hz: z.number().min(0).max(20000).default(0),
   eq: z.object({
     low: z.object({ freq: z.number().min(40).max(500), gain_db: z.number().min(-15).max(15) }).default({ freq: 120, gain_db: 0 }),
     mid: z.object({ freq: z.number().min(150).max(8000), gain_db: z.number().min(-15).max(15), q: z.number().min(0.3).max(8) }).default({ freq: 1500, gain_db: 0, q: 1 }),

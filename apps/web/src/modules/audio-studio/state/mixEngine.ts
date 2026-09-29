@@ -150,6 +150,7 @@ function buildGraph(c: BaseAudioContext, dest: AudioNode, tracks: AudioTrack[], 
     let node: AudioNode = tg;
     const chain = (n: AudioNode) => { node.connect(n); node = n; };
     if (fx.hpf_hz > 0) { const f = c.createBiquadFilter(); f.type = "highpass"; f.frequency.value = fx.hpf_hz; f.Q.value = 0.707; chain(f); }
+    if (fx.lpf_hz > 0) { const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = fx.lpf_hz; f.Q.value = 0.707; chain(f); }
     if (fx.eq.low.gain_db !== 0) { const f = c.createBiquadFilter(); f.type = "lowshelf"; f.frequency.value = fx.eq.low.freq; f.gain.value = fx.eq.low.gain_db; chain(f); }
     if (fx.eq.mid.gain_db !== 0) { const f = c.createBiquadFilter(); f.type = "peaking"; f.frequency.value = fx.eq.mid.freq; f.Q.value = fx.eq.mid.q; f.gain.value = fx.eq.mid.gain_db; chain(f); }
     if (fx.eq.high.gain_db !== 0) { const f = c.createBiquadFilter(); f.type = "highshelf"; f.frequency.value = fx.eq.high.freq; f.gain.value = fx.eq.high.gain_db; chain(f); }

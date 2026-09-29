@@ -49,6 +49,13 @@ describe("studioMixRenderEngine (the Audio Studio chain, offline)", () => {
     const flat = studioMixRenderEngine({ seconds: 1, tracks: [track("t", "BG")], clips: [clip("t", "h", 1)] }, pcm, SR);
     expect(rms(hp[0], SR / 2) / rms(flat[0], SR / 2)).toBeLessThan(0.05);
   });
+  it("low-pass (1.1.0): a 3.4 kHz phone band removes an 8 kHz tone and keeps 500 Hz", () => {
+    const hi = sine(8000, 1, 0.01), lo = sine(500, 1, 0.01);
+    const pcm = new Map([["hi", { channels: [hi] }], ["lo", { channels: [lo] }]]);
+    const run = (a: string, fx: Record<string, unknown>) => studioMixRenderEngine({ seconds: 1, tracks: [track("t", "DX", { fx })], clips: [clip("t", a, 1)] }, pcm, SR)[0];
+    expect(rms(run("hi", { lpf_hz: 3400 }), SR / 2) / rms(run("hi", {}), SR / 2)).toBeLessThan(0.2);
+    expect(rms(run("lo", { lpf_hz: 3400 }), SR / 2) / rms(run("lo", {}), SR / 2)).toBeGreaterThan(0.95);
+  });
   it("volume automation ramps between points; clip fades and gain apply", () => {
     const x = new Float32Array(SR * 2).fill(0.1);
     const pcm = new Map([["a", { channels: [x] }]]);

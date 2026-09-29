@@ -94,6 +94,7 @@ export function studioMixRenderEngine(raw: unknown, pcm: Map<string, Pcm>, sampl
     for (const ch of sig) for (let i = 0; i < n; i++) ch[i] *= typeof fader === "number" ? fader : fader[i];
     const filters = [
       fx.hpf_hz > 0 ? biquad("highpass", sr, fx.hpf_hz, 0.707, 0) : null,
+      fx.lpf_hz > 0 ? biquad("lowpass", sr, fx.lpf_hz, 0.707, 0) : null,
       fx.eq.low.gain_db !== 0 ? biquad("lowshelf", sr, fx.eq.low.freq, 1, fx.eq.low.gain_db) : null,
       fx.eq.mid.gain_db !== 0 ? biquad("peaking", sr, fx.eq.mid.freq, fx.eq.mid.q, fx.eq.mid.gain_db) : null,
       fx.eq.high.gain_db !== 0 ? biquad("highshelf", sr, fx.eq.high.freq, 1, fx.eq.high.gain_db) : null,

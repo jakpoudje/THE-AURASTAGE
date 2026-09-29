@@ -219,6 +219,29 @@ async function api(method, p, body) {
     const stale = await api("PUT", `/api/projects/${P}/audio/scenes/${s1}/mix`, { mix: sc.session.mix, revision: "00000000-0000-4000-8000-000000000000" });
     if (stale.error?.code !== "AURA-AUD-409") throw new Error("stale routing save not refused");
   });
+  await step("built-in presets: phone call on a dialogue channel (low-pass), horror mix template; reload: kept", async () => {
+    await page.getByRole("button", { name: /^Channel strip DX/ }).first().click();
+    const ed = page.getByRole("region", { name: /^Channel strip editor DX/ });
+    await ed.getByLabel("Channel preset", { exact: true }).selectOption({ label: "Phone call" });
+    await ed.getByRole("button", { name: "Apply preset" }).click();
+    await ed.getByText(/Phone call: The other end of a phone line/).waitFor();
+    if ((await ed.getByLabel("Low-pass (0 = off)").inputValue()) !== "3400") throw new Error("low-pass not set");
+    await ed.getByRole("button", { name: "Save channel" }).click();
+    await page.getByText(/channel strip — measure the mix again/).waitFor();
+    const routing = page.getByRole("region", { name: "Buses and master" });
+    await routing.getByLabel("Mix template").selectOption({ label: "Horror" });
+    await routing.getByRole("button", { name: "Apply template" }).click();
+    await routing.getByText(/Horror: Big, reverberant spaces/).waitFor();
+    await routing.getByRole("button", { name: "Save routing" }).click();
+    await page.getByText(/Mix routing saved/).waitFor();
+    await reload();
+    await page.getByRole("button", { name: /^Channel strip DX/ }).first().getByText(/HPF · LPF · EQ · COMP/).waitFor();
+    const ws = await api("GET", `/api/projects/${P}/audio`);
+    const sc = ws.scenes.find((x) => x.scene.id === s1);
+    const dx = sc.tracks.find((t) => t.family === "DX");
+    if (dx.fx.lpf_hz !== 3400 || dx.fx.hpf_hz !== 300) throw new Error(JSON.stringify(dx.fx));
+    if (sc.session.mix.buses.BG.gain_db !== -2 || sc.session.mix.reverb.decay_s !== 3.2) throw new Error(JSON.stringify(sc.session.mix));
+  });
   await step("match the loudness target: measure, apply the master correction, measure again — on target", async () => {
     await page.getByRole("button", { name: "Measure mix" }).click();
     await page.getByText(/Measured the rendered mix: /).waitFor();
