@@ -70,4 +70,10 @@ describe("structured-output schema (regression: live 400 'maxItems is not suppor
     expect(plan.properties.calls.items.additionalProperties).toBe(false);
     expect(jsonSchemaOf(z.object({ n: z.number().int().min(0).max(10) })).properties).toMatchObject({ n: { type: "integer", description: "(minimum 0, maximum 10)" } });
   });
+  it("regression (live 2026-09-29): an empty Claude credit balance becomes a plain, non-retryable message for the owner", async () => {
+    next = new (Anthropic as any).APIError(400, '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}');
+    const e: any = await anthropicReasoningAdapter.complete({ system: "s", prompt: "p", schema: Names, task: { kind: "plan", snapshot: {} } } as any, env).catch((x) => x);
+    expect(e.message).toMatch(/run out of credit.*console\.anthropic\.com → Plans & Billing/);
+    expect(e.retryable).toBe(false);
+  });
 });

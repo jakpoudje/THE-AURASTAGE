@@ -55,6 +55,17 @@ export const listLooks = (db: SupabaseClient, projectId: string) =>
   rows(db.from("wardrobe_looks").select("id, character_id, name, description").eq("project_id", projectId));
 export const listLines = (db: SupabaseClient, projectId: string) =>
   rows(db.from("dialogue_lines").select("id, speaker_name, text, emotion").eq("project_id", projectId));
+// Read-only views of Locations & Props and the reference images (their own domains write them).
+export const listWorldItems = async (db: SupabaseClient, projectId: string) => ({
+  locations: await rows(db.from("locations").select("id, name, description, revision, archived_at").eq("project_id", projectId)),
+  props: await rows(db.from("props").select("id, name, description, category, revision, archived_at").eq("project_id", projectId)),
+});
+export const listSceneAppearances = (db: SupabaseClient, sceneId: string) =>
+  rows(db.from("world_appearances").select("object_type, object_id").eq("scene_id", sceneId));
+export const listWorldRefs = (db: SupabaseClient, projectId: string) =>
+  rows(db.from("world_reference_images").select("object_type, object_id, view_key, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").order("created_at", { ascending: false }));
+export const listCharacterRefs = (db: SupabaseClient, projectId: string) =>
+  rows(db.from("character_reference_images").select("character_id, look_id, angle, size, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").order("created_at", { ascending: false }));
 export const listPackages = (db: SupabaseClient, projectId: string) =>
   rows(db.from("generation_packages").select("*").eq("project_id", projectId).order("created_at", { ascending: false }));
 export const listTakes = (db: SupabaseClient, projectId: string) =>

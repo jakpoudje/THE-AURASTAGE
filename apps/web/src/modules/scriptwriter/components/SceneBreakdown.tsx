@@ -9,9 +9,17 @@ function fmt(seconds: number) {
   return m ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
 }
 
-export function SceneBreakdown({ scenes, draftScenes }: { scenes: Scene[]; draftScenes: SceneCandidate[] }) {
+export function SceneBreakdown({ scenes, draftScenes, projectId, targetMinutes, onOpen, onRework }: {
+  scenes: Scene[]; draftScenes: SceneCandidate[]; projectId: string; targetMinutes: number | null;
+  /** Open the scene's heading in the editor (by its number in the current draft). */
+  onOpen: (number: number) => void;
+  /** Open the AI scene tools on this scene. */
+  onRework: (number: number) => void;
+}) {
   const approved = scenes.length > 0;
   const rows = approved ? scenes : draftScenes;
+  const total = rows.reduce((a, s) => a + s.estimated_seconds, 0);
+  const inDraft = new Set(draftScenes.map((s) => s.number));
   return (
     <div className="rounded-xl border border-aura-border bg-aura-panel">
       <div className="border-b border-aura-border px-5 py-3">
@@ -21,6 +29,12 @@ export function SceneBreakdown({ scenes, draftScenes }: { scenes: Scene[]; draft
             ? "Scenes from the approved script. Later stages build on these."
             : "Draft only: approve the script to lock these in as production scenes."}
         </p>
+        {rows.length > 0 && (
+          <p className="mt-1 text-xs text-white/60" data-testid="breakdown-total">
+            {rows.length} scene{rows.length === 1 ? "" : "s"} · about {fmt(Math.round(total))}
+            {targetMinutes ? ` of a ${targetMinutes}-minute target${total > targetMinutes * 60 * 1.1 ? " — running long" : total < targetMinutes * 60 * 0.8 ? " — running short" : " — on target"}` : ""}
+          </p>
+        )}
       </div>
       {rows.length === 0 ? (
         <p className="p-5 text-sm text-white/40">No scenes yet. Scenes start at lines beginning with INT. or EXT.</p>
@@ -32,7 +46,8 @@ export function SceneBreakdown({ scenes, draftScenes }: { scenes: Scene[]; draft
               <th className="py-2">Heading</th>
               <th className="py-2">Characters</th>
               <th className="py-2">Length</th>
-              <th className="px-5 py-2 text-right">Status</th>
+              <th className="py-2 text-right">Status</th>
+              <th className="px-5 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -53,6 +68,17 @@ export function SceneBreakdown({ scenes, draftScenes }: { scenes: Scene[]; draft
                       <Pill tone="gold">Review required</Pill>
                     ) : (
                       <Pill tone="green">Approved</Pill>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-2 text-right text-xs">
+                    {inDraft.has(s.number) && (
+                      <>
+                        <button onClick={() => onOpen(s.number)} aria-label={`Open scene ${s.number} in the editor`} className="text-aura-gold underline">Edit</button>
+                        <button onClick={() => onRework(s.number)} aria-label={`Rework scene ${s.number} with AI`} className="ml-3 text-aura-gold underline">Rework</button>
+                      </>
+                    )}
+                    {scene && scene.status !== "omitted" && (
+                      <a href={`/projects/${projectId}/scene-dna?scene=${scene.id}`} className="ml-3 text-white/60 underline">Scene DNA →</a>
                     )}
                   </td>
                 </tr>

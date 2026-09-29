@@ -49,8 +49,8 @@ export default function CastingCharactersPage() {
           <Link href={`/projects/${id}/scriptwriter`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
             ← Scriptwriter
           </Link>
-          <Link href={`/projects/${id}/dialogue`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
-            Next: Dialogue →
+          <Link href={`/projects/${id}/world`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Next: Locations & Props →
           </Link>
         </>
       }

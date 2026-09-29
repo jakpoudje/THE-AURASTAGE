@@ -1,0 +1,173 @@
+# The AuraStage — Build Plan to a Fully Functional Studio
+
+Written 2026-09-29 for the owner. Plain language first; the technical notes under each item are for whoever builds
+it. Status marks: ✅ built and verified live · 🟡 partly built · ⬜ not built yet. Nothing here is marked ✅ unless it has
+been checked on the live site.
+
+---
+
+## 1. What "fully functional" means
+
+A person with an idea — a logline, a synopsis, or a finished script — can make a finished short or feature film in one
+place:
+
+1. **Write** the story and screenplay with an AI partner, or entirely by hand, or any mix of both.
+2. **Cast** every character with a consistent face, body, wardrobe, voice and age across the whole film.
+3. **Build the world**: every location and prop, described once, with reference images for every time of day.
+4. **Direct** each scene (Scene DNA), plan its shots (Storyboard) and generate the images and video for every shot.
+5. **Hear** the film: natural dialogue in each character's voice, lip-synced, with sound effects, ambience, Foley and
+   music suggested from the script and placed where they belong — then mixed in a real studio.
+6. **Edit** the cut on a timeline, balance the sound, lock the picture.
+7. **Deliver** a finished film file (and stems, subtitles, EDL) that passes technical checks.
+
+At every stage an AI assistant proposes; the person decides. Anything a person edits flows to every later stage, and
+anything that changes upstream is flagged downstream (never silently overwritten).
+
+---
+
+## 2. The one rule that makes the film consistent
+
+Every stage reads the **same canonical records** — never a copy:
+
+| Record | Owned by | Used by |
+|---|---|---|
+| Story (logline, synopsis, characters, beats) | Scriptwriter | Outline, Script, Casting names |
+| Scenes | Scriptwriter (approved script) | every later stage |
+| Characters (profile, looks, voice, age) | Casting | Dialogue, Scene DNA, prompts, voice, lip sync |
+| Locations & props (+ reference views) | Locations & Props | Scene DNA, prompts, video |
+| Scene DNA (mood, weather, light, wardrobe per scene) | Scene DNA | Storyboard, prompts, sound |
+| Shot plan | Storyboard | Visual Generation, Audio spotting, Editorial |
+| Approved takes and mixes | Visual Generation / Audio Studio | Editorial, Export |
+
+Each generated image or video is compiled from these records with the exact versions recorded, and uses the
+**reference images** of the characters in frame, the location at that time of day, and the props. When any of them
+changes, the shots that used it are flagged "needs review".
+
+---
+
+## 3. The production pipeline — what users can do at each stage
+
+### Stage 1 — Scriptwriter
+- ✅ Project Setup: title, format, logline, synopsis, genre, tone, setting, period, runtime; scope plan (scenes, pages).
+- ✅ Story Development with Claude: title options, logline, synopsis, themes, characters (with why each name fits),
+  beats across the acts; apply fields one by one; checks with evidence.
+- ✅ Names stay the same everywhere: one "current story" used by the outline, script and rewrites; names already
+  decided are passed back to Claude and kept; a warning if an outline came from an older story.
+- ✅ Write or edit the story yourself; build or edit the outline yourself; write the script yourself.
+- ✅ Outline & Structure: editable scene list sized to the runtime.
+- ✅ Generate Script: the whole screenplay written in the background (3 batches at a time), live progress and the real
+  current step on screen; opens as a draft version you approve.
+- ✅ Edit & Refine: editor with preview, versions, import (Final Draft / Fountain), AI scene tools (improve, expand,
+  rephrase, condense, sharpen dialogue, new scene) with before → after, continuity check.
+- ✅ Scene Breakdown and Character Extraction: interactive (jump to a scene, rework it, rename a character everywhere,
+  open in Casting / Scene DNA).
+- ⬜ PDF import. ⬜ Side-by-side version compare. ⬜ Beat board (cards you drag between acts).
+
+### Stage 2 — Casting & Characters
+- ✅ Characters created from the approved script; profiles (age, look, personality, background); approval.
+- ✅ Wardrobe looks per character; 16 reference views per character (angle × framing) from one identity description.
+- ✅ Voice DNA: each character's voice type, pitch, pace and accent, matched to a natural neural voice.
+- 🟡 AI assistant fills profiles as proposals (Ask AuraStage). ⬜ Relationship map.
+- ⬜ **Story-driven aging**: age per scene (flashbacks, time jumps) with reference views per age.
+- ⬜ Upload an actor's photos as the reference (with consent record) instead of generated views.
+
+### Stage 3 — Locations & Props
+- ✅ Every place and prop found in the approved script with the line it comes from; describe, confirm, add by hand.
+- ✅ Reference views: establishing / wide / medium / detail per time of day; props hero / ¾ / detail / in hand.
+- ✅ Used by every shot's prompt (described location, props, reference images); edits flag those prompts.
+- ⬜ Set dressing per scene (what's on the table in scene 12) and continuity of props between scenes.
+
+### Stage 4 — Dialogue Intelligence
+- ✅ Lines from the approved script; intent, emotion, intensity, subtext per line; review when the script changes.
+- ⬜ AI performance notes for every line in one pass; ⬜ pronunciation guide for names and non-English words.
+
+### Stage 5 — Scene DNA
+- ✅ Per scene: purpose, mood, weather, atmosphere, lighting intent, wardrobe per character; lock.
+- 🟡 AI fills Scene DNA as a proposal. ⬜ Colour palette and reference mood images per scene.
+
+### Stage 6 — Storyboard & Shots
+- ✅ Shot plan per scene (size, angle, movement, lens, focus, composition, timing), approval, sketches.
+- ⬜ AI shot list from Scene DNA in one click ("coverage presets": dialogue two-hander, chase, reveal…).
+
+### Stage 7 — Visual Generation
+- ✅ Prompt compiled for every shot from all the canonical records; built-in sketch; Runway and OpenAI images when keys
+  are added; takes, compare, approve.
+- 🟡 Reference images are chosen per shot and shown — ⬜ they still need to be **sent** to providers that accept them.
+- ⬜ More video providers (Luma, Google Veo); ⬜ image-to-video from the approved still; ⬜ in-painting fixes.
+
+### Stage 8 — Audio Studio
+- ✅ Spotting from the shot plan; dialogue, effects, ambience, Foley and music cues; your own tracks.
+- ✅ Built-in sound generator (procedural) and natural built-in voice (neural, per character).
+- ✅ Studio mixing: channel strip (EQ, compressor, reverb/delay sends, volume automation), buses, master limiter,
+  loudness measurement and "match loudness target"; the export sounds exactly as approved.
+- ⬜ **Lip sync**: mouth movement matched to each line (provider such as Sync Labs / Hedra; needs a key).
+- ⬜ **Premium voices** (ElevenLabs; needs a key) with the same Voice DNA.
+- ⬜ **Music**: suggested cues from the story (mood, tempo, instruments per scene) → generated by a licensed music
+  provider (needs a key) or chosen from a built-in library; stems.
+- ⬜ **Better built-in SFX and ambience**: a curated, licence-clear library (rain, crowds, traffic, doors, footsteps…)
+  alongside the procedural generator; auto-placement from the script's action lines.
+- ⬜ Built-in **presets**: dialogue clean-up, "phone call", "radio", "large hall", "outdoor night", genre mix templates.
+
+### Stage 9 — Editorial & Timeline
+- ✅ First assembly from approved takes and mixes; NLE tools (trim, ripple, roll, slip, slide, blade, lift, extract);
+  grading; versions; Picture Lock with impact; EDL.
+- ✅ Clear assembly overview, scene row, volume automation you draw or set, kept after picture lock.
+- ⬜ Titles and credits; transitions (dissolve, fade); a second picture track for inserts; music on its own timeline
+  track across scenes.
+
+### Stage 10 — Export & Deliver
+- ✅ Streaming master, review copy, ProRes master, audio package (mix, stems, M&E), subtitles, EDL, technical QC.
+- ⬜ Social cut-downs (9:16, 1:1) and a trailer assistant.
+
+### Around every stage
+- ✅ Team roles and permissions, comments and mentions, tasks, activity, Help & Support, Project Settings, Assets
+  Library (edit images/audio in the browser), dashboard from real evidence, AI & Generation readiness page.
+- ⬜ Real-time co-editing presence; ⬜ mobile review app.
+
+---
+
+## 4. How the final video reflects everything (the "consistency spine")
+
+For every shot, the render uses:
+
+- **Story** → the approved script's scene and lines (Scriptwriter).
+- **People** → the characters in frame, with their approved look for that scene, age for that scene ⬜, and reference
+  views (Casting).
+- **Place and things** → the described location at the scene's time of day and its props, with reference views
+  (Locations & Props).
+- **Mood and light** → Scene DNA; **camera** → the approved shot plan.
+- **Sound** → the approved scene mix (dialogue in each character's voice, lip-synced ⬜, effects, ambience, music),
+  shaped by the timeline's volume automation.
+- **Finish** → the project look (Project Settings), picture lock, delivery profile.
+
+Every one of these is recorded in the render's manifest, so any frame can be traced back to exactly what made it.
+
+---
+
+## 5. Build order from here
+
+| # | Work | Why first | Needs from the owner |
+|---|---|---|---|
+| 1 | Send reference images to image/video providers that accept them | Same faces and places in every shot | — |
+| 2 | Story-driven aging (age per scene, reference sets per age) | Time jumps and flashbacks look right | — |
+| 3 | Built-in SFX/ambience library + auto-placement + mix presets | Better sound without paid services | — |
+| 4 | Music suggestions per scene + built-in library; music provider | Background music in every film | Music provider key |
+| 5 | Premium voices (ElevenLabs) with Voice DNA | Natural performances | ElevenLabs key |
+| 6 | Lip sync on dialogue shots | Believable speaking characters | Lip-sync provider key |
+| 7 | More video providers (Luma, Veo), image-to-video | Motion for every shot | Luma / Google keys |
+| 8 | Editorial titles, credits, transitions, music track | A finished-looking film | — |
+| 9 | AI in every field (one-click shot lists, Scene DNA, performance notes) | Speed | — |
+| 10 | Social cut-downs, trailer assistant, PDF import, beat board | Reach and comfort | — |
+
+Each item follows the working agreement: build → tests → full build → push → deploy → live check with a throwaway
+account → clean up → short update to the owner.
+
+---
+
+## 6. What only the owner can provide
+
+- **Claude credit** (console.anthropic.com → Plans & Billing) — required for every AI writing and assistant step. The
+  live check on 2026-09-29 found the balance empty.
+- Keys for paid generators when you want them: ElevenLabs (voices), a music provider, a lip-sync provider, Runway /
+  Luma / Google Veo (video), OpenAI (images). Each is added as a variable on the API and generation worker in Railway.
+- Supabase dashboard → Authentication → "Leaked password protection" (one switch).

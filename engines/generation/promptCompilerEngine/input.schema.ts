@@ -48,6 +48,12 @@ export const PromptCompilerInputSchema = z.object({
     })
   ),
   dialogue: z.array(z.object({ id: z.string().uuid(), speaker: z.string(), text: z.string(), emotion: z.string().nullable() })),
+  /** The scene's canonical location (Locations & Props) — null when it hasn't been found/described yet. */
+  location: z.object({ id: z.string().uuid(), name: z.string(), description: z.string(), revision: z.number().int() }).nullable().default(null),
+  /** Props and vehicles that appear in the scene. */
+  props: z.array(z.object({ id: z.string().uuid(), name: z.string(), description: z.string(), category: z.string(), revision: z.number().int() })).default([]),
+  /** Finished reference images to condition on (characters in frame, the location at this time of day, the props). */
+  references: z.array(z.object({ kind: z.enum(["character", "location", "prop"]), object_id: z.string().uuid(), name: z.string(), view: z.string(), asset_id: z.string().uuid() })).default([]),
   aspect_ratio: AspectRatioSchema,
   provenance: z.object({
     shot_plan_version_id: z.string().uuid(),

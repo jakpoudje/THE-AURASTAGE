@@ -20,7 +20,7 @@ describe("storyDevelopmentEngine", () => {
     expect(r.system).toMatch(/names? that genuinely belongs to the story's world/);
     expect(r.prompt).toMatch(/Logline: \(not decided\)/);
     expect(r.prompt).toMatch(/The writer's request: Make the villain sympathetic/);
-    expect(r.engine_version).toBe("1.0.0");
+    expect(r.engine_version).toBe("1.1.0");
   });
   it("accepts a well-formed proposal and passes its checks", () => {
     const parsed = StoryDevelopmentOutputSchema.parse(out);
@@ -37,5 +37,18 @@ describe("storyDevelopmentEngine", () => {
     expect(c.distinct_names.ok).toBe(false);
     expect(c.beats_ordered.ok).toBe(false);
     expect(c.fits_runtime).toMatchObject({ ok: false, evidence: "Last beat at minute 140 of 100" });
+  });
+  it("regression (owner, 2026-09-29): names already decided are passed in, must be kept, and a rename is flagged", () => {
+    const decided = { ...brief, characters: [{ name: "Adaeze Okafor", role: "protagonist", source: "story" as const }, { name: "Tunde Bakare", source: "casting" as const }] };
+    const r = storyDevelopmentRequest(decided);
+    expect(r.prompt).toMatch(/Characters already decided \(keep these exact names\):\n- Adaeze Okafor \(protagonist\)\n- Tunde Bakare/);
+    expect(r.system).toMatch(/keep each one's\nname exactly/);
+    let c = checkStoryDevelopment(decided, StoryDevelopmentOutputSchema.parse(out)).find((x) => x.id === "keeps_names")!;
+    expect(c).toMatchObject({ ok: true, evidence: "Kept: Adaeze Okafor, Tunde Bakare" });
+    const renamed = StoryDevelopmentOutputSchema.parse({ ...out, characters: [out.characters[0], { ...out.characters[1], name: "Lamidi Akinwale" }] });
+    c = checkStoryDevelopment(decided, renamed).find((x) => x.id === "keeps_names")!;
+    expect(c).toMatchObject({ ok: false, evidence: "Missing or renamed: Tunde Bakare" });
+    c = checkStoryDevelopment({ ...decided, request: "give everyone new names" }, renamed).find((x) => x.id === "keeps_names")!;
+    expect(c.ok).toBe(true);
   });
 });

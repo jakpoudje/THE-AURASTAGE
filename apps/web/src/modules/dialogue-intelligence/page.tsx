@@ -64,8 +64,8 @@ export default function DialogueIntelligencePage() {
       active="dialogue"
       actions={
         <>
-          <Link href={`/projects/${id}/casting`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
-            ← Casting
+          <Link href={`/projects/${id}/world`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
+            ← Locations & Props
           </Link>
           <Link href={`/projects/${id}/scene-dna`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
             Next: Scene DNA →

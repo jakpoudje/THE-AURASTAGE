@@ -8,7 +8,11 @@ Work from the brief. Keep everything the writer already decided (title, logline,
 runtime) unless their request asks you to change it; where the brief is silent, choose what best serves the story
 and list those choices in "assumptions".
 
-Characters: give every character a name that genuinely belongs to the story's world — its country, region, culture,
+Characters already decided (listed in the brief) are the same people everywhere in the production: keep each one's
+name exactly as written (same spelling, same order of names) and keep their role, unless the writer's request asks you
+to rename or drop them. You may add new characters. If the logline or existing synopsis names people, use those names.
+
+Characters: give every new character a name that genuinely belongs to the story's world — its country, region, culture,
 language, era, class and family background — and explain the choice in "name_reasoning". Avoid generic or
 placeholder names, avoid giving two characters names that sound alike or start the same way, and never reuse
 real, famous people's names. Ages must fit the story's timeline.
@@ -31,6 +35,9 @@ export function buildStoryDevelopmentPrompt(brief: StoryBrief): string {
     line("Setting", b.setting),
     line("Time period", b.time_period),
     line("Target runtime (minutes)", b.target_runtime_minutes),
+    b.characters.length
+      ? `Characters already decided (keep these exact names):\n${b.characters.map((c) => `- ${c.name}${c.role ? ` (${c.role})` : ""}${c.description ? ` — ${c.description.slice(0, 200)}` : ""}`).join("\n")}`
+      : "",
     b.synopsis ? `Existing synopsis (keep what works):\n${b.synopsis}` : "",
     b.request ? `The writer's request: ${b.request}` : "",
   ].filter(Boolean).join("\n");

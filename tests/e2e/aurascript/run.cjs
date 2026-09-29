@@ -92,6 +92,56 @@ async function api(method, path, body) {
     const names = cast.characters.map((c) => c.name).join(", ");
     if (!/Adaeze/i.test(names) || !/Femi/i.test(names)) throw new Error("characters not found: " + names + " " + JSON.stringify(r).slice(0, 200));
   });
+  await step("names stay the same everywhere: edit the story yourself (rename a character) → it becomes the current story; developing again keeps the name", async () => {
+    await page.goto(`${BASE}/projects/${P}/scriptwriter`);
+    await stepTab("Story Development");
+    await page.getByRole("button", { name: "Edit this story" }).click();
+    await page.getByLabel("Character 1 name").fill("Kemi Adeyemi");
+    await page.getByRole("button", { name: "Save as my story" }).click();
+    await page.getByText(/Saved as your story — Outline and Script now use it/).waitFor();
+    await page.getByTestId("current-story").waitFor();
+    await page.getByRole("list", { name: "Proposed characters" }).getByText("Kemi Adeyemi").waitFor();
+    await page.getByTestId("decided-names").getByText(/Kemi Adeyemi/).waitFor();
+    await page.getByRole("button", { name: "Develop again" }).click();
+    await page.getByTestId("writing-status-develop_story").getByText("Done").waitFor({ timeout: 15000 });
+    await page.getByTestId("proposal-not-used").waitFor();
+    await page.getByRole("list", { name: "Proposed characters" }).getByText("Kemi Adeyemi").waitFor();
+    await page.getByRole("list", { name: "Checks" }).getByText(/Keeps the characters already decided/).waitFor();
+    await page.reload();
+    await stepTab("Story Development");
+    await page.getByTestId("decided-names").getByText(/Kemi Adeyemi/).waitFor();
+  });
+  await step("the outline says when it was built from an earlier story and rebuilds from the current one (with a live working card)", async () => {
+    await stepTab("Outline & Structure");
+    await page.getByTestId("outline-story-mismatch").waitFor();
+    await page.getByRole("button", { name: "Rebuild from the current story" }).click();
+    await page.getByTestId("writing-status-outline").first().waitFor();
+    await page.getByTestId("outline-summary").waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => !document.querySelector('[data-testid="outline-story-mismatch"]'), null, { timeout: 15000 });
+    const chars = await page.getByLabel("Scene 1 characters").inputValue();
+    if (!/Kemi Adeyemi/.test(chars)) throw new Error("outline doesn't use the current story's names: " + chars);
+  });
+  await step("Scene Breakdown is interactive: totals against the target, Edit jumps to the scene in the editor", async () => {
+    await stepTab("Scene Breakdown");
+    await page.getByTestId("breakdown-total").getByText(/scenes · about/).waitFor();
+    await page.getByRole("button", { name: "Open scene 2 in the editor" }).click();
+    const sel = await page.getByLabel("Script text").evaluate((el) => el.value.slice(el.selectionStart, el.selectionEnd));
+    if (!/^(INT|EXT)\./.test(sel)) throw new Error("editor didn't jump to scene 2's heading: " + sel);
+  });
+  await step("Character Extraction: checked against the story; rename a character everywhere in the script (then save a version)", async () => {
+    await stepTab("Character Extraction");
+    const card = page.getByRole("listitem", { name: "Character FEMI" });
+    await card.getByText(/In your story|Not in your current story/).waitFor();
+    await card.getByRole("button", { name: "Rename everywhere" }).click();
+    await card.getByLabel("New name for FEMI").fill("Tayo");
+    await card.getByRole("button", { name: "Rename", exact: true }).click();
+    await page.getByText(/Renamed FEMI → Tayo: \d+ cues?, \d+ mentions?/).waitFor();
+    await stepTab("Edit & Refine");
+    const text = await page.getByLabel("Script text").inputValue();
+    if (/\nFEMI\n/.test(text) || !/\nTAYO\n/.test(text)) throw new Error("rename not applied to the draft");
+    await page.getByText("Unsaved changes", { exact: true }).waitFor();
+    await page.screenshot({ path: `${OUT}/aurascript-names.png` });
+  });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();
   console.log(failed ? `${failed} FAILED` : "ALL PASSED");

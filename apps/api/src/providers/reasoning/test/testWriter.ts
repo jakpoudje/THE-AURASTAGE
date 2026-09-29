@@ -16,8 +16,13 @@ export function developStory(snapshot: Row) {
     logline: b.logline || `TEST OUTPUT — A ${b.genre || "drama"} set in ${setting}, arranged from the brief by the test writer.`,
     synopsis: b.synopsis || `TEST OUTPUT. ${b.logline || "A story"} This synopsis was arranged from the brief by the AuraStage test writer, which does not write; connect Claude for a real story.`,
     themes: ["truth", "loyalty"], genre: b.genre || "Drama", tone: b.tone || "Grounded", setting, time_period: b.time_period || "Present day",
-    characters: NAMES.slice(0, 3).map(([f, l], i) => ({ name: `${f} ${l}`, role: i === 0 ? "protagonist" : i === 1 ? "antagonist" : "supporting", age: 30 + i * 7,
-      name_reasoning: "TEST OUTPUT: taken from a fixed list.", description: `TEST OUTPUT character ${i + 1}.`, want: "To be heard.", need: "To trust.", arc: "Learns to trust." })),
+    // Names already decided are kept (as the real model is told to); the fixed list only fills the rest.
+    characters: [
+      ...((b.characters ?? []) as Row[]).map((c) => ({ name: String(c.name), role: ["protagonist", "antagonist", "supporting", "minor"].includes(c.role) ? c.role : "supporting" })),
+      ...NAMES.map(([f, l]) => ({ name: `${f} ${l}`, role: "" })),
+    ].filter((c, i, a) => a.findIndex((x) => x.name.toLowerCase() === c.name.toLowerCase()) === i).slice(0, Math.max(3, (b.characters ?? []).length)).map((c, i) => ({
+      name: c.name, role: c.role || (i === 0 ? "protagonist" : i === 1 ? "antagonist" : "supporting"), age: 30 + i * 7,
+      name_reasoning: "TEST OUTPUT: kept from your story or taken from a fixed list.", description: `TEST OUTPUT character ${i + 1}.`, want: "To be heard.", need: "To trust.", arc: "Learns to trust." })),
     beats: [["Setup", 0], ["Inciting incident", 0.12], ["Midpoint", 0.5], ["Crisis", 0.75], ["Resolution", 0.92]].map(([t, f], i) => ({ act: i < 2 ? 1 : i < 4 ? 2 : 3, title: String(t), summary: `TEST OUTPUT beat: ${t}.`, approx_minute: Math.round(Number(f) * runtime) })),
     assumptions: ["TEST OUTPUT — the test writer only arranges the brief."],
   };

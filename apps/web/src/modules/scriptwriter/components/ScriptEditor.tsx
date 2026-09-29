@@ -4,7 +4,7 @@
 // formatted preview. Saving creates a new immutable version; approving pins
 // the saved version and derives the canonical scene list from it.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ScreenplayElement } from "@aurastage/contracts";
 import { ScreenplayPreview } from "./ScreenplayPreview";
 
@@ -35,6 +35,7 @@ export function ScriptEditor({
   onSave,
   onApprove,
   onImport,
+  focusLine,
 }: {
   draft: string;
   setDraft: (v: string) => void;
@@ -46,10 +47,22 @@ export function ScriptEditor({
   onSave: (note?: string) => void;
   onApprove: () => void;
   onImport: (fileName: string, content: string) => string | null;
+  /** Jump to a line (1-based), e.g. a scene heading chosen in Scene Breakdown; `key` makes repeated jumps work. */
+  focusLine?: { line: number; key: number } | null;
 }) {
   const [view, setView] = useState<"write" | "preview">("write");
   const [note, setNote] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const area = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!focusLine || !area.current) return;
+    setView("write");
+    const el = area.current, lines = draft.split("\n"), i = Math.max(0, focusLine.line - 1);
+    const start = lines.slice(0, i).reduce((n, l) => n + l.length + 1, 0);
+    el.focus();
+    el.setSelectionRange(start, start + (lines[i]?.length ?? 0));
+    el.scrollTop = Math.max(0, i * 21 - 60);
+  }, [focusLine?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -91,6 +104,8 @@ export function ScriptEditor({
       {view === "write" ? (
         <div>
           <textarea
+            ref={area}
+            aria-label="Script text"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             spellCheck={false}

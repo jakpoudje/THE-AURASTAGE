@@ -49,6 +49,9 @@ async function api(method, path, body) {
 
   await step("casting links to dialogue; bring in dialogue from the approved script", async () => {
     await page.goto(`${BASE}/projects/${P}/casting`);
+    // Casting → Locations & Props (stage 3) → Dialogue.
+    await page.getByRole("link", { name: "Next: Locations & Props →" }).click();
+    await page.waitForURL(`**/projects/${P}/world`);
     await page.getByRole("link", { name: "Next: Dialogue →" }).click();
     await page.waitForURL(`**/projects/${P}/dialogue`);
     await page.getByText("Authentic Voices").waitFor();

@@ -66,7 +66,15 @@ note, based on the version the job was derived from (rule 10; 409 if the script 
 job. `GET /script/continuity` runs `continuityCheckEngine` on any version. Without an Anthropic key the labelled test
 writer (TEST OUTPUT) only arranges the brief, so the flow can be tested for free.
 
-Routes: `GET|POST /api/projects/:id/script/writing`, `POST /api/projects/:id/script/writing/outline`,
+**One current story** (owner, 2026-09-29: character names must match on every page): the newest story the writer
+applied to Project Setup or wrote/edited themselves (`POST /script/writing/story`, migration 0033), else the newest
+finished development. Outline, script and scene rewrites use it; `develop_story` receives its characters (and
+Casting's) as names already decided, which Claude must keep (storyDevelopment 1.1.0 `keeps_names` check) unless the
+writer asks for new names. `apply-story` with no fields makes a proposal current without touching Project Setup.
+Script jobs write 3 batches at a time and report the real current step in `progress.stage`; story and outline use a
+lighter reasoning effort. An empty Claude credit balance is reported plainly (not retried).
+
+Routes: `POST /api/projects/:id/script/writing/story`, `GET|POST /api/projects/:id/script/writing`, `POST /api/projects/:id/script/writing/outline`,
 `GET /api/projects/:id/script/continuity`, `GET /api/script-writing/:id`, `POST /api/script-writing/:id/apply-story`,
 `POST /api/script-writing/:id/open-draft`.
 

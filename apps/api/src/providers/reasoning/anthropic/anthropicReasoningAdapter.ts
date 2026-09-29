@@ -92,6 +92,9 @@ export const anthropicReasoningAdapter: ReasoningAdapter = {
       if (e instanceof ProviderError) throw e;
       if (e instanceof Anthropic.AuthenticationError) throw new ProviderError("Claude rejected the API key on the server.");
       if (e instanceof Anthropic.RateLimitError) throw new ProviderError("Claude is busy (rate limited) — try again shortly.", null, true);
+      // Out of credit is an account matter for the owner, not a failure to retry (seen live 2026-09-29).
+      if (e instanceof Anthropic.APIError && /credit balance is too low/i.test(e.message))
+        throw new ProviderError("The Claude account has run out of credit. The account owner can add credit at console.anthropic.com → Plans & Billing; AI writing resumes as soon as it's topped up.");
       if (e instanceof Anthropic.APIError) throw new ProviderError(`Claude error ${e.status ?? ""}: ${e.message}`.trim(), null, (e.status ?? 500) >= 500);
       throw e;
     }

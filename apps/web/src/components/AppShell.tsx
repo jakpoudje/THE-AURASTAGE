@@ -19,6 +19,9 @@ import type { AssistantModule } from "@/modules/ask-aurastage/api/assistantApi";
 export const STAGES = [
   { key: "scriptwriter", label: "Scriptwriter", path: "scriptwriter" },
   { key: "casting", label: "Casting & Characters", path: "casting" },
+  // The world of the story: places, props and vehicles with reference views; Scene DNA, storyboards and image/video
+  // prompts read them, so they sit in the pipeline right after the characters.
+  { key: "world", label: "Locations & Props", path: "world" },
   { key: "dialogue", label: "Dialogue Intelligence", path: "dialogue" },
   { key: "scene-dna", label: "Scene DNA", path: "scene-dna" },
   { key: "storyboard", label: "Storyboard & Shots", path: "storyboard" },
@@ -30,7 +33,7 @@ export const STAGES = [
 
 // Built secondary workspaces link to their page; the rest are shown but not clickable.
 const SECONDARY: { key: string; label: string; path?: string }[] = [
-  { key: "world", label: "Locations & Props", path: "world" },
+  // Not a production step: what every generator (writing, images, video, voice, sound, music) can do right now.
   { key: "generation", label: "AI & Generation", path: "generation" },
   { key: "settings", label: "Project Settings", path: "settings" },
   { key: "team", label: "Team & Collaboration", path: "team" },
@@ -39,11 +42,11 @@ const SECONDARY: { key: string; label: string; path?: string }[] = [
 ];
 
 type StageKey = (typeof STAGES)[number]["key"];
-type ActiveKey = StageKey | "team" | "settings" | "assets" | "generation" | "world";
+type ActiveKey = StageKey | "team" | "settings" | "assets" | "generation";
 
 // Which permission module each stage writes to (database permission gate, migration 0019).
 const STAGE_MODULE: Record<StageKey, PermissionModule> = {
-  scriptwriter: "script", casting: "casting", dialogue: "dialogue", "scene-dna": "scene_dna", storyboard: "shots",
+  scriptwriter: "script", casting: "casting", world: "scene_dna", dialogue: "dialogue", "scene-dna": "scene_dna", storyboard: "shots",
   visual: "generation", audio: "audio", editorial: "editorial", export: "delivery",
 };
 

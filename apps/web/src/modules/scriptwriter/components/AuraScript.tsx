@@ -5,24 +5,64 @@
 // its checks, and changes nothing until the writer accepts it: story fields are applied one by one, scripts and reworked
 // scenes open as a NEW draft version that the writer reviews and approves as usual.
 import { useEffect, useMemo, useState } from "react";
-import { writingApi, type ContinuityFinding, type OutlineScene, type RewriteMode, type WritingCheck, type WritingResult } from "../api/writingApi";
+import { writingApi, type ContinuityFinding, type OutlineScene, type RewriteMode, type StoryBeat, type StoryCharacter, type StoryDraft, type WritingCheck, type WritingResult } from "../api/writingApi";
 import type { useWriting } from "../hooks/useWriting";
 
 type W = ReturnType<typeof useWriting>;
 const input = "w-full rounded-md border border-aura-border bg-black/40 px-3 py-2 text-sm outline-none focus:border-aura-gold";
 
-function Status({ r }: { r: WritingResult }) {
+// What each kind of job actually does, shown in turn while it runs (a description of the real steps, never a
+// made-up percentage; the real stage from the worker and real scene counts are shown above it).
+const STEPS: Record<WritingResult["kind"], string[]> = {
+  develop_story: ["Reading your logline, synopsis, setting and period", "Keeping the character names already decided", "Choosing names that belong to the story's world",
+    "Shaping want, need and arc for each character", "Laying the beats out across the acts", "Checking names, runtime and title before showing you"],
+  outline: ["Reading the story, its characters and beats", "Sizing the scenes to your target runtime", "Placing each beat in a scene", "Choosing places and times of day",
+    "Checking scene order, runtime and main characters"],
+  write_script: ["Writing scenes in parallel batches", "Continuing each scene from the one before it", "Keeping every character's voice consistent",
+    "Formatting headings, action and dialogue", "Checking headings, cast and length as scenes land"],
+  rewrite_scene: ["Reading the scene and the scenes around it", "Reworking it as asked", "Keeping its heading and characters", "Checking the result"],
+};
+const clock = (ms: number) => { const t = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+
+function Working({ r }: { r: WritingResult }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const p = r.progress ?? {};
+  const steps = STEPS[r.kind];
+  const step = steps[Math.floor((now - Date.parse(r.created_at)) / 4000) % steps.length];
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-sky-400/30 bg-sky-400/5 p-3" role="status" aria-live="polite" data-testid={`working-${r.kind}`}>
+      <span className="relative mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center" aria-hidden>
+        <span className="absolute inset-0 animate-ping rounded-full bg-sky-400/20" />
+        <span className="relative text-lg">✎</span>
+      </span>
+      <div className="min-w-0 flex-1 text-xs">
+        <p className="text-sm text-sky-200">{r.status === "queued" ? "Starting — waiting for a free writer…" : p.stage ?? "Working…"}</p>
+        <p key={step} className="mt-0.5 animate-pulse text-white/55">{step}</p>
+        {p.total ? (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="h-1.5 w-48 overflow-hidden rounded bg-white/10" aria-label="Progress">
+              <span className="block h-full bg-sky-400 transition-all duration-700" style={{ width: `${Math.round(((p.done ?? 0) / p.total) * 100)}%` }} />
+            </span>
+            <span className="text-white/60">{p.done ?? 0} of {p.total} scenes written</span>
+          </div>
+        ) : null}
+        <p className="mt-1 text-[11px] text-white/35">{clock(now - Date.parse(r.created_at))} elapsed · runs in the background — you can keep working or leave this page</p>
+      </div>
+    </div>
+  );
+}
+
+function Status({ r }: { r: WritingResult }) {
+  if (r.status === "queued" || r.status === "running") return <div data-testid={`writing-status-${r.kind}`}><Working r={r} /></div>;
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs" data-testid={`writing-status-${r.kind}`}>
-      <span className={`rounded-full border px-2 py-0.5 ${r.status === "succeeded" ? "border-emerald-400/60 text-emerald-300" : r.status === "failed" ? "border-red-400/60 text-red-300" : "border-sky-400/60 text-sky-300"}`}>
-        {r.status === "queued" ? "Waiting for the writer…" : r.status === "running" ? (p.total ? `Writing — ${p.done ?? 0} of ${p.total} scenes` : "Writing…") : r.status === "succeeded" ? "Done" : "Failed"}
+      <span className={`rounded-full border px-2 py-0.5 ${r.status === "succeeded" ? "border-emerald-400/60 text-emerald-300" : "border-red-400/60 text-red-300"}`}>
+        {r.status === "succeeded" ? (r.source === "user" ? "Yours" : "Done") : "Failed"}
       </span>
-      {r.status === "running" && p.total ? (
-        <span className="h-1.5 w-40 overflow-hidden rounded bg-white/10" aria-label="Progress"><span className="block h-full bg-sky-400" style={{ width: `${Math.round(((p.done ?? 0) / p.total) * 100)}%` }} /></span>
-      ) : null}
       {r.test_output && <span className="rounded bg-amber-500/90 px-1.5 font-semibold text-black" title="Made by the labelled test writer — connect Claude for real writing">TEST OUTPUT</span>}
-      {r.status === "succeeded" && !r.test_output && r.provider && <span className="text-white/40">by {r.provider === "anthropic" ? "Claude" : r.provider}{r.model ? ` (${r.model})` : ""}</span>}
+      {r.status === "succeeded" && r.source !== "user" && !r.test_output && r.provider && <span className="text-white/40">by {r.provider === "anthropic" ? "Claude" : r.provider}{r.model ? ` (${r.model})` : ""}</span>}
+      {r.status === "succeeded" && r.source !== "user" && r.completed_at && <span className="text-white/35">{clock(Date.parse(r.completed_at) - Date.parse(r.created_at))}</span>}
       {r.error && <span className="text-red-300">{r.error}</span>}
     </div>
   );
@@ -40,24 +80,115 @@ function Checks({ checks }: { checks: WritingCheck[] }) {
 
 // ---- Story Development ---------------------------------------------------------------------------------------------
 const STORY_FIELDS = [["logline", "Logline"], ["synopsis", "Synopsis"], ["genre", "Genre"], ["tone", "Tone"], ["setting", "Setting"], ["time_period", "Time period"]] as const;
-export function StoryDevelopmentPanel({ w, canEdit, onApplied }: { w: W; canEdit: boolean; onApplied: () => void }) {
+type ProjectBrief = { title: string; logline?: string | null; synopsis?: string | null; genre?: string | null; tone?: string | null; setting?: string | null; time_period?: string | null; target_runtime_minutes?: number | null };
+const blankStory = (p: ProjectBrief): StoryDraft => ({
+  title_options: [p.title], logline: p.logline ?? "", synopsis: p.synopsis ?? "", themes: [], genre: p.genre ?? "", tone: p.tone ?? "", setting: p.setting ?? "", time_period: p.time_period ?? "",
+  characters: [{ name: "", role: "protagonist", age: null, name_reasoning: "", description: "", want: "", need: "", arc: "" }],
+  beats: [{ act: 1, title: "Opening", summary: "", approx_minute: 0 }, { act: 2, title: "Turning point", summary: "", approx_minute: Math.round((p.target_runtime_minutes ?? 10) / 2) }, { act: 3, title: "Ending", summary: "", approx_minute: Math.round((p.target_runtime_minutes ?? 10) * 0.9) }],
+  assumptions: [],
+});
+
+/** Write the story yourself, or edit a proposal: saved as your story, which Outline and Script then use. */
+function StoryEditor({ start, busy, onSave, onCancel }: { start: StoryDraft; busy: boolean; onSave: (s: StoryDraft) => void; onCancel: () => void }) {
+  const [d, setD] = useState<StoryDraft>(start);
+  const setC = (i: number, patch: Partial<StoryCharacter>) => setD({ ...d, characters: d.characters.map((c, k) => (k === i ? { ...c, ...patch } : c)) });
+  const setB = (i: number, patch: Partial<StoryBeat>) => setD({ ...d, beats: d.beats.map((x, k) => (k === i ? { ...x, ...patch } : x)) });
+  const names = d.characters.map((c) => c.name.trim()).filter(Boolean);
+  const problems = [
+    d.logline.trim().length < 10 && "a logline (10+ characters)",
+    d.synopsis.trim().length < 50 && "a synopsis (50+ characters)",
+    !names.length && "at least one named character",
+    new Set(names.map((n) => n.toLowerCase())).size !== names.length && "different names for each character",
+    d.beats.filter((x) => x.title.trim()).length < 3 && "three beats",
+  ].filter(Boolean) as string[];
+  const small = "rounded border border-aura-border bg-black px-2 py-1 text-xs";
+  return (
+    <div className="space-y-3 rounded-xl border border-aura-gold/40 bg-aura-panel p-4 text-sm" aria-label="Your story">
+      <p className="text-xs text-white/60">Write it your way. When you save, this becomes the story the outline, the script and later developments use — character names stay exactly as you write them.</p>
+      <label className="block text-xs text-white/50">Logline<textarea aria-label="Your logline" rows={2} value={d.logline} onChange={(e) => setD({ ...d, logline: e.target.value })} className={`${input} mt-1`} /></label>
+      <label className="block text-xs text-white/50">Synopsis<textarea aria-label="Your synopsis" rows={5} value={d.synopsis} onChange={(e) => setD({ ...d, synopsis: e.target.value })} className={`${input} mt-1`} /></label>
+      <div>
+        <div className="flex items-center justify-between text-xs text-white/50">Characters
+          <button onClick={() => setD({ ...d, characters: [...d.characters, { name: "", role: "supporting", age: null, name_reasoning: "", description: "", want: "", need: "", arc: "" }] })} className={small}>+ Character</button>
+        </div>
+        <ul className="mt-1 space-y-2">
+          {d.characters.map((c, i) => (
+            <li key={i} className="grid gap-1 rounded border border-aura-border p-2 md:grid-cols-[1fr_120px_70px_2fr_auto]">
+              <input aria-label={`Character ${i + 1} name`} value={c.name} onChange={(e) => setC(i, { name: e.target.value })} placeholder="Name" className={small} />
+              <select aria-label={`Character ${i + 1} role`} value={c.role} onChange={(e) => setC(i, { role: e.target.value as StoryCharacter["role"] })} className={small}>
+                {["protagonist", "antagonist", "supporting", "minor"].map((x) => <option key={x}>{x}</option>)}
+              </select>
+              <input aria-label={`Character ${i + 1} age`} type="number" min={0} max={120} value={c.age ?? ""} onChange={(e) => setC(i, { age: e.target.value === "" ? null : Number(e.target.value) })} placeholder="Age" className={small} />
+              <input aria-label={`Character ${i + 1} description`} value={c.description} onChange={(e) => setC(i, { description: e.target.value })} placeholder="Who they are" className={small} />
+              <button aria-label={`Remove character ${i + 1}`} onClick={() => setD({ ...d, characters: d.characters.filter((_, k) => k !== i) })} className="px-2 text-red-300">✕</button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div>
+        <div className="flex items-center justify-between text-xs text-white/50">Beats
+          <button onClick={() => setD({ ...d, beats: [...d.beats, { act: d.beats.at(-1)?.act ?? 1, title: "", summary: "", approx_minute: (d.beats.at(-1)?.approx_minute ?? 0) + 1 }] })} className={small}>+ Beat</button>
+        </div>
+        <ol className="mt-1 space-y-1">
+          {d.beats.map((x, i) => (
+            <li key={i} className="grid gap-1 md:grid-cols-[60px_70px_1fr_2fr_auto]">
+              <input aria-label={`Beat ${i + 1} act`} type="number" min={1} max={5} value={x.act} onChange={(e) => setB(i, { act: Number(e.target.value) || 1 })} className={small} />
+              <input aria-label={`Beat ${i + 1} minute`} type="number" min={0} value={x.approx_minute} onChange={(e) => setB(i, { approx_minute: Number(e.target.value) || 0 })} className={small} />
+              <input aria-label={`Beat ${i + 1} title`} value={x.title} onChange={(e) => setB(i, { title: e.target.value })} placeholder="Beat" className={small} />
+              <input aria-label={`Beat ${i + 1} summary`} value={x.summary} onChange={(e) => setB(i, { summary: e.target.value })} placeholder="What happens" className={small} />
+              <button aria-label={`Remove beat ${i + 1}`} onClick={() => setD({ ...d, beats: d.beats.filter((_, k) => k !== i) })} className="px-2 text-red-300">✕</button>
+            </li>
+          ))}
+        </ol>
+      </div>
+      {problems.length > 0 && <p className="text-xs text-amber-300">Still needed: {problems.join(", ")}.</p>}
+      <div className="flex gap-2">
+        <button disabled={busy || problems.length > 0} onClick={() => onSave({
+          ...d, logline: d.logline.trim(), synopsis: d.synopsis.trim(),
+          characters: d.characters.filter((c) => c.name.trim()).map((c) => ({ ...c, name: c.name.trim(), name_reasoning: c.name_reasoning || "Chosen by the writer." })),
+          beats: d.beats.filter((x) => x.title.trim()).map((x) => ({ ...x, summary: x.summary || x.title })),
+        })} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">Save as my story</button>
+        <button onClick={onCancel} className="rounded-md border border-aura-border px-4 py-2 text-sm">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+export function StoryDevelopmentPanel({ w, canEdit, project, onApplied }: { w: W; canEdit: boolean; project: ProjectBrief; onApplied: () => void }) {
   const [req, setReq] = useState("");
   const r = w.latest("develop_story");
   const o = r?.status === "succeeded" ? r.output : null;
   const [pick, setPick] = useState<Set<string>>(new Set(["logline", "synopsis"]));
   const [title, setTitle] = useState<string | null>(null);
+  const [editing, setEditing] = useState<StoryDraft | null>(null);
   useEffect(() => setTitle(null), [r?.id]);
+  const current = w.currentStory;
+  const isCurrent = !!r && r.id === w.currentStoryId;
+  const decided = (current?.output?.characters ?? []) as { name: string }[];
   return (
     <section aria-label="Story Development" className="space-y-4">
       <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
-        <p className="text-sm text-white/60">AuraStage reads your Project Setup and proposes the story: title options, logline, synopsis, themes, characters (with why each name fits) and the beats across the acts. Nothing changes until you apply it.</p>
+        <p className="text-sm text-white/60">AuraStage reads your Project Setup and proposes the story: title options, logline, synopsis, themes, characters (with why each name fits) and the beats across the acts. Nothing changes until you apply it — or write the story yourself.</p>
+        {decided.length > 0 && (
+          <p className="mt-2 text-xs text-white/50" data-testid="decided-names">Names already decided (kept by every new development): <span className="text-white/80">{decided.map((c) => c.name).join(", ")}</span>. Ask for new names in the box below if you want them changed.</p>
+        )}
         <textarea aria-label="What should the story do?" rows={2} value={req} onChange={(e) => setReq(e.target.value)} placeholder="Optional: e.g. make the antagonist sympathetic; end on a twist" className={`${input} mt-3`} />
-        <button onClick={() => w.request("develop_story", { request: req })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
-          className="mt-2 rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">{o ? "Develop again" : "Develop the story"}</button>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button onClick={() => w.request("develop_story", { request: req })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
+            className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">{o ? "Develop again" : "Develop the story"}</button>
+          <button onClick={() => setEditing(current?.output ? { ...(current.output as StoryDraft) } : blankStory(project))} disabled={!canEdit || w.busy}
+            className="rounded-md border border-aura-border px-4 py-2 text-sm disabled:opacity-40">{current ? "Edit the story myself" : "Write the story myself"}</button>
+        </div>
       </div>
-      {r && (
+      {editing && <StoryEditor start={editing} busy={w.busy} onCancel={() => setEditing(null)} onSave={async (story) => { if (await w.saveStory(current?.id ?? null, story)) setEditing(null); }} />}
+      {r && !editing && (
         <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
-          <Status r={r} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Status r={r} />
+            {o && (isCurrent
+              ? <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300" data-testid="current-story">Current story — Outline and Script use it</span>
+              : <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-200" data-testid="proposal-not-used">New proposal — not used yet{current ? ` (the current story has ${(current.output?.characters ?? []).map((c: { name: string }) => c.name).slice(0, 4).join(", ")})` : ""}</span>)}
+          </div>
           {o && (
             <div className="mt-3 space-y-4 text-sm">
               <div>
@@ -85,7 +216,7 @@ export function StoryDevelopmentPanel({ w, canEdit, onApplied }: { w: W; canEdit
                     </li>
                   ))}
                 </ul>
-                <p className="mt-1 text-[11px] text-white/40">Characters are created in Casting from the approved script, so they appear there once the script is written and approved.</p>
+                <p className="mt-1 text-[11px] text-white/40">These names are used by the outline and the script, and become Casting's characters when the script is approved.</p>
               </div>
               <div>
                 <div className="text-[11px] uppercase tracking-wider text-white/50">Beats</div>
@@ -95,11 +226,19 @@ export function StoryDevelopmentPanel({ w, canEdit, onApplied }: { w: W; canEdit
               </div>
               {o.assumptions?.length > 0 && <p className="text-xs text-white/50">Assumed: {(o.assumptions as string[]).join(" · ")}</p>}
               <Checks checks={r.checks} />
-              <button onClick={async () => { const fields = [...pick, ...(title ? ["title"] : [])]; if (await w.applyStory(r.id, fields, title ?? undefined)) onApplied(); }}
-                disabled={!canEdit || w.busy || (!pick.size && !title)} className="rounded-md border border-aura-gold/60 px-4 py-2 text-aura-gold disabled:opacity-40">
-                Apply selected to Project Setup
-              </button>
-              {r.accepted?.fields && <span className="ml-2 text-xs text-emerald-300">Applied: {r.accepted.fields.join(", ")}</span>}
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={async () => { const fields = [...pick, ...(title ? ["title"] : [])]; if (await w.applyStory(r.id, fields, title ?? undefined)) onApplied(); }}
+                  disabled={!canEdit || w.busy || (!pick.size && !title)} className="rounded-md border border-aura-gold/60 px-4 py-2 text-aura-gold disabled:opacity-40">
+                  Apply selected to Project Setup
+                </button>
+                {!isCurrent && (
+                  <button onClick={() => w.applyStory(r.id, [])} disabled={!canEdit || w.busy} className="rounded-md border border-aura-border px-4 py-2 disabled:opacity-40">
+                    Use this story (keep Project Setup as it is)
+                  </button>
+                )}
+                <button onClick={() => setEditing({ ...(o as StoryDraft) })} disabled={!canEdit || w.busy} className="rounded-md border border-aura-border px-4 py-2 disabled:opacity-40">Edit this story</button>
+                {r.accepted?.fields && r.accepted.fields.length > 0 && <span className="text-xs text-emerald-300">Applied: {r.accepted.fields.join(", ")}</span>}
+              </div>
             </div>
           )}
         </div>
@@ -113,7 +252,10 @@ export function OutlinePanel({ w, canEdit }: { w: W; canEdit: boolean }) {
   const [req, setReq] = useState("");
   const r = w.latest("outline");
   const done = w.latestDone("outline");
-  const dev = w.latestDone("develop_story");
+  const dev = w.currentStory;
+  const builtFrom = w.storyOf(done);
+  const names = (x: typeof dev) => ((x?.output?.characters ?? []) as { name: string }[]).map((c) => c.name);
+  const mismatch = !!done && !!dev && !!builtFrom && builtFrom.id !== dev.id && names(builtFrom).join("|") !== names(dev).join("|");
   const [scenes, setScenes] = useState<OutlineScene[]>([]);
   useEffect(() => setScenes(done?.output?.scenes ?? []), [done?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = JSON.stringify(scenes) !== JSON.stringify(done?.output?.scenes ?? []);
@@ -123,12 +265,22 @@ export function OutlinePanel({ w, canEdit }: { w: W; canEdit: boolean }) {
   return (
     <section aria-label="Scene outline" className="space-y-3">
       <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
-        <p className="text-sm text-white/60">A scene-by-scene outline {dev ? "from your story development" : "from your Project Setup"}, sized to the target runtime. Edit anything — your edits are saved as your own version and the script is written from it.</p>
+        <p className="text-sm text-white/60">A scene-by-scene outline {dev ? `from your current story (${names(dev).slice(0, 4).join(", ") || "no named characters yet"})` : "from your Project Setup"}, sized to the target runtime. Edit anything — your edits are saved as your own version and the script is written from it. You can also build it scene by scene yourself: add scenes with “+ Scene”.</p>
         <textarea aria-label="Outline request" rows={2} value={req} onChange={(e) => setReq(e.target.value)} placeholder="Optional: e.g. open on the harbour; keep it under 25 scenes" className={`${input} mt-3`} />
         <button onClick={() => w.request("outline", { request: req, parent_id: dev?.id ?? null })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
           className="mt-2 rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">{done ? "Build a new outline" : "Build the scene outline"}</button>
       </div>
       {r && r.id !== done?.id && <div className="rounded-xl border border-aura-border bg-aura-panel p-4"><Status r={r} /></div>}
+      {!done && canEdit && (
+        <button onClick={() => w.saveOutline(dev?.id ?? null, [{ number: 1, int_ext: "INT", location: "NEW PLACE", time_of_day: "DAY", purpose: "", beat: "", summary: "What happens.", characters: names(dev).slice(0, 2), est_minutes: 2 }])}
+          disabled={w.busy} className="rounded-md border border-aura-border px-4 py-2 text-sm">Start an outline myself</button>
+      )}
+      {mismatch && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-400/40 px-4 py-3 text-sm text-amber-200" data-testid="outline-story-mismatch">
+          <span className="min-w-0 flex-1">This outline was built from an earlier story ({names(builtFrom).slice(0, 4).join(", ")}). The current story's characters are {names(dev).slice(0, 4).join(", ")}.</span>
+          <button onClick={() => w.request("outline", { request: req, parent_id: dev!.id })} disabled={!canEdit || w.busy} className="rounded border border-amber-400/60 px-3 py-1 text-xs">Rebuild from the current story</button>
+        </div>
+      )}
       {done && (
         <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -211,10 +363,12 @@ export function GenerateScriptPanel({ w, canEdit, currentVersionId, onOpened }: 
 
 // ---- Scene tools + continuity (Edit & Refine) ---------------------------------------------------------------------
 const MODES: [RewriteMode, string][] = [["improve", "Improve"], ["expand", "Expand"], ["rephrase", "Rephrase"], ["condense", "Condense"], ["dialogue", "Sharpen dialogue"], ["new_scene", "New scene after"]];
-export function ScriptToolsPanel({ w, projectId, canEdit, sceneNumbers, currentVersionId, dirty, onOpened }: {
+export function ScriptToolsPanel({ w, projectId, canEdit, sceneNumbers, currentVersionId, dirty, onOpened, initialScene = null }: {
   w: W; projectId: string; canEdit: boolean; sceneNumbers: number[]; currentVersionId: string | null; dirty: boolean; onOpened: () => void;
+  /** Scene chosen elsewhere (Scene Breakdown → Rework). */
+  initialScene?: number | null;
 }) {
-  const [n, setN] = useState<number>(sceneNumbers[0] ?? 1);
+  const [n, setN] = useState<number>(initialScene ?? sceneNumbers[0] ?? 1);
   const [instr, setInstr] = useState("");
   const [cont, setCont] = useState<{ findings: ContinuityFinding[]; summary: { warnings: number; notes: number }; version_number: number } | null>(null);
   const [contErr, setContErr] = useState<string | null>(null);

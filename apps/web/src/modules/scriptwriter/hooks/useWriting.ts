@@ -2,11 +2,12 @@
 
 // AuraScript jobs for this project: the list (polled while anything is being written), and the actions.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { writingApi, type RewriteMode, type WritingKind, type WritingResult } from "../api/writingApi";
+import { writingApi, type RewriteMode, type StoryDraft, type WritingKind, type WritingResult } from "../api/writingApi";
 
 export function useWriting(projectId: string) {
   const [results, setResults] = useState<WritingResult[]>([]);
   const [writer, setWriter] = useState<{ id: string; name: string; test_output: boolean } | null>(null);
+  const [currentStoryId, setCurrentStoryId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -16,6 +17,7 @@ export function useWriting(projectId: string) {
     const r = await writingApi.list(projectId);
     setResults(r.results);
     setWriter(r.writer);
+    setCurrentStoryId(r.current_story_id ?? null);
     if (timer.current) clearTimeout(timer.current);
     // Writing happens in the background; check back while anything is queued or being written.
     if (r.results.some((x) => x.status === "queued" || x.status === "running")) timer.current = setTimeout(() => load().catch(() => null), 2500);
@@ -41,12 +43,23 @@ export function useWriting(projectId: string) {
   }
   const latest = (kind: WritingKind) => results.find((r) => r.kind === kind) ?? null;
   const latestDone = (kind: WritingKind) => results.find((r) => r.kind === kind && r.status === "succeeded") ?? null;
+  const byId = (id: string | null) => (id ? results.find((r) => r.id === id) ?? null : null);
+  /** The story development an outline (or edited outline) was built from, following parent links. */
+  const storyOf = (r: WritingResult | null) => {
+    for (let cur = r, i = 0; cur && i < 6; i++) {
+      if (cur.kind === "develop_story") return cur;
+      cur = byId(cur.parent_id);
+    }
+    return null;
+  };
   return {
-    results, writer, busy, error, notice, latest, latestDone, reload: load,
+    results, writer, busy, error, notice, latest, latestDone, reload: load, currentStoryId, currentStory: byId(currentStoryId), storyOf,
     request: (kind: WritingKind, opts: { request?: string; parent_id?: string | null; scene?: { mode: RewriteMode; number: number; instruction?: string } } = {}) =>
       run(() => writingApi.request(projectId, { kind, ...opts }), () => ({ develop_story: "Developing the story…", outline: "Building the scene outline…", write_script: "Writing the script — scenes appear as they're written.", rewrite_scene: "Reworking the scene…" })[kind]),
     saveOutline: (parentId: string | null, scenes: Parameters<typeof writingApi.saveOutline>[2]) => run(() => writingApi.saveOutline(projectId, parentId, scenes), () => "Outline saved as your own version."),
-    applyStory: (id: string, fields: string[], title?: string) => run(() => writingApi.applyStory(id, fields, title), (r) => `Applied to Project Setup: ${r.applied.join(", ")}.`),
+    applyStory: (id: string, fields: string[], title?: string) =>
+      run(() => writingApi.applyStory(id, fields, title), (r) => (r.applied.length ? `Applied to Project Setup: ${r.applied.join(", ")}. This is now the story Outline and Script use.` : "This is now the story Outline and Script use.")),
+    saveStory: (parentId: string | null, story: StoryDraft) => run(() => writingApi.saveStory(projectId, parentId, story), () => "Saved as your story — Outline and Script now use it."),
     openDraft: (id: string, base: string | null) => run(() => writingApi.openDraft(id, base), (r) => `Opened as draft version ${r.version.version_number} — review it in Edit & Refine, then approve.`),
   };
 }

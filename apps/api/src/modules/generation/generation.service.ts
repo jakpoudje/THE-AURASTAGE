@@ -35,7 +35,9 @@ function planUsable(plan: Row) {
 
 const norm = (s: unknown) => (typeof s === "string" ? s.trim() : "") || null;
 
-function packageReview(pkg: Row, plan: Row, versionNumber: number | null, look: string | null): { state: string; reason: string | null } {
+/** Current revision of every Locations & Props record (archived ones count as gone). */
+type WorldRevisions = Map<string, { name: string; revision: number }>;
+function packageReview(pkg: Row, plan: Row, versionNumber: number | null, look: string | null, world: WorldRevisions = new Map()): { state: string; reason: string | null } {
   if (pkg.shot_plan_version_id !== plan.approved_version_id) {
     return { state: "stale", reason: `The shot plan was approved again${versionNumber ? ` (now version ${versionNumber})` : ""} after this was compiled.` };
   }
@@ -44,6 +46,16 @@ function packageReview(pkg: Row, plan: Row, versionNumber: number | null, look: 
   // Upstream Project Settings change (rule 11): flag, never recompile or delete.
   if (norm((pkg.content as Row)?.project?.look) !== norm(look)) {
     return { state: "review_required", reason: "The project's visual style changed in Project Settings after this prompt was compiled — recompile to apply it." };
+  }
+  // A location or prop used by the prompt was edited (or archived) in Locations & Props (rule 11: flag, never rewrite).
+  const used = ((pkg.content as Row)?.provenance?.world_revisions ?? {}) as Record<string, number>;
+  const names = new Map<string, string>([
+    ...((((pkg.content as Row)?.world?.location ? [(pkg.content as Row).world.location] : []) as Row[]).map((x) => [x.id, x.name] as [string, string])),
+    ...((((pkg.content as Row)?.world?.props ?? []) as Row[]).map((x) => [x.id, x.name] as [string, string])),
+  ]);
+  const changed = Object.entries(used).filter(([id, rev]) => world.get(id)?.revision !== rev).map(([id]) => world.get(id)?.name ?? names.get(id) ?? "A location or prop");
+  if (changed.length) {
+    return { state: "review_required", reason: `${changed.join(", ")} changed in Locations & Props after this prompt was compiled — recompile to apply it.` };
   }
   return { state: "current", reason: null };
 }
@@ -60,6 +72,8 @@ export async function getVisualWorkspace(db: SupabaseClient, projectId: string, 
     repo.listPackages(db, projectId),
     repo.listTakes(db, projectId),
   ]);
+  const worldItems = await repo.listWorldItems(db, projectId);
+  const world: WorldRevisions = new Map([...worldItems.locations, ...worldItems.props].filter((x) => !x.archived_at).map((x) => [x.id as string, { name: x.name as string, revision: Number(x.revision) }]));
   const versionById = new Map(versions.map((v) => [v.id as string, v]));
 
   const lastResults: Partial<Record<ProviderId, ProviderStatus["last_result"]>> = {};
@@ -76,7 +90,7 @@ export async function getVisualWorkspace(db: SupabaseClient, projectId: string, 
     for (const shot of (version.shots as Row[]) ?? []) {
       let pkg = packages.find((p) => p.shot_id === shot.id) ?? null;
       if (pkg) {
-        const r = packageReview(pkg, plan, version.version_number, look);
+        const r = packageReview(pkg, plan, version.version_number, look, world);
         if (pkg.review_state !== r.state || (pkg.review_reason ?? null) !== r.reason) pkg = await repo.setPackageReview(db, pkg.id, r.state, r.reason);
       }
       const shotTakes = await Promise.all(takes.filter((t) => t.shot_id === shot.id).map((t) => takeDTO(t, env)));
@@ -140,6 +154,35 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
   ]);
   const editable = ((dna?.content as Row)?.editable ?? {}) as Row;
   const wardrobe = (editable.wardrobe ?? {}) as Record<string, string>;
+  // Locations & Props for this scene, and finished reference images (consistency from the first frame to the last).
+  const [worldItems, appearances, worldRefs, charRefs] = await Promise.all([
+    repo.listWorldItems(db, projectId), repo.listSceneAppearances(db, scene.id), repo.listWorldRefs(db, projectId), repo.listCharacterRefs(db, projectId),
+  ]);
+  const here = (type: string) => new Set(appearances.filter((a) => a.object_type === type).map((a) => a.object_id as string));
+  const loc = worldItems.locations.find((l) => here("location").has(l.id) && !l.archived_at) ?? null;
+  const props = worldItems.props.filter((x) => here("prop").has(x.id) && !x.archived_at);
+  const tod = String(scene.time_of_day ?? "").toUpperCase();
+  const pickRef = (type: string, id: string, prefer: string[]) => {
+    const mine = worldRefs.filter((r) => r.object_type === type && r.object_id === id && r.asset_id);
+    for (const v of prefer) { const hit = mine.find((r) => r.view_key === v); if (hit) return hit; }
+    return mine[0] ?? null;
+  };
+  const references: Row[] = [];
+  for (const cid of (shot.character_ids ?? []) as string[]) {
+    const c = chars.find((x) => x.id === cid);
+    const mine = charRefs.filter((r) => r.character_id === cid && r.asset_id);
+    // Prefer the look chosen for this scene, then a front medium shot.
+    const ref = mine.find((r) => r.look_id && r.look_id === wardrobe[cid] && r.angle === "front") ?? mine.find((r) => r.angle === "front" && r.size === "MS") ?? mine.find((r) => r.angle === "front") ?? mine[0];
+    if (c && ref) references.push({ kind: "character", object_id: cid, name: c.name, view: `${ref.angle} · ${ref.size}`, asset_id: ref.asset_id });
+  }
+  if (loc) {
+    const ref = pickRef("location", loc.id, [`wide:${tod}`, `establishing:${tod}`, `medium:${tod}`, "wide", "establishing"]);
+    if (ref) references.push({ kind: "location", object_id: loc.id, name: loc.name, view: String(ref.view_key).replace(":", " · "), asset_id: ref.asset_id });
+  }
+  for (const pr of props) {
+    const ref = pickRef("prop", pr.id, ["hero", "three_quarter"]);
+    if (ref) references.push({ kind: "prop", object_id: pr.id, name: pr.name, view: String(ref.view_key), asset_id: ref.asset_id });
+  }
   const lookText = (charId: string) => {
     const l = looks.find((x) => x.id === wardrobe[charId]);
     return l ? [l.name, l.description].filter(Boolean).join(": ") : null;
@@ -161,6 +204,9 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
     },
     characters: chars.filter((c) => (shot.character_ids ?? []).includes(c.id)).map((c) => ({ id: c.id, name: c.name, age: c.age ?? null, description: c.description ?? null, wardrobe: lookText(c.id) })),
     dialogue: lines.filter((l) => (shot.dialogue_line_ids ?? []).includes(l.id)).map((l) => ({ id: l.id, speaker: l.speaker_name, text: l.text, emotion: l.emotion ?? null })),
+    location: loc ? { id: loc.id, name: loc.name, description: loc.description ?? "", revision: Number(loc.revision) } : null,
+    props: props.map((x) => ({ id: x.id, name: x.name, description: x.description ?? "", category: x.category ?? "prop", revision: Number(x.revision) })),
+    references,
     aspect_ratio,
     provenance: {
       shot_plan_version_id: version.id, scene_dna_version_id: version.scene_dna_version_id, script_version_id: scriptVersionId,

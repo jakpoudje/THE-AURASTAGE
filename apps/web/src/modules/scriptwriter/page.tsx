@@ -44,6 +44,9 @@ export default function ScriptwriterPage() {
   const access = useProjectAccess(id);
   const canWrite = can(access, "script", "edit");
   const [step, setStep] = useState<ScriptwriterStep>("setup");
+  const [focusLine, setFocusLine] = useState<{ line: number; key: number } | null>(null);
+  const [toolScene, setToolScene] = useState<number | null>(null);
+  const [renameNote, setRenameNote] = useState<string | null>(null);
 
   if (sw.loading) return <div className="p-12 text-center text-white/50">Opening Scriptwriter…</div>;
   if (!sw.project) {
@@ -157,7 +160,7 @@ export default function ScriptwriterPage() {
           <p role={w.error ? "alert" : "status"} className={`mb-4 rounded-md border px-4 py-2 text-sm ${w.error ? "border-red-400/40 text-red-300" : "border-emerald-400/40 text-emerald-300"}`}>{w.error ?? w.notice}</p>
         )}
 
-        {step === "development" && <StoryDevelopmentPanel w={w} canEdit={canWrite} onApplied={() => sw.reload().catch(() => null)} />}
+        {step === "development" && <StoryDevelopmentPanel w={w} canEdit={canWrite} project={sw.project} onApplied={() => sw.reload().catch(() => null)} />}
 
         {step === "outline" && (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -183,9 +186,10 @@ export default function ScriptwriterPage() {
               onSave={sw.saveVersion}
               onApprove={sw.approveCurrent}
               onImport={sw.importFile}
+              focusLine={focusLine}
             />
             <div className="space-y-4">
-              <ScriptToolsPanel w={w} projectId={id} canEdit={canWrite} sceneNumbers={sw.live.scenes.map((x) => x.number)} currentVersionId={currentId} dirty={sw.dirty}
+              <ScriptToolsPanel key={toolScene ?? "tools"} initialScene={toolScene} w={w} projectId={id} canEdit={canWrite} sceneNumbers={sw.live.scenes.map((x) => x.number)} currentVersionId={currentId} dirty={sw.dirty}
                 onOpened={() => sw.reload().catch(() => null)} />
               <ScriptAnalysisPanel analysis={sw.live.analysis} />
               <VersionHistory versions={ws?.versions ?? []} currentId={currentId} approvedId={approvedId} />
@@ -193,9 +197,20 @@ export default function ScriptwriterPage() {
           </div>
         )}
 
-        {step === "breakdown" && <SceneBreakdown scenes={ws?.scenes ?? []} draftScenes={sw.live.scenes} />}
+        {step === "breakdown" && (
+          <SceneBreakdown scenes={ws?.scenes ?? []} draftScenes={sw.live.scenes} projectId={id} targetMinutes={sw.project.target_runtime_minutes ?? null}
+            onOpen={(n) => { const sc = sw.live.scenes.find((x) => x.number === n); if (sc) { setFocusLine({ line: sc.heading_line, key: Date.now() }); setStep("edit"); } }}
+            onRework={(n) => { setToolScene(n); const sc = sw.live.scenes.find((x) => x.number === n); if (sc) setFocusLine({ line: sc.heading_line, key: Date.now() }); setStep("edit"); }} />
+        )}
 
-        {step === "characters" && <CharacterCandidates analysis={sw.live.analysis} />}
+        {step === "characters" && (
+          <>
+            {renameNote && <p role="status" className="mb-4 rounded-md border border-emerald-400/40 px-4 py-2 text-sm text-emerald-300">{renameNote} <button onClick={() => setStep("edit")} className="underline">Go to the editor</button></p>}
+            <CharacterCandidates analysis={sw.live.analysis} projectId={id} canEdit={canWrite} draft={sw.draft}
+              storyNames={((w.currentStory?.output?.characters ?? []) as { name: string }[]).map((c) => c.name)}
+              onRename={(text, summary) => { sw.setDraft(text); setRenameNote(summary); }} />
+          </>
+        )}
       </div>
     </AppShell>
   );

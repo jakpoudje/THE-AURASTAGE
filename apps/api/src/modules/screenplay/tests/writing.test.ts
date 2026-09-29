@@ -20,12 +20,15 @@ describe("AuraScript job runner (with the labelled test writer)", () => {
     const progress: any[] = [];
     const sc = await runWritingJob({ id: "s", kind: "write_script", input: { story, outline: ol.output.scenes } }, deps(progress));
     expect(sc.output.scenes.map((s: any) => s.number)).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(progress.at(-1)).toMatchObject({ done: 6, total: 6 });
-    expect(progress.length).toBe(scriptWriting.writingBatches(ol.output.scenes).length);
+    expect(progress.at(-1)).toMatchObject({ done: 6, total: 6, stage: "Checking headings, cast and length across the whole script" });
+    expect(progress[0].stage).toMatch(/^Writing 6 scenes, 2 batches at a time — starting with INT\. /);
+    const batchUpdates = progress.filter((p: any) => p.batches_done > 0);
+    expect(batchUpdates.length).toBe(scriptWriting.writingBatches(ol.output.scenes).length);
+    expect(batchUpdates.every((p: any) => typeof p.stage === "string" && p.stage.length > 0)).toBe(true);
     expect(sc.checks.find((c) => c.id === "headings")!.ok).toBe(true);
     const text = scriptWriting.assembleScript("Shadows of Lagos", sc.output.scenes);
     expect(parseScreenplay(text).filter((e) => e.type === "scene_heading")).toHaveLength(6);
-    expect(sc.usage.calls).toBe(progress.length);
+    expect(sc.usage.calls).toBe(batchUpdates.length);
   });
   it("resumes a restarted script job without rewriting scenes it already has", async () => {
     const outline = [1, 2, 3].map((n) => ({ number: n, int_ext: "INT", location: "FLAT", time_of_day: "DAY", purpose: "", beat: "b", summary: "s", characters: [], est_minutes: 5 }));

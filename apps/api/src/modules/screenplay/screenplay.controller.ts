@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { approveScript, getScopePlan, getWorkspace, saveScriptVersion } from "./screenplay.service";
 import { ScriptConflictError, ScriptNotFoundError, ScriptValidationError } from "./screenplay.validator";
 import { ScriptForbiddenError } from "./screenplay.permissions";
-import { applyStory, checkContinuity, getWriting, listWriting, openAsDraft, requestWriting, saveOutline, ScriptBusyError, ScriptNotReadyError } from "./screenplay.writing";
+import { applyStory, checkContinuity, getWriting, listWriting, openAsDraft, requestWriting, saveOutline, ScriptBusyError, ScriptNotReadyError, saveStory } from "./screenplay.writing";
 
 function handleError(err: unknown, reply: FastifyReply) {
   if (err instanceof ScriptValidationError) {
@@ -30,6 +30,7 @@ export async function registerScreenplayRoutes(app: FastifyInstance) {
   const pid = (r: import("fastify").FastifyRequest) => (r.params as { id: string }).id;
   app.get("/api/projects/:id/script/writing", w((r) => listWriting(r.db, pid(r))));
   app.post("/api/projects/:id/script/writing", w((r) => requestWriting(r.db, pid(r), r.body), 201));
+  app.post("/api/projects/:id/script/writing/story", { bodyLimit: 1024 * 1024 }, w((r) => saveStory(r.db, pid(r), r.body), 201));
   app.post("/api/projects/:id/script/writing/outline", { bodyLimit: 1024 * 1024 }, w((r) => saveOutline(r.db, pid(r), r.body), 201));
   app.get("/api/projects/:id/script/continuity", w((r) => checkContinuity(r.db, pid(r))));
   app.get("/api/script-writing/:id", w((r) => getWriting(r.db, pid(r))));

@@ -13,3 +13,5 @@ export * as scriptWriting from "./scriptWritingEngine";
 export { scriptWriting as scriptWritingEngine } from "./scriptWritingEngine";
 export * as continuityCheck from "./continuityCheckEngine";
 export { continuityCheckEngine } from "./continuityCheckEngine";
+export * as characterRename from "./characterRenameEngine";
+export { renameCharacter } from "./characterRenameEngine";

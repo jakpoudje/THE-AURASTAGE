@@ -114,8 +114,25 @@ describe("Visual Generation routes", () => {
     expect(ws.budget).toEqual({ monthly_paid_take_limit: 20, used_this_month: 3 });
   });
 
+  it("regression: a location used by a compiled prompt is edited in Locations & Props → the prompt needs review (never rewritten)", async () => {
+    const LOC = "abab0000-abab-4bab-8bab-abababababab";
+    rows.generation_packages = [{ id: PKG, project_id: P, shot_id: SHOT, shot_plan_version_id: PV1, review_state: "current", review_reason: null, engine_version: "1.2.0", created_at: NOW,
+      content: { project: { look: null }, world: { location: { id: LOC, name: "Lagos Harbour" }, props: [] }, provenance: { world_revisions: { [LOC]: 2 } } } }];
+    rows.locations = [{ id: LOC, project_id: P, name: "Lagos Harbour", description: "Now foggy", revision: 3, archived_at: null }];
+    const fake = fakeDb(rows, (fn, a) => ({ data: fn === "paid_takes_this_month" ? 0 : { ...rows.generation_packages[0], review_state: a.p_state, review_reason: a.p_reason } }));
+    await (await app(fake, {})).inject({ method: "GET", url: `/api/projects/${P}/visual` });
+    expect(fake.calls.find((c) => c.fn === "set_package_review")).toMatchObject({ args: { p_state: "review_required", p_reason: "Lagos Harbour changed in Locations & Props after this prompt was compiled — recompile to apply it." } });
+  });
+
   it("compiles a package from the approved shot, locked Scene DNA, Casting wardrobe, Dialogue and the project look", async () => {
     rows.project_settings = [{ project_id: P, revision: "r", version_number: 2, settings: { style: { look: "Desaturated, handheld" } } }];
+    // Locations & Props for the scene, with reference images (prompt compiler 1.2.0).
+    const LOC = "abab0000-abab-4bab-8bab-abababababab", PR = "cdcd0000-cdcd-4dcd-8dcd-cdcdcdcdcdcd", AS1 = "efef0000-efef-4fef-8fef-efefefefef01", AS2 = "efef0000-efef-4fef-8fef-efefefefef02";
+    rows.locations = [{ id: LOC, project_id: P, name: "Lagos Harbour", description: "Rusted cranes over black water", revision: 2, archived_at: null }];
+    rows.props = [{ id: PR, project_id: P, name: "Brass key", description: "Old, green with age", category: "prop", revision: 1, archived_at: null }];
+    rows.world_appearances = [{ scene_id: S1, object_type: "location", object_id: LOC }, { scene_id: S1, object_type: "prop", object_id: PR }];
+    rows.world_reference_images = [{ project_id: P, status: "succeeded", object_type: "location", object_id: LOC, view_key: "wide:NIGHT", asset_id: AS1, created_at: NOW }];
+    rows.character_reference_images = [{ project_id: P, status: "succeeded", character_id: T, look_id: null, angle: "front", size: "MS", asset_id: AS2, created_at: NOW }];
     const fake = fakeDb(rows, () => ({ data: { id: PKG } }));
     const res = await (await app(fake, {})).inject({ method: "POST", url: `/api/projects/${P}/visual/shots/${SHOT}/compile`, payload: { aspect_ratio: "16:9" } });
     expect(res.statusCode).toBe(200);
@@ -126,6 +143,13 @@ describe("Visual Generation routes", () => {
     expect(args.p_content.prompt).toContain('TUNDE (relief) says "You came."');
     expect(args.p_content.provenance).toMatchObject({ shot_plan_version_id: PV1, scene_dna_version_id: DV, settings_version: 2 });
     expect(args.p_content.prompt).toContain("Look: Desaturated, handheld.");
+    expect(args.p_content.prompt).toContain("Exterior: Lagos Harbour, night — Rusted cranes over black water.");
+    expect(args.p_content.prompt).toContain("Props in the scene: Brass key (Old, green with age).");
+    expect(args.p_content.references).toEqual([
+      { kind: "character", object_id: T, name: "Tunde Okafor", view: "front · MS", asset_id: AS2 },
+      { kind: "location", object_id: LOC, name: "Lagos Harbour", view: "wide · NIGHT", asset_id: AS1 },
+    ]);
+    expect(args.p_content.provenance.world_revisions).toEqual({ [LOC]: 2, [PR]: 1 });
     expect(res.json().checks.every((c: Row) => c.ok)).toBe(true);
   });
 

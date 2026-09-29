@@ -41,7 +41,7 @@ describe("promptCompilerEngine", () => {
   it("only includes characters in frame and records exact provenance", () => {
     const { package: p } = promptCompilerEngine(base());
     expect(p.characters.map((c) => c.name)).toEqual(["Amara Bello"]);
-    expect(p.provenance).toEqual({ shot_id: SH, shot_plan_version_id: PV, scene_dna_version_id: DV, script_version_id: null, character_ids: [A], dialogue_line_ids: [L1], settings_version: null });
+    expect(p.provenance).toEqual({ shot_id: SH, shot_plan_version_id: PV, scene_dna_version_id: DV, script_version_id: null, character_ids: [A], dialogue_line_ids: [L1], settings_version: null, world_revisions: {} });
     expect(p.negative).toContain("no people other than Amara Bello");
   });
 
@@ -66,10 +66,40 @@ describe("promptCompilerEngine", () => {
   it("applies the Project Settings look and records its settings version (1.1.0)", () => {
     const withLook = { ...base(), project: { ...base().project, look: "Desaturated teal-and-amber, handheld" }, provenance: { ...base().provenance, settings_version: 3 } };
     const { package: p, engine_version } = promptCompilerEngine(withLook);
-    expect(engine_version).toBe("1.1.0");
+    expect(engine_version).toBe("1.2.0");
     expect(p.prompt).toContain("Look: Desaturated teal-and-amber, handheld.");
     expect(p.provenance.settings_version).toBe(3);
     expect(p.checks.find((c) => c.id === "style")).toMatchObject({ ok: true, evidence: expect.stringContaining("settings v3") });
     expect(promptCompilerEngine(base()).package.checks.find((c) => c.id === "style")).toMatchObject({ ok: false });
+  });
+  it("1.2.0: uses the scene's canonical location and props from Locations & Props, and only the reference images that belong to the shot", () => {
+    const LOC = "77777777-7777-4777-8777-777777777777", PR = "88888888-8888-4888-8888-888888888888", OTHER = "99999999-9999-4999-8999-999999999999";
+    const AS = (n: number) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, "0")}`;
+    const { package: p } = promptCompilerEngine({
+      ...base(),
+      location: { id: LOC, name: "Lagos Harbour", description: "Rusted cranes, oily black water, a single sodium lamp", revision: 3 },
+      props: [{ id: PR, name: "Brass key", description: "Old, green with age", category: "prop", revision: 2 }],
+      references: [
+        { kind: "character", object_id: A, name: "Amara Bello", view: "front · MS", asset_id: AS(1) },
+        { kind: "character", object_id: T, name: "Tunde Okafor", view: "front · MS", asset_id: AS(2) }, // not in frame
+        { kind: "location", object_id: LOC, name: "Lagos Harbour", view: "wide · NIGHT", asset_id: AS(3) },
+        { kind: "prop", object_id: OTHER, name: "Other prop", view: "hero", asset_id: AS(4) }, // not in this scene
+      ],
+    });
+    expect(p.prompt).toContain("Exterior: Lagos Harbour, night — Rusted cranes, oily black water, a single sodium lamp.");
+    expect(p.prompt).toContain("Props in the scene: Brass key (Old, green with age).");
+    expect(p.references!.map((r) => r.name)).toEqual(["Amara Bello", "Lagos Harbour"]);
+    expect(p.world!.location!.revision).toBe(3);
+    expect(p.provenance.world_revisions).toEqual({ [LOC]: 3, [PR]: 2 });
+    const c = Object.fromEntries(p.checks.map((x) => [x.id, x]));
+    expect(c.location_described.ok).toBe(true);
+    expect(c.references).toMatchObject({ ok: true, evidence: "Amara Bello · front · MS, Lagos Harbour · wide · NIGHT" });
+  });
+  it("1.2.0: without Locations & Props records it still compiles and says what's missing", () => {
+    const { package: p } = promptCompilerEngine(base());
+    expect(p.prompt).toContain("Exterior: LAGOS HARBOUR, night.");
+    const c = Object.fromEntries(p.checks.map((x) => [x.id, x]));
+    expect(c.location_described).toMatchObject({ ok: false });
+    expect(c.references).toMatchObject({ ok: false });
   });
 });

@@ -111,6 +111,10 @@ http.createServer((req, res) => {
       return { title: project.title, type: project.type || "feature_film", logline: project.logline ?? (o && o.logline) ?? null, synopsis: project.synopsis ?? (o && o.synopsis) ?? null, genre: project.genre ?? null,
         tone: project.tone ?? null, setting: project.setting ?? null, time_period: project.time_period ?? null, target_runtime_minutes: project.target_runtime_minutes ?? null,
         characters: o && o.characters ? o.characters : cast.map((c) => ({ name: c.name, role: c.role || "supporting", age: parseInt(c.age, 10) || null, description: c.description || "" })), beats: (o && o.beats) || [] }; };
+    // The current story every step uses (applied or written by the writer; else the newest), as in the API.
+    const wCurrent = () => { const d = WR.filter((x) => x.kind === "develop_story" && x.status === "succeeded"); return d.find((x) => x.source === "user" || x.accepted) || d[0] || null; };
+    const wDecided = () => { const out = [], seen = new Set(); const add = (c, source) => { const k = String(c.name || "").trim().toLowerCase(); if (!k || seen.has(k)) return; seen.add(k); out.push({ name: c.name, role: c.role || null, description: c.description || null, source }); };
+      const cur = wCurrent(); for (const c of (cur && cur.output && cur.output.characters) || []) add(c, cur.source === "user" ? "writer" : "story"); for (const c of chars.filter((x) => !x.merged_into)) add(c, "casting"); return out; };
     const wDev = (id) => { for (let i = 0, cur = id; cur && i < 6; i++) { const g = WR.find((x) => x.id === cur); if (!g) return null; if (g.kind === "develop_story") return g.status === "succeeded" ? g : null; cur = g.parent_id; } return null; };
     const wSpans = (v) => { const lines = v.source_text.replace(/\r\n?/g, "\n").split("\n"); const sc = eng.sceneBoundaryEngine({ elements: v.elements }).scenes;
       return { lines, spans: sc.map((x, i) => ({ number: x.number, start: x.heading_line, end: (sc[i + 1] ? sc[i + 1].heading_line : lines.length + 1) - 1 })) }; };
@@ -122,15 +126,16 @@ http.createServer((req, res) => {
           .then((r) => Object.assign(g, { status: "succeeded", output: r.output, checks: r.checks, provider: r.provider, model: r.model, test_output: r.test_output, completed_at: now() }),
             (e) => Object.assign(g, { status: "failed", error: e.message, completed_at: now() }));
       }
-      return send(200, { writer: { id: "aurastage-test", name: "AuraStage test planner", test_output: true }, results: WR.map(wrDto) });
+      const cur = wCurrent();
+      return send(200, { writer: { id: "aurastage-test", name: "AuraStage test planner", test_output: true }, results: WR.map(wrDto), current_story_id: cur ? cur.id : null });
     }
     if (u === `/api/projects/${P}/script/writing` && req.method === "POST") {
       if (!wCan()) return wErr2(403, "AURA-COL-403", "your role can't edit in Scriptwriter. Ask the project's producer for access.");
       const find = (id) => WR.find((x) => x.id === id);
       let input, parent = b.parent_id || null, base = null;
       if (b.kind === "develop_story") input = { brief: { title: project.title, type: project.type || "feature_film", logline: project.logline ?? null, synopsis: project.synopsis ?? null, genre: project.genre ?? null, subgenre: project.subgenre ?? null,
-        tone: project.tone ?? null, setting: project.setting ?? null, time_period: project.time_period ?? null, target_runtime_minutes: project.target_runtime_minutes ?? null, request: b.request || "" } };
-      else if (b.kind === "outline") { const dev = parent ? find(parent) : WR.find((x) => x.kind === "develop_story" && x.status === "succeeded"); parent = dev ? dev.id : null; input = { story: wStory(dev), request: b.request || "" }; }
+        tone: project.tone ?? null, setting: project.setting ?? null, time_period: project.time_period ?? null, target_runtime_minutes: project.target_runtime_minutes ?? null, request: b.request || "", characters: wDecided() } };
+      else if (b.kind === "outline") { const dev = parent ? find(parent) : wCurrent(); parent = dev ? dev.id : null; input = { story: wStory(dev), request: b.request || "" }; }
       else if (b.kind === "write_script") { const ol = parent && find(parent); if (!ol || ol.kind !== "outline" || ol.status !== "succeeded") return wErr2(412, "AURA-SCR-412", "Write the script from a finished outline.");
         input = { story: wStory(wDev(ol.parent_id)), outline: ol.output.scenes, request: b.request || "" }; }
       else if (b.kind === "rewrite_scene") {
@@ -139,11 +144,19 @@ http.createServer((req, res) => {
         if (b.scene.mode !== "new_scene" && i < 0) return wErr2(400, "AURA-SCR-400", `There's no scene ${n} in the current version.`);
         const around = (k) => (k >= 0 && k < spans.length ? wText(lines, spans[k].start, spans[k].end).slice(0, 3500) : "");
         base = v.id; const nw = b.scene.mode === "new_scene";
-        input = { story: wStory(WR.find((x) => x.kind === "develop_story" && x.status === "succeeded")), mode: b.scene.mode, instruction: b.scene.instruction || b.request || "",
+        input = { story: wStory(wCurrent()), mode: b.scene.mode, instruction: b.scene.instruction || b.request || "",
           scene_text: nw ? "" : around(i), before: nw ? around(i) : around(i - 1), after: nw ? around(i + 1) : around(i + 1), scene_number: n };
       } else return wErr2(400, "AURA-SCR-400", "kind: unknown");
       const g = { id: crypto.randomUUID(), kind: b.kind, parent_id: parent, request: b.request || "", source: "model", status: "queued", progress: {}, output: null, checks: [], provider: null, model: null, test_output: null,
         error: null, base_version_id: base, result_version_id: null, accepted: null, input, created_at: now(), completed_at: null };
+      WR.unshift(g); return send(201, wrDto(g));
+    }
+    if (u === `/api/projects/${P}/script/writing/story` && req.method === "POST") {
+      if (!wCan()) return wErr2(403, "AURA-COL-403", "your role can't edit in Scriptwriter. Ask the project's producer for access.");
+      const r = eng.storyDevelopment.StoryDevelopmentOutputSchema.safeParse(b.story); if (!r.success) return wErr2(400, "AURA-SCR-400", r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+      const brief = { title: project.title, logline: project.logline ?? null, synopsis: project.synopsis ?? null, target_runtime_minutes: project.target_runtime_minutes ?? null, request: "" };
+      const g = { id: crypto.randomUUID(), kind: "develop_story", parent_id: b.parent_id || null, request: "", source: "user", status: "succeeded", progress: {}, output: r.data, checks: eng.storyDevelopment.checkStoryDevelopment(brief, r.data),
+        provider: "writer", model: null, test_output: false, error: null, base_version_id: null, result_version_id: null, accepted: null, input: { brief, edited: true }, created_at: now(), completed_at: now() };
       WR.unshift(g); return send(201, wrDto(g));
     }
     if (u === `/api/projects/${P}/script/writing/outline` && req.method === "POST") {

@@ -77,7 +77,21 @@ export const GenerationPackageContentSchema = z.object({
     dialogue_line_ids: z.array(z.string().uuid()),
     /** Project Settings version the look came from (≥ 1.1.0; null when no settings were saved). */
     settings_version: z.number().int().nullable().optional(),
+    /** Locations & Props records used, with the revision each was read at (≥ 1.2.0; a later edit flags the package). */
+    world_revisions: z.record(z.number().int()).optional(),
   }),
+  /** The scene's canonical location and the props it contains (Locations & Props, promptCompilerEngine ≥ 1.2.0). */
+  world: z.object({
+    location: z.object({ id: z.string().uuid(), name: z.string(), description: z.string(), revision: z.number().int() }).nullable(),
+    props: z.array(z.object({ id: z.string().uuid(), name: z.string(), description: z.string(), category: z.string(), revision: z.number().int() })),
+  }).optional(),
+  /**
+   * Reference images a provider can condition on (identity and continuity from the first frame to the last): the
+   * characters' approved looks, the location's view for this time of day, the props' hero views (≥ 1.2.0).
+   */
+  references: z.array(z.object({
+    kind: z.enum(["character", "location", "prop"]), object_id: z.string().uuid(), name: z.string(), view: z.string(), asset_id: z.string().uuid(),
+  })).optional(),
   /** Boolean checks with evidence shown as badges (never a score). */
   checks: z.array(z.object({ id: z.string(), label: z.string(), ok: z.boolean(), evidence: z.string() })),
 });

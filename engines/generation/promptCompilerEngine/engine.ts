@@ -15,7 +15,7 @@ const clean = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").t
 const sentence = (s: string) => (s && !/[.!?]$/.test(s) ? `${s}.` : s);
 
 export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
-  const { project, scene, shot, characters, dialogue, aspect_ratio, provenance } = validatePromptCompilerInput(raw);
+  const { project, scene, shot, characters, dialogue, aspect_ratio, provenance, location, props, references } = validatePromptCompilerInput(raw);
   const inFrame = shot.character_ids.map((id) => characters.find((c) => c.id === id)).filter((c): c is (typeof characters)[number] => !!c);
   const lighting = clean(shot.lighting) || clean(scene.lighting_intent) || null;
   const sizeLabel = SIZE_WORDS[shot.size] ?? shot.size;
@@ -32,7 +32,13 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
     const bits = [c.name, c.age ? `(${c.age})` : null, clean(c.description) ? `— ${clean(c.description)}` : null, clean(c.wardrobe) ? `wearing ${clean(c.wardrobe)}` : null];
     return bits.filter(Boolean).join(" ");
   });
-  const place = `${scene.int_ext === "EXT" ? "Exterior" : scene.int_ext === "INT" ? "Interior" : "Location"}: ${scene.location}${scene.time_of_day ? `, ${scene.time_of_day.toLowerCase()}` : ""}`;
+  // The canonical location (described once in Locations & Props) is named and described in every shot of the scene.
+  const placeName = location ? location.name : scene.location;
+  const place = `${scene.int_ext === "EXT" ? "Exterior" : scene.int_ext === "INT" ? "Interior" : "Location"}: ${placeName}${scene.time_of_day ? `, ${scene.time_of_day.toLowerCase()}` : ""}${location && clean(location.description) ? ` — ${clean(location.description)}` : ""}`;
+  const propLine = props.map((p) => (clean(p.description) ? `${p.name} (${clean(p.description)})` : p.name)).join("; ");
+  const inFrameIds = new Set(inFrame.map((c) => c.id));
+  // Only references that belong to this shot: characters in frame, this scene's location and props.
+  const refs = references.filter((r) => (r.kind === "character" ? inFrameIds.has(r.object_id) : r.kind === "location" ? r.object_id === location?.id : props.some((p) => p.id === r.object_id)));
   const style = [project.genre, project.tone].map(clean).filter(Boolean).join(", ");
   const world = [project.setting, project.time_period].map(clean).filter(Boolean).join(", ");
 
@@ -46,6 +52,7 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
     sentence(clean(shot.description)),
     people.length ? sentence(`In frame: ${people.join("; ")}`) : "",
     sentence(place),
+    propLine ? sentence(`Props in the scene: ${propLine}`) : "",
     clean(scene.weather) ? sentence(`Weather: ${clean(scene.weather)}`) : "",
     clean(scene.atmosphere) ? sentence(`Atmosphere: ${clean(scene.atmosphere)}`) : "",
     lighting ? sentence(`Lighting: ${lighting}`) : "",
@@ -75,6 +82,8 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
     performance: { action: clean(shot.description), dialogue: lines.map((l) => ({ speaker: l.speaker, text: l.text, emotion: l.emotion })) },
     lighting,
     technical: { aspect_ratio },
+    world: { location: location ?? null, props },
+    references: refs,
     negative,
     prompt,
     provenance: {
@@ -85,9 +94,23 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
       character_ids: inFrame.map((c) => c.id),
       dialogue_line_ids: lines.map((l) => l.id),
       settings_version: provenance.settings_version,
+      world_revisions: Object.fromEntries([...(location ? [[location.id, location.revision]] : []), ...props.map((p) => [p.id, p.revision])]),
     },
     checks: [
       { id: "location", label: "Location applied", ok: !!clean(scene.location), evidence: place },
+      {
+        id: "location_described",
+        label: "Location described in Locations & Props",
+        ok: !!location && !!clean(location.description),
+        evidence: location ? (clean(location.description) ? `${location.name} (revision ${location.revision})` : `${location.name} has no description yet — add one in Locations & Props`) : "Not found in Locations & Props yet — find places from the approved script there",
+      },
+      { id: "props", label: "Props in the scene", ok: props.every((p) => !!clean(p.description)), evidence: props.length ? props.map((p) => p.name + (clean(p.description) ? "" : " (no description)")).join(", ") : "None found for this scene" },
+      {
+        id: "references",
+        label: "Reference images for consistency",
+        ok: refs.length > 0,
+        evidence: refs.length ? refs.map((r) => `${r.name} · ${r.view}`).join(", ") : "None yet — make reference views in Casting (characters) and Locations & Props",
+      },
       { id: "camera", label: "Camera intent applied", ok: true, evidence: camera },
       {
         id: "characters",

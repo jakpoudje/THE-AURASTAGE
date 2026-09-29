@@ -85,8 +85,28 @@ async function developmentOf(db: SupabaseClient, id: string | null): Promise<Row
   }
   return null;
 }
+/**
+ * The story every step uses (one set of characters across Project Setup, Story Development, Outline and Script): the
+ * newest story the writer applied to Project Setup or wrote/edited themselves; if there is none yet, the newest
+ * finished story development.
+ */
 async function latestDevelopment(db: SupabaseClient, projectId: string) {
-  return (await rows(db.from("script_generations").select("*").eq("project_id", projectId).eq("kind", "develop_story").eq("status", "succeeded").order("created_at", { ascending: false }).limit(1)))[0] ?? null;
+  const all = await rows(db.from("script_generations").select("*").eq("project_id", projectId).eq("kind", "develop_story").eq("status", "succeeded").order("created_at", { ascending: false }).limit(20));
+  return all.find((g) => g.source === "user" || g.accepted) ?? all[0] ?? null;
+}
+/** Names already decided: the current story's characters, then Casting's (canonical once the script is approved). */
+function decidedCharacters(dev: Row | null, cast: Row[]) {
+  const out: Row[] = [];
+  const seen = new Set<string>();
+  const add = (c: Row, source: string) => {
+    const k = String(c.name ?? "").trim().toLowerCase();
+    if (!k || seen.has(k)) return;
+    seen.add(k);
+    out.push({ name: String(c.name).trim().slice(0, 80), role: c.role ? String(c.role).slice(0, 40) : null, description: c.description ? String(c.description).slice(0, 800) : null, source });
+  };
+  for (const c of (dev?.output?.characters ?? []) as Row[]) add(c, dev?.source === "user" ? "writer" : "story");
+  for (const c of cast) add(c, "casting");
+  return out.slice(0, 40);
 }
 
 /** Scenes of a screenplay text by heading line: [start line, end line] (1-based, inclusive). */
@@ -113,7 +133,8 @@ export async function requestWriting(db: SupabaseClient, projectId: string, body
   let input: Row, parent: string | null = b.parent_id ?? null, base: string | null = null, engineVersion: string = scriptWriting.ENGINE_VERSION;
   if (b.kind === "develop_story") {
     input = { brief: { title: p.title, type: p.type ?? "feature_film", logline: p.logline, synopsis: p.synopsis, genre: p.genre, subgenre: p.subgenre, tone: p.tone, setting: p.setting,
-      time_period: p.time_period, target_runtime_minutes: p.target_runtime_minutes, request: b.request } };
+      time_period: p.time_period, target_runtime_minutes: p.target_runtime_minutes, request: b.request,
+      characters: decidedCharacters(await latestDevelopment(db, projectId), cast) } };
     engineVersion = storyDevelopment.ENGINE_VERSION;
   } else if (b.kind === "outline") {
     const dev = parent ? await generation(db, parent) : await latestDevelopment(db, projectId);
@@ -159,7 +180,8 @@ export async function listWriting(db: SupabaseClient, projectId: string, env: En
   await assertProjectAccess(db, projectId);
   const list = await rows(db.from("script_generations").select("*").eq("project_id", projectId).order("created_at", { ascending: false }).limit(40));
   const r = reasoningProvider(env, { allowTest: true });
-  return { writer: r ? { id: r.id, name: r.name, test_output: r.execution === "test" } : null, results: list.map(dto) };
+  const current = await latestDevelopment(db, projectId);
+  return { writer: r ? { id: r.id, name: r.name, test_output: r.execution === "test" } : null, results: list.map(dto), current_story_id: current?.id ?? null };
 }
 export async function getWriting(db: SupabaseClient, id: string) {
   return dto(await generation(db, id));
@@ -167,7 +189,8 @@ export async function getWriting(db: SupabaseClient, id: string) {
 
 // ---- Using results ------------------------------------------------------------------------------------------------
 const STORY_KEYS = ["title", "logline", "synopsis", "genre", "tone", "setting", "time_period"] as const;
-const ApplyStoryInput = z.object({ fields: z.array(z.enum(STORY_KEYS)).min(1), title: z.string().max(200).optional() }).strict();
+// No fields = "use this story" without changing Project Setup (it becomes the current story Outline and Script use).
+const ApplyStoryInput = z.object({ fields: z.array(z.enum(STORY_KEYS)), title: z.string().max(200).optional() }).strict();
 
 /** Applies the chosen story fields to the Project (through the Projects service, so its rules and gate apply). */
 export async function applyStory(db: SupabaseClient, id: string, body: unknown) {
@@ -182,9 +205,24 @@ export async function applyStory(db: SupabaseClient, id: string, body: unknown) 
     else if (o[f] !== undefined) changes[f] = o[f];
   }
   if (changes.genre) changes.genre = String(changes.genre).slice(0, 100);
-  const updated = await editProject(db, g.project_id, changes, p.org_id);
+  const updated = Object.keys(changes).length ? await editProject(db, g.project_id, changes, p.org_id) : p;
   await rpc(db, "mark_script_generation", { p_id: id, p_accepted: { fields: b.fields, at: new Date().toISOString() }, p_result_version: null });
   return { applied: Object.keys(changes), project: updated };
+}
+
+const SaveStoryInput = z.object({ parent_id: z.string().uuid().nullable().default(null), story: storyDevelopment.StoryDevelopmentOutputSchema }).strict();
+/**
+ * The writer's own story (typed from scratch or an edited proposal): saved as its own record and from then on the
+ * current story every step uses (outline, script, rewrites and the names kept by later developments).
+ */
+export async function saveStory(db: SupabaseClient, projectId: string, body: unknown) {
+  const b = parse(SaveStoryInput, body);
+  const p = await project(db, projectId);
+  const brief = { title: p.title, type: p.type ?? "feature_film", logline: p.logline, synopsis: p.synopsis, genre: p.genre, tone: p.tone, setting: p.setting,
+    time_period: p.time_period, target_runtime_minutes: p.target_runtime_minutes, request: "" };
+  const g = await rpc<Row>(db, "request_script_generation", { p_project: projectId, p_kind: "develop_story", p_parent: b.parent_id, p_request: "", p_input: { brief, edited: true },
+    p_base_version: null, p_engine_version: storyDevelopment.ENGINE_VERSION, p_source: "user", p_output: b.story });
+  return { ...dto(g), checks: storyDevelopment.checkStoryDevelopment(brief, b.story) };
 }
 
 const SaveOutlineInput = z.object({ parent_id: z.string().uuid().nullable().default(null), scenes: z.array(scriptWriting.OutlineSceneSchema).min(1).max(400) }).strict();

@@ -21,7 +21,8 @@ import { DriftBanner } from "./components/DriftBanner";
 export default function SceneDnaPage() {
   const { id } = useParams<{ id: string }>();
   const d = useSceneDna(id);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // ?scene=<id> (e.g. from Scriptwriter → Scene Breakdown) opens that scene.
+  const [selectedId, setSelectedId] = useState<string | null>(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("scene")));
   const [dirty, setDirty] = useState(false);
   const onDirtyChange = useCallback((v: boolean) => setDirty(v), []);
 

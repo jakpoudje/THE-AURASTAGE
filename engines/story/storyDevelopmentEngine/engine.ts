@@ -29,6 +29,13 @@ export function checkStoryDevelopment(briefIn: StoryBrief, out: StoryDevelopment
     { id: "beats_ordered", ok: beatsOrdered, label: "Beats are in story order", evidence: beatsOrdered ? `${out.beats.length} beats` : "Out of order" },
     { id: "fits_runtime", ok: !runtime || (lastMinute <= runtime && lastMinute >= runtime * 0.6), label: "Beats fit the target runtime",
       evidence: runtime ? `Last beat at minute ${lastMinute} of ${runtime}` : "No runtime set" },
+    (() => {
+      const renaming = /\b(rename|new names?|different names?|change (the )?names?)\b/i.test(brief.request);
+      const have = new Set(out.characters.map((c) => c.name.trim().toLowerCase()));
+      const lost = brief.characters.filter((c) => !have.has(c.name.trim().toLowerCase())).map((c) => c.name);
+      return { id: "keeps_names", ok: renaming || lost.length === 0, label: "Keeps the characters already decided",
+        evidence: !brief.characters.length ? "No characters decided yet" : lost.length ? `${renaming ? "Renamed on request" : "Missing or renamed"}: ${lost.join(", ")}` : `Kept: ${brief.characters.map((c) => c.name).join(", ")}` };
+    })(),
     { id: "keeps_title", ok: !brief.title || out.title_options.some((t) => t.toLowerCase() === brief.title.toLowerCase()) || /title/i.test(brief.request), label: "Keeps the working title as an option",
       evidence: out.title_options.join(" · ") },
   ];

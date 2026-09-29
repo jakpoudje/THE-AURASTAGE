@@ -39,8 +39,10 @@ begin
   insert into r(step, ok) values ('queued with a job', g.status || ' / ' || (g.job_id is not null)::text || ' / ' || g.source);
   begin perform public.request_script_generation(a, 'outline', gen_random_uuid(), '', '{}', null, '1.0.0'); insert into r(step, ok) values ('unknown parent refused', 'NO');
   exception when others then insert into r(step, ok) values ('unknown parent refused', sqlerrm); end;
-  begin perform public.request_script_generation(a, 'write_script', g.id, '', '{}', null, '1.0.0', 'user', '{"scenes":[]}'); insert into r(step, ok) values ('only an outline can be saved by hand', 'NO');
-  exception when others then insert into r(step, ok) values ('only an outline can be saved by hand', sqlerrm); end;
+  begin perform public.request_script_generation(a, 'write_script', g.id, '', '{}', null, '1.0.0', 'user', '{"scenes":[]}'); insert into r(step, ok) values ('only a story or an outline can be saved by hand', 'NO');
+  exception when others then insert into r(step, ok) values ('only a story or an outline can be saved by hand', sqlerrm); end;
+  u := public.request_script_generation(a, 'develop_story', null, '', '{}', null, '1.1.0', 'user', '{"characters":[{"name":"Amara"}]}');
+  insert into r(step, ok) values ('writer-saved story is done at once (0033)', u.status || ' / ' || u.provider || ' / ' || (u.job_id is null)::text);
   u := public.request_script_generation(a, 'outline', g.id, '', '{}', null, '1.0.0', 'user', '{"scenes":[{"number":1}]}');
   insert into r(step, ok) values ('writer-saved outline is done at once, no job', u.status || ' / ' || u.provider || ' / ' || (u.job_id is null)::text);
   for i in 1..5 loop perform public.request_script_generation(a, 'outline', g.id, '', '{}', null, '1.0.0'); end loop;
@@ -96,7 +98,7 @@ begin
   exception when others then insert into r(step, ok) values ('mark with a version from elsewhere refused', sqlerrm); end;
   m := public.mark_script_generation(g.id, '{"fields":["logline"]}', (select v from ids where k = 'v'));
   insert into r(step, ok) values ('marked as used with the draft version', (m.accepted->'fields'->>0) || ' / ' || (m.result_version_id = (select v from ids where k = 'v'))::text);
-  insert into r(step, ok) values ('audit trail', (select string_agg(distinct action, ',' order by action) from public.audit_events where action like 'Script%Writ%' or action = 'ScriptOutlineEdited'));
+  insert into r(step, ok) values ('audit trail', (select string_agg(distinct action, ',' order by action) from public.audit_events where action like 'Script%Writ%' or action in ('ScriptOutlineEdited','ScriptStoryEdited')));
 end $$;
 
 do $x$ begin raise exception 'RESULTS: %', (select string_agg(step || ' => ' || ok, ' || ' order by n) from r); end $x$;
@@ -104,11 +106,12 @@ do $x$ begin raise exception 'RESULTS: %', (select string_agg(step || ' => ' || 
 -- Expected (live, 2026-09-29):
 -- queued with a job                          | queued / true / model
 -- unknown parent refused                     | AURA-SCR-404: that earlier step isn't in this project
--- only an outline can be saved by hand       | AURA-SCR-400: only an outline can be saved by hand
+-- only a story or an outline can be saved by hand | AURA-SCR-400: only a story or an outline can be saved by hand (0033)
+-- writer-saved story is done at once         | succeeded / writer / true
 -- writer-saved outline is done at once       | succeeded / writer / true
 -- rate limit                                 | AURA-SCR-429: that's a lot of writing requests in a minute — give it a moment
 -- casting director can't request writing     | AURA-COL-403: your role (Casting Director) can't edit in Scriptwriter
--- casting director sees the jobs             | 7
+-- casting director sees the jobs             | 8
 -- outsider can't mark                        | AURA-COL-403: you don't have access to this project
 -- outsider sees nothing                      | 0
 -- bad worker token refused                   | AURA-GEN-401: worker not authorised
@@ -117,4 +120,4 @@ do $x$ begin raise exception 'RESULTS: %', (select string_agg(step || ' => ' || 
 -- failure recorded on the job too            | failed / backend down / failed
 -- mark with a version from elsewhere refused | AURA-SCR-400: that script version isn't in this project
 -- marked as used with the draft version      | logline / true
--- audit trail                                | ScriptOutlineEdited,ScriptWritingCompleted,ScriptWritingRequested,ScriptWritingUsed
+-- audit trail                                | ScriptOutlineEdited,ScriptStoryEdited,ScriptWritingCompleted,ScriptWritingRequested,ScriptWritingUsed (0033)

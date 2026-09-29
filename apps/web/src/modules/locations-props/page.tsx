@@ -6,6 +6,7 @@
 // apps/api/src/modules/world (migration 0028). Script facts refresh on "Find in the script"; names and descriptions are
 // the team's and are never overwritten; anything no longer in the script is flagged, never deleted.
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Project } from "@aurastage/contracts";
@@ -85,7 +86,20 @@ export default function LocationsPropsPage() {
   const syncLabel = { no_script: "Approve the script in Scriptwriter first.", never: "Not looked for yet.", current: "Up to date with the approved script.", stale: "The approved script changed since the last look." }[ws.sync.state];
 
   return (
-    <AppShell project={project} active="world">
+    <AppShell
+      project={project}
+      active="world"
+      actions={
+        <>
+          <Link href={`/projects/${id}/casting`} className="rounded-md border border-aura-border px-4 py-2 text-sm">
+            ← Casting & Characters
+          </Link>
+          <Link href={`/projects/${id}/dialogue`} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black">
+            Next: Dialogue →
+          </Link>
+        </>
+      }
+    >
       <section className="border-b border-aura-border bg-gradient-to-r from-black via-[#16120a] to-black px-8 py-10">
         <p className="text-[11px] uppercase tracking-[0.3em] text-aura-gold">Locations & Props</p>
         <h1 className="mt-2 font-display text-4xl">Build the <span className="text-aura-gold">World</span> of Your Film</h1>
