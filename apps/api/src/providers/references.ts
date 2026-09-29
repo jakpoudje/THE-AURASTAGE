@@ -34,14 +34,19 @@ export function chooseReferences(
   capability: ProviderCapability,
   candidates: ReferenceCandidate[],
   /** Files that turned out to be unreadable (by asset id → reason); their slot goes to the next eligible reference. */
-  unreadable: Record<string, string> = {}
+  unreadable: Record<string, string> = {},
+  /** The model the take uses: some providers take references on only some models. */
+  model?: string,
 ): ReferenceDecision[] {
-  const support = adapter.references?.[capability];
+  const declared = adapter.references?.[capability];
+  const support = declared && (!declared.models || !model || declared.models.includes(model)) ? declared : undefined;
+  const otherModels = declared?.models && model && !declared.models.includes(model) ? declared.models : null;
   const sorted = candidates.map((c, i) => ({ c, i })).sort((a, b) => ORDER[a.c.kind] - ORDER[b.c.kind] || a.i - b.i).map((x) => x.c);
   let used = 0;
   return sorted.map((c) => {
     const base = { kind: c.kind, object_id: c.object_id, name: c.name, view: c.view, asset_id: c.asset_id, asset_version: c.asset?.version ?? null };
     const no = (reason: string): ReferenceDecision => ({ ...base, sent: false, reason });
+    if (otherModels) return no(`${model} draws from the prompt only; ${otherModels.join(" or ")} can use reference images.`);
     if (!support) {
       return no(capability === "video"
         ? `${adapter.name} video starts from the approved frame, which was made with the references; it takes no extra reference images.`

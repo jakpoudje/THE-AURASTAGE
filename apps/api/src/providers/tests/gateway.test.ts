@@ -41,7 +41,8 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 describe("Provider Gateway", () => {
   it("reports status from evidence only: key present or not, plus the last real result", () => {
     const s = providerStatuses({ RUNWAY_API_KEY: "k" }, { runway: { status: "failed", at: "2026-09-28T00:00:00Z", message: "quota" } });
-    expect(s.map((x) => [x.id, x.state])).toEqual([["aurastage-sketch", "configured"], ["runway", "configured"], ["openai", "not_configured"]]);
+    expect(s.map((x) => [x.id, x.state]).slice(0, 3)).toEqual([["aurastage-sketch", "configured"], ["runway", "configured"], ["openai", "not_configured"]]);
+    expect(s.filter((x) => x.state === "configured").map((x) => x.id)).toEqual(["aurastage-sketch", "runway"]);
     expect(s[1].last_result).toMatchObject({ status: "failed", message: "quota" });
   });
 

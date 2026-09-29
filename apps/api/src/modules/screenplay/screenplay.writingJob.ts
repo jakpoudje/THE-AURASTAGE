@@ -18,9 +18,9 @@ export interface WritingResult { output: Row; checks: Row[]; provider: string; m
 
 export async function runWritingJob(job: WritingJob, d: WritingDeps): Promise<WritingResult> {
   const r = d.reasoner();
-  if (!r) throw new Error("No writing backend is connected. Add ANTHROPIC_API_KEY on the server to use Claude.");
+  if (!r) throw new Error("No writing backend is connected. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY on the server.");
   const usage = { input_tokens: 0, output_tokens: 0, calls: 0 };
-  let model = "", test = false;
+  let model = "", test = false, answeredBy: string | undefined;
   const ask = async <T>(req: { system: string; prompt: string; schema: any; max_tokens?: number }, kind: "develop_story" | "outline" | "write_scenes" | "rewrite_scene", snapshot: unknown, effort: "medium" | "high" = "high") => {
     // A retryable failure (an answer that didn't fit, a cut-off answer, a busy backend) is asked once more.
     let res: ReasoningResult<T>;
@@ -31,10 +31,10 @@ export async function runWritingJob(job: WritingJob, d: WritingDeps): Promise<Wr
       res = await r.complete<T>({ ...req, effort, task: { kind, snapshot } }, d.env);
     }
     usage.input_tokens += res.usage.input_tokens; usage.output_tokens += res.usage.output_tokens; usage.calls++;
-    model = res.model; test = res.test_output;
+    model = res.model; test = res.test_output; answeredBy = res.provider ?? answeredBy;
     return res.data;
   };
-  const done = (output: Row, checks: Row[]): WritingResult => ({ output, checks, provider: r.id, model, test_output: test, usage });
+  const done = (output: Row, checks: Row[]): WritingResult => ({ output, checks, provider: answeredBy ?? r.id, model, test_output: test, usage });
 
   // What the writer sees while waiting: the step actually running (never an invented percentage).
   const stage = (text: string, extra: Row = {}) => d.progress(job.id, { stage: text, ...extra }, null).catch(() => undefined);

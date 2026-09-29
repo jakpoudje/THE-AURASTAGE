@@ -2,7 +2,8 @@
 import { useState } from "react";
 import type { Take } from "@aurastage/contracts";
 
-const PROVIDER: Record<string, string> = { "aurastage-sketch": "AuraStage Sketch", runway: "Runway", openai: "OpenAI" };
+const PROVIDER: Record<string, string> = { "aurastage-sketch": "AuraStage Sketch", runway: "Runway", openai: "OpenAI",
+  google: "Google", stability: "Stability AI", bfl: "Black Forest Labs FLUX", luma: "Luma", kling: "Kling", minimax: "MiniMax Hailuo" };
 
 /** Which reference images this take actually sent to the provider, and why any were left out. */
 function ReferencesUsed({ refs }: { refs: NonNullable<Take["references_used"]> }) {

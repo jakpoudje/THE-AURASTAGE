@@ -28,6 +28,8 @@ export interface ReasoningResult<T> {
   /** The model that actually answered (a server-side fallback can differ from the one requested). */
   model: string;
   provider_request_id: string | null;
+  /** Which writer actually answered, when a chain of connected writers stood in for one another. */
+  provider?: string;
   usage: { input_tokens: number; output_tokens: number };
 }
 

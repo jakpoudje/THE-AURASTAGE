@@ -53,7 +53,17 @@ describe("generation worker", () => {
       (seen = req), { bytes: new Uint8Array([2]), media_type: "video/mp4", provider_request_id: "task", cost_usd: null }
     ));
     await runOnce(d);
-    expect(seen.source_image).toEqual({ bytes: new Uint8Array([5]), media_type: "image/png" });
+    expect(seen.source_image).toEqual({ bytes: new Uint8Array([5]), media_type: "image/png", url: null });
+  });
+
+  it("gives providers that fetch by URL a short-lived signed link to the start frame", async () => {
+    let seen: any;
+    const d = deps(claim({ capability: "video", provider: "luma", model: "ray-2" }, { storage_key: "k", media_type: "image/png" }), async (req) => (
+      (seen = req), { bytes: new Uint8Array([2]), media_type: "video/mp4", provider_request_id: "g", cost_usd: null }
+    ));
+    d.storage.signedUrl = async (k) => `https://media.example/${k}?sig=1`;
+    await runOnce(d);
+    expect(seen.source_image.url).toBe("https://media.example/k?sig=1");
   });
 
   it("records provider failures on the take (with the request id) instead of crashing", async () => {

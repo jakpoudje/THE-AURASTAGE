@@ -8,7 +8,7 @@ import { z } from "zod";
 export const ProviderCapabilitySchema = z.enum(["image", "video"]);
 export type ProviderCapability = z.infer<typeof ProviderCapabilitySchema>;
 
-export const ProviderIdSchema = z.enum(["aurastage-sketch", "runway", "openai"]);
+export const ProviderIdSchema = z.enum(["aurastage-sketch", "runway", "openai", "stability", "bfl", "google", "luma", "kling", "minimax"]);
 export type ProviderId = z.infer<typeof ProviderIdSchema>;
 
 /** Provider status is evidence, never decoration (CLAUDE.md rule 12). */
@@ -24,6 +24,8 @@ export const ProviderStatusSchema = z.object({
     .nullable(),
   note: z.string(),
   models: z.array(z.object({ id: z.string(), capability: ProviderCapabilitySchema, label: z.string() })),
+  /** Video only starts from a finished image take (Runway); the others can also work from the prompt alone. */
+  video_needs_frame: z.boolean().default(false),
 });
 export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 

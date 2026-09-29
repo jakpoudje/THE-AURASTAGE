@@ -61,7 +61,11 @@ async function api(method, path, body) {
   await step("provider status is honest: Runway and OpenAI not connected, sketch built in", async () => {
     const list = page.getByRole("list", { name: "Provider status" });
     await list.getByText("Runway", { exact: true }).waitFor();
-    if ((await list.getByText("not connected").count()) !== 2) throw new Error("expected 2 not connected");
+    for (const name of ["Runway", "OpenAI Images", "Google (Imagen, Gemini, Veo)", "Kling AI", "Luma Dream Machine"]) {
+      const row = list.getByRole("listitem").filter({ has: page.getByText(name, { exact: true }) });
+      if (!/not connected/.test(await row.innerText())) throw new Error(name + " should say not connected");
+    }
+    if ((await list.getByText("connected", { exact: true }).count()) !== 1) throw new Error("only the built-in sketch is connected");
     await list.getByText(/Not AI/).waitFor();
   });
   await step("compile the prompt from the approved plan: prompt text and evidence badges", async () => {

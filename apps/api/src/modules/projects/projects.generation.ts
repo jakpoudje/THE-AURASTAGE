@@ -12,7 +12,8 @@ type Env = Record<string, string | undefined>;
 type Row = Record<string, any>;
 type Backend = generationReadiness.CapabilityInput["backends"][number];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KEY: Record<string, string> = { openai: "OPENAI_API_KEY", runway: "RUNWAY_API_KEY", anthropic: "ANTHROPIC_API_KEY", elevenlabs: "ELEVENLABS_API_KEY" };
+const KEY: Record<string, string> = { openai: "OPENAI_API_KEY", runway: "RUNWAY_API_KEY", anthropic: "ANTHROPIC_API_KEY", elevenlabs: "ELEVENLABS_API_KEY",
+  gemini: "GEMINI_API_KEY", google: "GEMINI_API_KEY", stability: "STABILITY_API_KEY", bfl: "BFL_API_KEY", luma: "LUMA_API_KEY", kling: "KLING_ACCESS_KEY + KLING_SECRET_KEY", minimax: "MINIMAX_API_KEY" };
 
 /** Successes / failures and the latest success in one table, read through the caller's own access (RLS). */
 async function evidence(db: SupabaseClient, table: string, projectId: string, filter: (q: any) => any, ok: string[], bad: string[], providerCol = "provider", doneCol = "completed_at") {

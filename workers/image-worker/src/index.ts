@@ -5,8 +5,8 @@
 //      unless AURA_TEST_PROVIDER=off).
 import { createClient } from "@supabase/supabase-js";
 // Provider Gateway + media storage live in apps/api (canonical, rule 7); the worker only uses them.
-import { chooseReferences, getAdapter, getAudioAdapter, reasoningProvider } from "@aurastage/api/dist/providers";
-import { getMedia, putMedia, takeStorageKey } from "@aurastage/api/dist/storage/media";
+import { chooseReferences, getAdapter, getAudioAdapter, providerStatuses, reasoningProvider } from "@aurastage/api/dist/providers";
+import { getMedia, putMedia, signedMediaUrl, takeStorageKey } from "@aurastage/api/dist/storage/media";
 import { runOnce, type Claim } from "./worker";
 import { planOnce, type PlanClaim } from "./planner";
 import { audioOnce, type AudioClaim } from "./audio";
@@ -33,7 +33,7 @@ const deps = {
   fail: (id: string, error: string, req: string | null) => rpc<void>("worker_fail_take", { p_token: token, p_take_id: id, p_error: error, p_provider_request_id: req }),
   noteReferences: (id: string, refs: unknown[]) => rpc<void>("worker_note_take_references", { p_token: token, p_take_id: id, p_refs: refs }),
   gateway: { getAdapter, chooseReferences },
-  storage: { put: (k: string, b: Uint8Array, ct: string) => putMedia(k, b, ct), get: (k: string) => getMedia(k), keyFor: takeStorageKey },
+  storage: { put: (k: string, b: Uint8Array, ct: string) => putMedia(k, b, ct), get: (k: string) => getMedia(k), keyFor: takeStorageKey, signedUrl: (k: string) => signedMediaUrl(k, 3600) },
   env,
   log,
 };
@@ -113,7 +113,7 @@ async function writingLane() {
 
 (async () => {
   void writingLane();
-  log("worker.started", { providers: ["aurastage-sketch", env.RUNWAY_API_KEY ? "runway" : null, env.OPENAI_API_KEY ? "openai" : null].filter(Boolean), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
+  log("worker.started", { providers: providerStatuses(env).filter((p) => p.state === "configured").map((p) => p.id), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
   while (!stopping) {
     try {
       // Assistant plans are short and interactive, so they go first; then one generation take.

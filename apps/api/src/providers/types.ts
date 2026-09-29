@@ -17,8 +17,8 @@ export interface GenerateRequest {
   aspect_ratio: AspectRatio;
   duration_seconds: number | null;
   seed: number | null;
-  /** For video: the starting frame (image bytes) from an earlier take. */
-  source_image?: { bytes: Uint8Array; media_type: string } | null;
+  /** For video: the starting frame (image bytes) from an earlier take, with a short-lived signed link for providers that fetch by URL. */
+  source_image?: { bytes: Uint8Array; media_type: string; url?: string | null } | null;
   /**
    * Reference images the provider conditions on (characters in frame, the location, props), already chosen for this
    * adapter by `chooseReferences` — only adapters that declare `references` receive any.
@@ -32,6 +32,8 @@ export interface ReferenceImage {
   view: string;
   bytes: Uint8Array;
   media_type: string;
+  /** Short-lived signed link, for providers that fetch references by URL. */
+  url?: string | null;
 }
 
 /** What an adapter accepts as reference images, per capability. Absent = it can't use any (they are not sent). */
@@ -39,6 +41,8 @@ export interface ReferenceSupport {
   max: number;
   media_types: string[];
   max_bytes: number;
+  /** Only these models take references (the adapter's other models draw from the prompt alone). */
+  models?: string[];
 }
 
 export interface GenerateResult {
@@ -81,6 +85,8 @@ export interface ProviderAdapter {
   isConfigured(env: Record<string, string | undefined>): boolean;
   note: string;
   references?: Partial<Record<ProviderCapability, ReferenceSupport>>;
+  /** Video only from a finished image take (no text-to-video). */
+  videoNeedsFrame?: boolean;
   generate(req: GenerateRequest, env: Record<string, string | undefined>, opts?: { signal?: AbortSignal; fetchImpl?: typeof fetch; pollMs?: number }): Promise<GenerateResult>;
   generateStill?(req: StillRequest, env: Record<string, string | undefined>, opts?: { signal?: AbortSignal; fetchImpl?: typeof fetch }): Promise<GenerateResult>;
 }

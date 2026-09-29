@@ -23,7 +23,8 @@ const STORY = "Act I: The Heist. During a highly anticipated national election, 
     await page.getByRole("heading", { name: /Turn Your Ideas\s*Into Extraordinary Films/ }).waitFor();
     const prov = page.getByRole("region", { name: "Providers" });
     await prov.getByText("AuraStage Sketch").waitFor();
-    await prov.getByText("Built in").waitFor();
+    if ((await prov.getByText("Built in", { exact: true }).count()) !== 2) throw new Error("sketch and neural voices are built in");
+    await prov.getByText(/Runway · Google Veo · Luma · Kling · MiniMax/).waitFor();
     if (await prov.getByText(/Suno|CapCut|HeyGen/).count()) throw new Error("lists a provider with no integration");
     if ((await page.getByRole("list", { name: "Genres" }).getByRole("listitem").count()) !== 8) throw new Error("genres");
     if ((await page.locator("img").count()) !== 0) throw new Error("home page should not render <img> tags that can break");

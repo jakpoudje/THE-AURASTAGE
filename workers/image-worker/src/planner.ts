@@ -7,7 +7,7 @@ export interface PlanClaim { id: string; module: string; request: string; mode: 
 interface Reasoner {
   id: string;
   complete(req: { system: string; prompt: string; schema: typeof PlanSchema; effort?: "low" | "medium" | "high"; task?: { kind: "plan"; snapshot: unknown } }, env: Record<string, string | undefined>):
-    Promise<{ data: Plan; test_output: boolean; model: string; provider_request_id: string | null; usage: { input_tokens: number; output_tokens: number } }>;
+    Promise<{ data: Plan; test_output: boolean; model: string; provider_request_id: string | null; provider?: string; usage: { input_tokens: number; output_tokens: number } }>;
 }
 export interface PlannerDeps {
   claim(): Promise<PlanClaim | null>;
@@ -23,14 +23,14 @@ export async function planOnce(d: PlannerDeps): Promise<boolean> {
   if (!job) return false;
   const r = d.reasoner();
   if (!r) {
-    await d.fail(job.id, "No reasoning backend is connected. Add ANTHROPIC_API_KEY on the server to use Claude.");
+    await d.fail(job.id, "No reasoning backend is connected. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY on the server.");
     d.log("plan.failed", { id: job.id, reason: "no_backend" });
     return true;
   }
   try {
     const res = await r.complete({ system: PLANNER_SYSTEM, prompt: String(job.snapshot.prompt ?? job.request), schema: PlanSchema, effort: "medium", task: { kind: "plan", snapshot: job.snapshot } }, d.env);
-    await d.complete(job.id, res.data, r.id, res.model, res.test_output, res.provider_request_id);
-    d.log("plan.completed", { id: job.id, provider: r.id, model: res.model, test_output: res.test_output, calls: res.data.calls.length, tokens: res.usage.input_tokens + res.usage.output_tokens });
+    await d.complete(job.id, res.data, res.provider ?? r.id, res.model, res.test_output, res.provider_request_id);
+    d.log("plan.completed", { id: job.id, provider: res.provider ?? r.id, model: res.model, test_output: res.test_output, calls: res.data.calls.length, tokens: res.usage.input_tokens + res.usage.output_tokens });
   } catch (e) {
     await d.fail(job.id, (e as Error).message);
     d.log("plan.failed", { id: job.id, provider: r.id, error: (e as Error).message });

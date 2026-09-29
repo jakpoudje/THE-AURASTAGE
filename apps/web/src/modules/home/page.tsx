@@ -26,11 +26,11 @@ const FEATURES = [
 // Only integrations with code behind them. "Built in" works today; the others turn on when their key is added.
 const PROVIDERS: { name: string; state: string }[] = [
   { name: "AuraStage Sketch", state: "Built in" },
-  { name: "OpenAI Images", state: "Add a key to connect" },
-  { name: "Runway", state: "Add a key to connect" },
-  { name: "Anthropic Claude", state: "Coming next" },
+  { name: "AuraStage neural voices", state: "Built in" },
+  { name: "Anthropic Claude · OpenAI · Google Gemini (writing)", state: "Add a key to connect" },
+  { name: "OpenAI Images · Google Imagen · FLUX · Stability", state: "Add a key to connect" },
+  { name: "Runway · Google Veo · Luma · Kling · MiniMax (video)", state: "Add a key to connect" },
   { name: "ElevenLabs", state: "Coming next" },
-  { name: "Luma · Google Veo", state: "Planned" },
 ];
 
 const GENRES: { id: GenreId; label: string }[] = [

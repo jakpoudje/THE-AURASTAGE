@@ -4,6 +4,12 @@ import type { ProviderId, ProviderStatus } from "@aurastage/contracts";
 import { sketchAdapter } from "./sketch/sketchAdapter";
 import { runwayAdapter } from "./video/runway/runwayAdapter";
 import { openaiImageAdapter } from "./image/openai/openaiImageAdapter";
+import { stabilityAdapter } from "./image/stability/stabilityAdapter";
+import { bflAdapter } from "./image/bfl/bflAdapter";
+import { googleAdapter } from "./google/googleAdapter";
+import { lumaAdapter } from "./video/luma/lumaAdapter";
+import { klingAdapter } from "./video/kling/klingAdapter";
+import { minimaxAdapter } from "./video/minimax/minimaxAdapter";
 import type { ProviderAdapter } from "./types";
 
 export * from "./types";
@@ -12,7 +18,7 @@ export * from "./audio";
 export * from "./references";
 export { renderSketch } from "./sketch/sketchAdapter";
 
-const ADAPTERS: ProviderAdapter[] = [sketchAdapter, runwayAdapter, openaiImageAdapter];
+const ADAPTERS: ProviderAdapter[] = [sketchAdapter, runwayAdapter, openaiImageAdapter, googleAdapter, stabilityAdapter, bflAdapter, lumaAdapter, klingAdapter, minimaxAdapter];
 
 export function getAdapter(id: ProviderId | string): ProviderAdapter | undefined {
   return ADAPTERS.find((a) => a.id === id);
@@ -31,6 +37,7 @@ export function providerStatuses(
     last_result: lastResults[a.id] ?? null,
     note: a.note,
     models: a.models,
+    video_needs_frame: !!a.videoNeedsFrame,
   }));
 }
 

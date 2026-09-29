@@ -244,7 +244,7 @@ export async function requestTakes(db: SupabaseClient, packageId: string, payloa
   if (!model || model.capability !== input.capability) throw new GenerationValidationError([], `${adapter.name} doesn't offer that model for ${input.capability === "video" ? "video" : "images"}.`);
   if (!adapter.isConfigured(env)) throw new GenerationNotReadyError(`${adapter.name} isn't connected yet — its API key hasn't been added to the server.`);
   if (!mediaConfigured(env)) throw new GenerationNotReadyError("Media storage isn't set up on the server yet.");
-  if (input.capability === "video" && !input.source_take_id) throw new GenerationNotReadyError("Pick a finished image take of this shot to start the video from.");
+  if (input.capability === "video" && adapter.videoNeedsFrame && !input.source_take_id) throw new GenerationNotReadyError(`${adapter.name} video starts from a finished image take of this shot — pick one to start from.`);
   const created = await repo.requestTakes(db, {
     packageId,
     provider: input.provider,

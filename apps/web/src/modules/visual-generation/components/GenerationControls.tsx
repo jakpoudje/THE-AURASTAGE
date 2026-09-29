@@ -64,7 +64,7 @@ export function GenerationControls({
   const [seed, setSeed] = useState("");
   const frames = s.takes.filter((t) => t.status === "succeeded" && t.capability === "image" && t.media_type !== "image/svg+xml");
   const [sourceId, setSourceId] = useState<string>("");
-  const source = frames.find((t) => t.id === sourceId) ?? frames.find((t) => t.id === s.approved_take_id) ?? frames[0];
+  const source = sourceId === "none" ? undefined : frames.find((t) => t.id === sourceId) ?? frames.find((t) => t.id === s.approved_take_id) ?? frames[0];
 
   const blocker = !usable
     ? "Approve the shot plan again first."
@@ -76,8 +76,8 @@ export function GenerationControls({
           ? "No provider offers this yet."
           : provider.state !== "configured"
             ? `${provider.name} isn't connected yet — its API key hasn't been added.`
-            : capability === "video" && !source
-              ? "Video starts from a finished image take (not a sketch) — generate one first."
+            : capability === "video" && provider.video_needs_frame && !source
+              ? `${provider.name} video starts from a finished image take (not a sketch) — generate one first, or choose a provider that works from the prompt.`
               : null;
 
   const sel = "mt-1 w-full rounded-md border border-aura-border bg-black/40 px-2 py-1.5 text-sm";
@@ -87,7 +87,7 @@ export function GenerationControls({
       <div className="mt-3 flex gap-1 rounded-md border border-aura-border p-1 text-sm" role="radiogroup" aria-label="Output type">
         {(["image", "video"] as const).map((c) => (
           <button key={c} role="radio" aria-checked={capability === c} onClick={() => { setCapability(c); const d = c === "image" ? defaults?.image_provider : defaults?.video_provider; if (d) setProviderId(d); }} className={`flex-1 rounded px-2 py-1 ${capability === c ? "bg-aura-gold text-black" : "text-white/60"}`}>
-            {c === "image" ? "Text → Image" : "Image → Video"}
+            {c === "image" ? "Image" : "Video"}
           </button>
         ))}
       </div>
@@ -145,7 +145,8 @@ export function GenerationControls({
       {capability === "video" && frames.length > 0 && (
         <label className="mt-3 block text-[11px] uppercase tracking-wider text-white/50">
           Starting frame
-          <select aria-label="Starting frame" value={source?.id ?? ""} onChange={(e) => setSourceId(e.target.value)} className={sel}>
+          <select aria-label="Starting frame" value={source?.id ?? "none"} onChange={(e) => setSourceId(e.target.value)} className={sel}>
+            {!provider?.video_needs_frame && <option value="none">None — from the prompt</option>}
             {frames.map((t) => (
               <option key={t.id} value={t.id}>
                 V{t.take_number} {t.approval === "approved" ? "(approved)" : ""}

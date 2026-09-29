@@ -49,6 +49,7 @@ export const runwayAdapter: ProviderAdapter = {
   // Gen-4 Image conditions on up to 3 tagged references (data URIs up to ~5 MB encoded).
   references: { image: { max: 3, media_types: ["image/png", "image/jpeg", "image/webp"], max_bytes: 3_500_000 } },
   isConfigured: (env) => !!env.RUNWAY_API_KEY,
+  videoNeedsFrame: true,
   async generate(req, env, opts = {}): Promise<GenerateResult> {
     const key = env.RUNWAY_API_KEY;
     if (!key) throw new ProviderError("Runway is not connected (no API key on the server).");

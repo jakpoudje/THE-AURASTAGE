@@ -84,7 +84,8 @@ describe("Visual Generation routes", () => {
     rows.generation_packages = [{ id: PKG, project_id: P, shot_id: SHOT, shot_plan_version_id: PV1, content: { prompt: "x" }, review_state: "current", review_reason: null, engine_version: "1.0.0", created_at: NOW }];
     rows.takes = [takeRow(), takeRow({ id: "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdc2", take_number: 2, provider: "runway", status: "failed", error: "quota", storage_key: null, completed_at: "2026-09-28T01:00:00Z" })];
     const ws = (await (await app(fakeDb(rows), { MEDIA_BUCKET: "b", RUNWAY_API_KEY: "k" })).inject({ method: "GET", url: `/api/projects/${P}/visual` })).json();
-    expect(ws.providers.map((p: Row) => [p.id, p.state])).toEqual([["aurastage-sketch", "configured"], ["runway", "configured"], ["openai", "not_configured"]]);
+    expect(ws.providers.map((p: Row) => [p.id, p.state]).slice(0, 3)).toEqual([["aurastage-sketch", "configured"], ["runway", "configured"], ["openai", "not_configured"]]);
+    expect(ws.providers.map((p: Row) => p.id)).toEqual(["aurastage-sketch", "runway", "openai", "google", "stability", "bfl", "luma", "kling", "minimax"]);
     expect(ws.providers[1].last_result).toMatchObject({ status: "failed", message: "quota" });
     expect(ws.media_ready).toBe(true);
     const shot = ws.scenes[0].shots[0];

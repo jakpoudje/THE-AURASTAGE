@@ -28,12 +28,14 @@ export interface WorkerDeps {
     getAdapter(id: string):
       | { name: string; references?: unknown; generate(req: any, env: Record<string, string | undefined>): Promise<{ bytes: Uint8Array; media_type: string; provider_request_id: string | null; cost_usd: number | null }> }
       | undefined;
-    chooseReferences(adapter: any, capability: ProviderCapability, candidates: ReferenceCandidate[], unreadable?: Record<string, string>): ReferenceDecision[];
+    chooseReferences(adapter: any, capability: ProviderCapability, candidates: ReferenceCandidate[], unreadable?: Record<string, string>, model?: string): ReferenceDecision[];
   };
   storage: {
     put(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
     get(key: string): Promise<{ bytes: Uint8Array; contentType: string }>;
     keyFor(t: Claim["take"], mediaType: string): string;
+    /** Short-lived signed link (for providers that fetch images by URL, e.g. Luma). */
+    signedUrl?(key: string): Promise<string>;
   };
   env: Record<string, string | undefined>;
   log(event: string, data: Record<string, unknown>): void;
@@ -53,7 +55,7 @@ export async function runOnce(d: WorkerDeps): Promise<boolean> {
     const candidates = claim.references ?? [];
     const unreadable: Record<string, string> = {};
     const files: Record<string, { bytes: Uint8Array; contentType: string }> = {};
-    let decisions = d.gateway.chooseReferences(adapter, t.capability, candidates, unreadable);
+    let decisions = d.gateway.chooseReferences(adapter, t.capability, candidates, unreadable, t.model);
     for (let pass = 0; pass <= candidates.length; pass++) {
       let changed = false;
       for (const r of decisions) {
@@ -67,12 +69,15 @@ export async function runOnce(d: WorkerDeps): Promise<boolean> {
         }
       }
       if (!changed) break;
-      decisions = d.gateway.chooseReferences(adapter, t.capability, candidates, unreadable);
+      decisions = d.gateway.chooseReferences(adapter, t.capability, candidates, unreadable, t.model);
     }
     const referenceImages = decisions.filter((r) => r.sent).map((r) => {
       const c = candidates.find((x) => x.asset_id === r.asset_id)!;
-      return { kind: r.kind, name: r.name, view: r.view, bytes: files[r.asset_id].bytes, media_type: c.asset!.media_type ?? files[r.asset_id].contentType };
+      return { kind: r.kind, name: r.name, view: r.view, bytes: files[r.asset_id].bytes, media_type: c.asset!.media_type ?? files[r.asset_id].contentType, storage_path: c.asset!.storage_path! };
     });
+    const link = async (key: string) => (d.storage.signedUrl ? d.storage.signedUrl(key).catch(() => null) : null);
+    const sourceUrl = claim.source?.storage_key ? await link(claim.source.storage_key) : null;
+    const refsWithLinks = await Promise.all(referenceImages.map(async ({ storage_path, ...r }) => ({ ...r, url: await link(storage_path) })));
     if (decisions.length) {
       await d.noteReferences(t.id, decisions);
       d.log("take.references", { take_id: t.id, sent: referenceImages.length, not_sent: decisions.length - referenceImages.length });
@@ -85,8 +90,8 @@ export async function runOnce(d: WorkerDeps): Promise<boolean> {
         aspect_ratio: t.params.aspect_ratio ?? claim.package.technical.aspect_ratio,
         duration_seconds: t.params.duration_seconds ?? null,
         seed: t.seed === null ? null : Number(t.seed),
-        source_image: source ? { bytes: source.bytes, media_type: source.contentType } : null,
-        reference_images: referenceImages,
+        source_image: source ? { bytes: source.bytes, media_type: source.contentType, url: sourceUrl } : null,
+        reference_images: refsWithLinks,
       },
       d.env
     );

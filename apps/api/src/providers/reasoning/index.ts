@@ -1,21 +1,62 @@
 // apps/api/src/providers/reasoning/index.ts — reasoning side of the Provider Gateway (CLAUDE.md rule 7).
 import { anthropicReasoningAdapter } from "./anthropic/anthropicReasoningAdapter";
+import { geminiReasoningAdapter } from "./gemini/geminiReasoningAdapter";
+import { openaiReasoningAdapter } from "./openai/openaiReasoningAdapter";
+import { isAccountProblem } from "./structured";
 import { testReasoningAdapter } from "./test/testReasoningAdapter";
-import type { ReasoningAdapter } from "./types";
+import type { ReasoningAdapter, ReasoningRequest } from "./types";
 
 export * from "./types";
-const ADAPTERS: ReasoningAdapter[] = [anthropicReasoningAdapter, testReasoningAdapter];
+export { isAccountProblem };
+const ADAPTERS: ReasoningAdapter[] = [anthropicReasoningAdapter, openaiReasoningAdapter, geminiReasoningAdapter, testReasoningAdapter];
+
+/** Connected writers in preference order: AURA_REASONING_PROVIDER first when set, then Claude, OpenAI, Gemini. */
+export function connectedWriters(env: Record<string, string | undefined>): ReasoningAdapter[] {
+  const real = ADAPTERS.filter((a) => a.execution !== "test" && a.isConfigured(env));
+  const pref = env.AURA_REASONING_PROVIDER;
+  return pref ? [...real.filter((a) => a.id === pref), ...real.filter((a) => a.id !== pref)] : real;
+}
 
 /**
- * The reasoning backend for a task: the real model when its key is on the server, otherwise the labelled test planner
- * (only when the caller allows test output). Never a backend that isn't configured.
+ * Several connected writers act as one: when the first has an account problem (out of credit, key refused) the next
+ * one answers, and the result says which one did. Any other failure (a bad answer, a busy backend) is reported as is.
+ */
+export function writerChain(writers: ReasoningAdapter[]): ReasoningAdapter {
+  if (writers.length === 1) return writers[0];
+  const [first] = writers;
+  return {
+    id: first.id,
+    name: writers.map((w) => w.name).join(" → "),
+    execution: "external",
+    note: `Tries ${writers.map((w) => w.name).join(", then ")} — the next takes over when one account is out of credit.`,
+    isConfigured: (env) => writers.some((w) => w.isConfigured(env)),
+    async complete<T>(req: ReasoningRequest<T>, env: Record<string, string | undefined>) {
+      const problems: string[] = [];
+      for (const w of writers) {
+        try {
+          const r = await w.complete(req, env);
+          if (problems.length) console.info(JSON.stringify({ event: "reasoning.fallback", used: w.id, skipped: problems.length }));
+          return { ...r, provider: r.provider ?? w.id };
+        } catch (e) {
+          if (!isAccountProblem(e)) throw e;
+          problems.push((e as Error).message);
+        }
+      }
+      throw Object.assign(new Error(problems.join(" ")), { retryable: false });
+    },
+  };
+}
+
+/**
+ * The reasoning backend for a task: the connected model(s) when a key is on the server, otherwise the labelled test
+ * planner (only when the caller allows test output). Never a backend that isn't configured.
  */
 export function reasoningProvider(env: Record<string, string | undefined>, opts: { allowTest?: boolean } = {}): ReasoningAdapter | null {
-  const real = ADAPTERS.find((a) => a.execution !== "test" && a.isConfigured(env));
-  if (real) return real;
+  const real = connectedWriters(env);
+  if (real.length) return writerChain(real);
   return opts.allowTest ? testReasoningAdapter : null;
 }
 export function reasoningStatuses(env: Record<string, string | undefined>) {
   return ADAPTERS.map((a) => ({ id: a.id, name: a.name, execution: a.execution, state: a.isConfigured(env) ? "configured" : "not_configured", note: a.note }));
 }
-export { anthropicReasoningAdapter, testReasoningAdapter };
+export { anthropicReasoningAdapter, geminiReasoningAdapter, openaiReasoningAdapter, testReasoningAdapter };
