@@ -5,6 +5,7 @@
 // graph used there for playback, measurement and export) and scheduled at their
 // timeline positions; picture follows the clock.
 import type { TimelineClip } from "@aurastage/contracts";
+import { SessionMixSchema, TrackFxSchema } from "@aurastage/contracts";
 // Audio Studio's mix engine renders an approved mix snapshot exactly as it was approved.
 import { liveContext, loadAsset, renderMix } from "@/modules/audio-studio/state/mixEngine";
 import type { MixSnapshot } from "../types";
@@ -17,8 +18,9 @@ export function renderSceneMix(m: MixSnapshot): Promise<AudioBuffer> {
       const bufs = new Map<string, AudioBuffer>();
       await Promise.all(ids.map(async (id) => bufs.set(id, await loadAsset(id))));
       const clips = m.clips.map((c) => ({ ...c, start_seconds: Number(c.start_seconds), duration_seconds: Number(c.duration_seconds), offset_seconds: Number(c.offset_seconds), gain_db: Number(c.gain_db), fade_in_seconds: Number(c.fade_in_seconds), fade_out_seconds: Number(c.fade_out_seconds) }));
-      const tracks = m.tracks.map((t) => ({ ...t, gain_db: Number(t.gain_db), pan: Number(t.pan) }));
-      return renderMix(m.seconds, tracks, clips, bufs);
+      const tracks = m.tracks.map((t) => ({ ...t, gain_db: Number(t.gain_db), pan: Number(t.pan), fx: TrackFxSchema.parse(t.fx ?? {}) }));
+      // With its channel strips and routing (buses, reverb/delay, master), exactly as approved in the Audio Studio.
+      return renderMix(m.seconds, tracks, clips, bufs, undefined, SessionMixSchema.parse(m.mix ?? {}));
     })();
     p.catch(() => rendered.delete(m.id));
     rendered.set(m.id, p);

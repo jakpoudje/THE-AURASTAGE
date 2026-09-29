@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RenderOptionsSchema, TimelineClipSchema } from "@aurastage/contracts";
+import { RenderOptionsSchema, SessionMixSchema, TimelineClipSchema } from "@aurastage/contracts";
 import { DeliveryProfileSchema } from "../deliveryProfileEngine/output.schema";
 
 const num = z.coerce.number();
@@ -29,6 +29,8 @@ export const RenderManifestInputSchema = z.object({
           gain_db: num, fade_in_seconds: num, fade_out_seconds: num, source: z.record(z.unknown()).nullable().optional(),
         }).passthrough()
       ),
+      /** Session routing approved with the mix (migration 0029); older versions read as neutral. */
+      mix: SessionMixSchema.nullable().optional(),
     })
   ),
   assets: z.record(z.object({ storage_key: z.string().nullable(), media_type: z.string().nullable() })),

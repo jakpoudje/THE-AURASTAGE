@@ -148,7 +148,7 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
     const v = ctx.mixVersions.find((x) => x.id === id);
     if (!v) continue;
     const session = ctx.sessions.find((s) => s.id === v.session_id);
-    mixes[id] = { id, scene_id: session?.scene_id ?? null, version_number: v.version_number, seconds: mixSeconds(v, session), tracks: v.tracks, clips: v.clips };
+    mixes[id] = { id, scene_id: session?.scene_id ?? null, version_number: v.version_number, seconds: mixSeconds(v, session), tracks: v.tracks, clips: v.clips, mix: v.mix ?? {} };
   }
   const lock = timeline?.current_lock_id ? locks.find((l) => l.id === timeline!.current_lock_id) : undefined;
   return {

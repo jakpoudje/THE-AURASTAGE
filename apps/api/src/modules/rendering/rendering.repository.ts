@@ -43,7 +43,7 @@ export const listScenes = (db: SupabaseClient, p: string) => rows(db.from("scene
 export const listTakes = (db: SupabaseClient, ids: string[]) =>
   rows(db.from("takes").select("id, storage_key, media_type, capability, params").in("id", inList(ids)));
 export const listMixVersions = (db: SupabaseClient, ids: string[]) =>
-  rows(db.from("audio_session_versions").select("id, session_id, version_number, tracks, clips, measurement").in("id", inList(ids)));
+  rows(db.from("audio_session_versions").select("id, session_id, version_number, tracks, clips, measurement, mix").in("id", inList(ids)));
 export const listSessions = (db: SupabaseClient, p: string) => rows(db.from("audio_sessions").select("id, scene_id, scene_seconds, approved_version_id, status, review_state").eq("project_id", p));
 export const listAssets = (db: SupabaseClient, ids: string[]) => rows(db.from("assets").select("id, storage_path, metadata").in("id", inList(ids)));
 export const listLines = (db: SupabaseClient, ids: string[]) => rows(db.from("dialogue_lines").select("id, speaker_name, text").in("id", inList(ids)));

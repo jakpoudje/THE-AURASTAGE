@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ProjectCreditsSchema } from "./input.schema";
-import { AudioFamilySchema, ClipGradeSchema, RenderOptionsSchema } from "@aurastage/contracts";
+import { AudioFamilySchema, ClipGradeSchema, RenderOptionsSchema, SessionMixSchema, TrackFxSchema } from "@aurastage/contracts";
 import { DeliveryProfileSchema } from "../deliveryProfileEngine/output.schema";
 import { SubtitleOutputSchema } from "../subtitleTimelineEngine/output.schema";
 
@@ -31,8 +31,10 @@ export const RenderManifestSchema = z.object({
   audio: z.array(z.object({ record_in: z.number().int(), duration: z.number().int(), source_in: z.number().int(), mix_version_id: z.string(), label: z.string() })),
   mixes: z.record(z.object({
     seconds: z.number(),
-    tracks: z.array(z.object({ id: z.string(), family: AudioFamilySchema, gain_db: z.number(), pan: z.number(), mute: z.boolean(), solo: z.boolean() })),
+    tracks: z.array(z.object({ id: z.string(), family: AudioFamilySchema, gain_db: z.number(), pan: z.number(), mute: z.boolean(), solo: z.boolean(), fx: TrackFxSchema })),
     clips: z.array(z.object({ track_id: z.string(), asset_id: z.string(), start_seconds: z.number(), duration_seconds: z.number(), offset_seconds: z.number(), gain_db: z.number(), fade_in_seconds: z.number(), fade_out_seconds: z.number() })),
+    /** Buses, shared reverb/delay and master as approved (renderManifest ≥ 1.2.0). */
+    mix: SessionMixSchema,
   })),
   assets: z.record(z.object({ storage_key: z.string(), media_type: z.string().nullable() })),
   subtitles: SubtitleOutputSchema.nullable(),

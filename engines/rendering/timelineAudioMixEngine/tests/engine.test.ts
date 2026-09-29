@@ -5,12 +5,16 @@ const sr = 48000, fps = 24;
 const ones = (n: number) => new Float32Array(n).fill(1);
 const track = (over = {}) => ({ id: "t1", family: "DX" as const, gain_db: 0, pan: 0, mute: false, solo: false, ...over });
 const clip = (over = {}) => ({ track_id: "t1", asset_id: "a1", start_seconds: 0, duration_seconds: 1, offset_seconds: 0, gain_db: 0, fade_in_seconds: 0, fade_out_seconds: 0, ...over });
+// These cases check placement, gain, pan and stems with the master limiter off (so values are exact); the studio chain
+// itself is tested in engines/audio/studioMixRenderEngine and against the browser in tests/e2e/audio-parity.
+const NO_LIMIT = { master: { gain_db: 0, limiter: false, ceiling_db: -1 } };
+const withMix = (mixes: Record<string, any>) => Object.fromEntries(Object.entries(mixes).map(([k, v]) => [k, { mix: NO_LIMIT, ...v }]));
 const inp = (over: Record<string, unknown> = {}) => ({
   fps, sample_rate: sr, bus: null,
   audio: [{ record_in: 0, duration: 48, source_in: 0, mix_version_id: "m" }],
-  mixes: { m: { seconds: 2, tracks: [track()], clips: [clip()] } },
   pcm: new Map([["a1", { channels: [ones(sr * 2)] }]]),
   ...over,
+  mixes: withMix((over.mixes as Record<string, unknown>) ?? { m: { seconds: 2, tracks: [track()], clips: [clip()] } }),
 }) as any;
 
 describe("timelineAudioMixEngine", () => {
@@ -51,6 +55,16 @@ describe("timelineAudioMixEngine", () => {
     expect(timelineAudioMixEngine(inp({ mixes, bus: "ME" }), 0, 4)[0][0]).toBeCloseTo(1, 5);
     mixes.m.tracks[1] = { ...mixes.m.tracks[1], solo: true };
     expect(timelineAudioMixEngine(inp({ mixes }), 0, 4)[0][0]).toBeCloseTo(1, 5);
+  });
+  it("scene mixes keep their studio processing: bus gain, channel strip and the master limiter reach the render", () => {
+    const quiet = inp({ mixes: { m: { seconds: 2, tracks: [track({ pan: -1 })], clips: [clip()], mix: { ...NO_LIMIT, buses: { DX: { gain_db: -6, mute: false } } } } } });
+    expect(timelineAudioMixEngine(quiet, 0, 10)[0][5]).toBeCloseTo(Math.pow(10, -6 / 20), 5);
+    const eq = inp({ mixes: { m: { seconds: 2, tracks: [track({ pan: -1, fx: { hpf_hz: 200 } })], clips: [clip()] } } });
+    expect(Math.abs(timelineAudioMixEngine(eq, 0, sr)[0][sr / 2])).toBeLessThan(0.01); // DC removed by the high-pass
+    const limited = { ...inp(), mixes: { m: { seconds: 2, tracks: [track({ pan: -1 })], clips: [clip()] } } }; // neutral mix: limiter on
+    const [Ll] = timelineAudioMixEngine(limited as any, 0, sr);
+    expect(Ll[sr / 2]).toBeLessThan(1); // full scale is held down by the limiter
+    expect(Ll[sr / 2]).toBeGreaterThan(0.8);
   });
   it("refuses missing recordings and odd sample rates", () => {
     expect(() => timelineAudioMixEngine(inp({ pcm: new Map() }), 0, 10)).toThrow(/Missing recording/);

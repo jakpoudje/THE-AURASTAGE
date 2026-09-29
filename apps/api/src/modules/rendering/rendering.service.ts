@@ -61,7 +61,7 @@ function manifestInput(project: { id: string; title: string }, L: Locked, profil
     mixes: Object.fromEntries(
       L.mixes.map((m) => {
         const s = L.sessions.find((x) => x.id === m.session_id);
-        return [m.id, { scene_id: s?.scene_id ?? null, version_number: m.version_number, seconds: Number(m.measurement?.duration_seconds) || Number(s?.scene_seconds) || 1, tracks: m.tracks ?? [], clips: m.clips ?? [] }];
+        return [m.id, { scene_id: s?.scene_id ?? null, version_number: m.version_number, seconds: Number(m.measurement?.duration_seconds) || Number(s?.scene_seconds) || 1, tracks: m.tracks ?? [], clips: m.clips ?? [], mix: m.mix ?? null }];
       })
     ),
     assets: Object.fromEntries(L.assets.map((a) => [a.id, { storage_key: a.storage_path ?? null, media_type: a.metadata?.media_type ?? null }])),

@@ -107,9 +107,12 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
       return Number((/max_volume: (-?[\d.]+|-inf) dB/.exec(res)?.[1] ?? "NaN").replace("-inf", "-200"));
     };
     // Dialogue (0.3 peak, centre pan -3 dB) ≈ -13.5 dBFS; music at -6 dB ≈ -19.5 dBFS; FX/BG tracks don't exist -> silence.
-    expect(maxDb("stem_DX.wav")).toBeCloseTo(-13.5, 0);
-    expect(maxDb("ME.wav")).toBeCloseTo(-19.5, 0);
-    expect(maxDb("stem_MX.wav")).toBeCloseTo(-19.5, 0);
+    // The approved mix's default master limiter reaches the render (timelineAudioMix 2.0.0) and, like the browser's
+    // DynamicsCompressorNode, adds its automatic make-up of +1.14 dB below the threshold.
+    const MAKEUP = 1.14;
+    expect(maxDb("stem_DX.wav")).toBeCloseTo(-13.5 + MAKEUP, 0);
+    expect(maxDb("ME.wav")).toBeCloseTo(-19.5 + MAKEUP, 0);
+    expect(maxDb("stem_MX.wav")).toBeCloseTo(-19.5 + MAKEUP, 0);
     expect(maxDb("stem_FX.wav")).toBeLessThan(-90);
     const size = (f: string) => statSync(join(r.store, f)).size;
     expect(size("mix.wav")).toBe(44 + 2 * 48000 * 2 * 3);

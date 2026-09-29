@@ -3,7 +3,7 @@
 // version: gap-free picture segments (approved takes or black), the scene mixes
 // on A1 with their recordings, subtitle cues and the EDL, plus the exact source
 // ids it was derived from (rule 10).
-import { AudioFamilySchema } from "@aurastage/contracts";
+import { AudioFamilySchema, SessionMixSchema, TrackFxSchema } from "@aurastage/contracts";
 import { edlExportEngine } from "../../editorial/edlExportEngine";
 import { subtitleTimelineEngine } from "../subtitleTimelineEngine";
 import { ENGINE_VERSION as SUB_V } from "../subtitleTimelineEngine/version";
@@ -51,13 +51,16 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
     if (mixes[id]) continue;
     mixes[id] = {
       seconds: m.seconds,
-      tracks: m.tracks.map((tr) => ({ id: tr.id, family: AudioFamilySchema.parse(tr.family), gain_db: Number(tr.gain_db), pan: Number(tr.pan), mute: tr.mute, solo: tr.solo })),
+      // Channel strips and routing travel with the mix, so the render sounds like the approved Audio Studio mix.
+      tracks: m.tracks.map((tr) => ({ id: tr.id, family: AudioFamilySchema.parse(tr.family), gain_db: Number(tr.gain_db), pan: Number(tr.pan), mute: tr.mute, solo: tr.solo,
+        fx: TrackFxSchema.parse((tr as { fx?: unknown }).fx ?? {}) })),
       clips: m.clips
         .filter((cl) => cl.kind === "asset" && cl.asset_id)
         .map((cl) => ({
           track_id: cl.track_id, asset_id: cl.asset_id!, start_seconds: Number(cl.start_seconds), duration_seconds: Number(cl.duration_seconds), offset_seconds: Number(cl.offset_seconds),
           gain_db: Number(cl.gain_db), fade_in_seconds: Number(cl.fade_in_seconds), fade_out_seconds: Number(cl.fade_out_seconds),
         })),
+      mix: SessionMixSchema.parse(m.mix ?? {}),
     };
     for (const cl of mixes[id].clips) {
       const a = i.assets[cl.asset_id];

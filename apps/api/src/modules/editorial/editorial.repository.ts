@@ -41,7 +41,7 @@ export const listTakes = (db: SupabaseClient, p: string) =>
 export const listSessions = (db: SupabaseClient, p: string) =>
   rows(db.from("audio_sessions").select("id, scene_id, status, review_state, review_reason, approved_version_id, scene_seconds").eq("project_id", p));
 export const listMixVersions = (db: SupabaseClient, p: string) =>
-  rows(db.from("audio_session_versions").select("id, session_id, version_number, tracks, clips, measurement").eq("project_id", p));
+  rows(db.from("audio_session_versions").select("id, session_id, version_number, tracks, clips, measurement, mix").eq("project_id", p));
 export async function getTimeline(db: SupabaseClient, p: string) {
   const { data, error } = await db.from("timelines").select("*").eq("project_id", p).maybeSingle();
   if (error) throw error;

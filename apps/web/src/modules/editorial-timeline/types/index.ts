@@ -1,4 +1,4 @@
-import type { AudioClip, AudioTrack, PictureImpact, TimelineClip } from "@aurastage/contracts";
+import type { AudioClip, AudioTrack, PictureImpact, SessionMix, TimelineClip } from "@aurastage/contracts";
 
 export interface QCCheck {
   id: string; label: string; ok: boolean; blocking: boolean; evidence: string;
@@ -15,7 +15,8 @@ export interface BinScene {
   mix: { version_id: string; version_number: number; seconds: number } | null;
   mix_note: string | null;
 }
-export interface MixSnapshot { id: string; scene_id: string | null; version_number: number; seconds: number; tracks: AudioTrack[]; clips: AudioClip[] }
+/** An approved scene mix as Audio Studio approved it: tracks with their channel strips, clips and the routing. */
+export interface MixSnapshot { id: string; scene_id: string | null; version_number: number; seconds: number; tracks: AudioTrack[]; clips: AudioClip[]; mix?: SessionMix }
 
 /** Response of GET /api/projects/:id/editorial (apps/api/src/modules/editorial). */
 export interface EditorialWorkspace {

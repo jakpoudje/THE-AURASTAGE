@@ -71,6 +71,10 @@ are unique per scene (409). Re-spotting never removes tracks added by hand and (
 All three are gated `audio:edit` and bump the session revision, so the mix must be measured again.
 
 ## Downstream consumers
+Approved versions snapshot tracks with their channel strips and the session routing (`audio_session_versions.mix`).
+Editorial playback and the render worker both use them: Editorial plays each scene through the Audio Studio's own
+graph with that routing, and exports render through `studioMixRenderEngine` (parity-tested against the browser), so
+what was approved is what is heard in the cut and in delivered files.
 Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 
 ## Relevant engines
