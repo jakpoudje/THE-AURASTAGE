@@ -70,7 +70,7 @@ await check("api health", async () => {
   assert(r.status === 200 && j.status === "ok", `health ${r.status}`);
   return `phase ${j.phase}`;
 });
-for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio", "/projects/00000000-0000-4000-8000-000000000000/editorial", "/projects/00000000-0000-4000-8000-000000000000/export", "/projects/00000000-0000-4000-8000-000000000000/team", "/invite", "/help", "/account"]) {
+for (const path of ["/", "/sign-in", "/sign-up", "/dashboard", "/reset-password", "/projects/00000000-0000-4000-8000-000000000000/scene-dna", "/projects/00000000-0000-4000-8000-000000000000/storyboard", "/projects/00000000-0000-4000-8000-000000000000/visual", "/projects/00000000-0000-4000-8000-000000000000/audio", "/projects/00000000-0000-4000-8000-000000000000/editorial", "/projects/00000000-0000-4000-8000-000000000000/export", "/projects/00000000-0000-4000-8000-000000000000/team", "/projects/00000000-0000-4000-8000-000000000000/world", "/invite", "/help", "/account"]) {
   await check(`web ${path}`, async () => {
     const r = await fetch(WEB + path);
     assert(r.status === 200, `status ${r.status}`);
@@ -683,6 +683,38 @@ await check("casting look: 8 reference views from the profile (one identity), re
   assert(after.views.filter((v: any) => v.image).every((v: any) => v.image.stale), "a profile change should mark the views");
   return `${made.length} views · identity ${lk.identity_hash} · age ${age}`;
 });
+// ---- Locations & Props (migration 0028): found in the approved script with evidence; views made in the worker ----
+await check("locations & props: found in the approved script (names are never props); describe, stale edit refused (409); views in the worker land in the Assets Library", async () => {
+  const sync = await api("POST", `/api/projects/${projectId}/world/sync`, {});
+  assert(sync.locations === 2 && sync.props >= 1, JSON.stringify(sync));
+  const ws = await api("GET", `/api/projects/${projectId}/world`);
+  const harbour = ws.locations.find((l: any) => l.name === "Lagos Harbour");
+  assert(harbour && harbour.times_of_day.includes("DAWN") && harbour.scenes[0]?.evidence.includes("LAGOS HARBOUR"), "harbour");
+  const car = ws.props.find((p: any) => p.key === "car");
+  assert(car && car.category === "vehicle" && car.scenes[0]?.evidence.includes("a car"), JSON.stringify(ws.props.map((p: any) => p.key)));
+  assert(!ws.props.some((p: any) => /tunde|amara|ramos/i.test(p.name)), "a character was taken for a prop");
+  const saved = await api("PATCH", `/api/world/location/${harbour.id}`, { revision: harbour.revision, description: "Rusting cranes, stacked containers", status: "confirmed" });
+  await api("PATCH", `/api/world/location/${harbour.id}`, { revision: harbour.revision, description: "stale" }, [409]);
+  const again = await api("POST", `/api/projects/${projectId}/world/sync`, {});
+  const kept = (await api("GET", `/api/projects/${projectId}/world`)).locations.find((l: any) => l.id === harbour.id);
+  assert(kept.description === "Rusting cranes, stacked containers" && kept.status === "confirmed" && again.new_locations === 0, "re-sync overwrote the person's work");
+  const g = await api("POST", `/api/world/location/${harbour.id}/look/generate`, {});
+  assert(g.requested.length === 3 && g.provider === "aurastage-sketch", JSON.stringify(g).slice(0, 200));
+  let look: any;
+  for (let i = 0; i < 40; i++) {
+    look = await api("GET", `/api/world/location/${harbour.id}/look`);
+    if (look.views.filter((v: any) => v.image).length >= 3) break;
+    await Bun.sleep(1500);
+  }
+  const made = look.views.filter((v: any) => v.image);
+  assert(made.length === 3 && made.every((v: any) => !v.image.stale), `made ${made.length}: ${JSON.stringify(look.views.map((v: any) => v.latest?.error).filter(Boolean))}`);
+  const bytes = new Uint8Array(await (await fetch(`${API}/api/assets/${made[0].image.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
+  assert(new TextDecoder().decode(bytes.slice(0, 4)) === "<svg", "not an image");
+  const lib = await api("GET", `/api/projects/${projectId}/library`);
+  const a = lib.assets.find((x: any) => x.id === made[0].image.asset_id);
+  assert(a && a.category === "locations" && a.usage.some((u: any) => /Lagos Harbour · Locations & Props/.test(u.label)), JSON.stringify(a).slice(0, 300));
+  return `${sync.locations} locations, ${sync.props} props (${ws.props.map((p: any) => p.name).join(", ")}); ${made.length} views; rev ${saved.revision}`;
+});
 // ---- Built-in sound: generate the scene's planned ambience/effects/score in the worker, real WAV in the Assets Library ----
 await check("audio: built-in generation makes real WAVs for the planned cues and speaks a line in the character's Voice DNA; use one on its cue", async () => {
   const ws0 = await api("GET", `/api/projects/${projectId}/audio`);
@@ -776,6 +808,7 @@ await check("AI & Generation readiness: states come from real results in this pr
   const st = Object.fromEntries(r.capabilities.map((c: any) => [c.id, c.state]));
   assert(st.assistant === "proven" && st.storyboard === "proven" && st.character_refs === "proven" && st.sound === "proven" && st.delivery === "proven", JSON.stringify(st));
   assert(st.voice === "proven", `voice ${st.voice}`);
+  assert(st.world_refs === "proven", `location & prop views ${st.world_refs}`);
   const video = r.capabilities.find((c: any) => c.id === "video");
   assert(st.video === "needs_key" ? video.headline.includes("RUNWAY_API_KEY") : st.video === "proven" || st.video === "ready", `video ${st.video}`);
   return Object.entries(st).map(([k, v]) => `${k}:${v}`).join(" ");

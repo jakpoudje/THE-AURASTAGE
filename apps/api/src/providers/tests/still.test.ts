@@ -24,3 +24,26 @@ describe("still images from a prompt (character references)", () => {
     await expect(openaiImageAdapter.generateStill!({ ...req, model: "gpt-image-1" }, {})).rejects.toThrow(/not connected/);
   });
 });
+
+describe("AuraStage Sketch: location and prop views", () => {
+  const svg = async (sketch: any, aspect: any) => new TextDecoder().decode((await sketchAdapter.generateStill!({ model: "sketch-v1", prompt: "p", negative: [], aspect_ratio: aspect, seed: 1, sketch }, {})).bytes);
+  it("draws a location for its time of day, labelled not AI, and the same place always draws the same", async () => {
+    const night = await svg({ kind: "location", title: "Lagos Harbour", subtitle: "Wide · Night", view: "wide", time: "NIGHT", int_ext: ["EXT"], lines: ["Lagos Harbour — exterior."] }, "16:9");
+    const day = await svg({ kind: "location", title: "Lagos Harbour", subtitle: "Wide · Day", view: "wide", time: "DAY", int_ext: ["EXT"], lines: [] }, "16:9");
+    expect(night).toContain('viewBox="0 0 1280 720"');
+    expect(night).toContain("#070b16");
+    expect(day).toContain("#4f7ca8");
+    expect(night).toContain("Lagos Harbour");
+    expect(night).toContain("AURASTAGE SKETCH (not AI)");
+    expect(await svg({ kind: "location", title: "Lagos Harbour", subtitle: "Wide · Night", view: "wide", time: "NIGHT", int_ext: ["EXT"], lines: ["Lagos Harbour — exterior."] }, "16:9")).toBe(night);
+    const room = await svg({ kind: "location", title: "Tunde's Flat", subtitle: "Wide · Night", view: "wide", time: "NIGHT", int_ext: ["INT"], lines: [] }, "16:9");
+    expect(room).toContain("#f0c86a"); // a lamp at night indoors
+  });
+  it("draws props and vehicles, with a hand or person for scale", async () => {
+    const hand = await svg({ kind: "prop", title: "Notebook", subtitle: "In hand", view: "in_hand", category: "prop", lines: [] }, "1:1");
+    const bus = await svg({ kind: "prop", title: "Danfo", subtitle: "Hero", view: "hero", category: "vehicle", lines: [] }, "16:9");
+    expect(hand).toContain("#b9b3ad");
+    expect(bus).toContain("#1f1e24"); // wheels
+    expect(hand).toContain("Notebook");
+  });
+});

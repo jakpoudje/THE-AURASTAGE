@@ -193,6 +193,87 @@ http.createServer((req, res) => {
         backends: [{ id: "aurastage-sketch", name: "AuraStage Sketch", model: "sketch-v1", execution: "native", note: "" }],
         backend_statuses: [{ id: "aurastage-sketch", name: "AuraStage Sketch", state: "configured", note: "" }, { id: "openai", name: "OpenAI Images", state: "not_configured", note: "" }] });
     }
+    // ---- Locations & Props (mirrors apps/api/src/modules/world + migration 0028; REAL engines + REAL sketch renderer) ----
+    const W = globalThis.__world || (globalThis.__world = { location: [], prop: [], refs: [], sync: null });
+    const wErr = (st, code, message) => send(st, { error: { code, message } });
+    const wCanEdit = () => { const T0 = globalThis.__team || { as: "owner" }; return T0.as === "owner" || T0.as === "producer"; };
+    const wDto = (kind, r) => { const g = W.refs.filter((x) => x.kind === kind && x.item_id === r.id && x.status === "succeeded"); const t = g.find((x) => /^(establishing|hero)/.test(x.view_key)) || g[0];
+      return { ...r, kind, archived: !!r.archived_at, missing_from_script: !!r.missing_since, thumbnail_asset_id: t ? t.asset_id : null }; };
+    if (u === `/api/projects/${P}/world` && req.method === "GET") {
+      return send(200, { locations: W.location.map((r) => wDto("location", r)), props: W.prop.map((r) => wDto("prop", r)),
+        sync: { state: !approved() ? "no_script" : !W.sync ? "never" : W.sync.version === script.approved_version_id ? "current" : "stale", synced_at: W.sync ? W.sync.at : null, summary: W.sync ? W.sync.summary : null } });
+    }
+    if (u === `/api/projects/${P}/world/sync` && req.method === "POST") {
+      const v = approved(); if (!v) return wErr(412, "AURA-WLD-412", "Approve the script in Scriptwriter first — locations and props are found in the approved version.");
+      if (!wCanEdit()) return wErr(403, "AURA-COL-403", "your role can't edit in Scene DNA. Ask the project's producer for access.");
+      const sc = eng.sceneBoundaryEngine({ elements: v.elements }).scenes;
+      const out = eng.worldExtractionEngine({ elements: v.elements, scenes: sc, character_names: [...chars.map((c) => c.name), ...aliases.map((a) => a.alias)] });
+      let nl = 0, np = 0, flagged = 0;
+      const sceneRows = (list) => list.map((e) => { const s2 = scenes.find((x) => x.number === e.scene_number); return s2 ? { scene_id: s2.id, scene_number: e.scene_number, line: e.line, evidence: e.text.slice(0, 400), source: "script" } : null; }).filter(Boolean);
+      for (const [kind, found] of [["location", out.locations], ["prop", out.props]]) {
+        const keys = new Set(found.map((f) => f.key));
+        for (const f of found) {
+          let r = W[kind].find((x) => x.key === f.key);
+          if (!r) { r = { id: crypto.randomUUID(), key: f.key, name: f.name, description: "", status: "detected", source: "script", revision: 1, archived_at: null, created_at: now() }; W[kind].push(r); kind === "location" ? nl++ : np++; }
+          Object.assign(r, kind === "location" ? { int_ext: f.int_ext, times_of_day: f.times_of_day, areas: f.areas } : { category: r.category || f.category, descriptors: f.descriptors, confidence: r.confidence === "manual" ? "manual" : f.confidence, reason: f.reason },
+            { missing_since: null, scenes: [...(r.scenes || []).filter((x) => x.source === "manual"), ...sceneRows(f.scenes)] });
+        }
+        for (const r of W[kind]) if (r.source === "script" && !r.archived_at && !r.missing_since && !keys.has(r.key)) { r.missing_since = v.id; flagged++; }
+      }
+      const summary = { new_locations: nl, new_props: np, flagged, locations: out.locations.length, props: out.props.length };
+      W.sync = { version: v.id, at: now(), summary };
+      return send(200, { ...summary, script_version_number: v.version_number });
+    }
+    if ((m = u.match(new RegExp(`^/api/projects/${P}/world/(location|prop)$`))) && req.method === "POST") {
+      if (!wCanEdit()) return wErr(403, "AURA-COL-403", "your role can't edit in Scene DNA. Ask the project's producer for access.");
+      const name = String(b.name || "").trim(); if (!name) return wErr(400, "AURA-WLD-400", "Give it a name");
+      if (W[m[1]].some((x) => x.name.toLowerCase() === name.toLowerCase())) return wErr(409, "AURA-WLD-409", `there's already a ${m[1]} called ${name}`);
+      const r = { id: crypto.randomUUID(), key: m[1] === "location" ? name.toUpperCase() : name.toLowerCase(), name, description: b.description || "", status: "confirmed", source: "manual", revision: 1, archived_at: null, missing_since: null, scenes: [], created_at: now(),
+        ...(m[1] === "location" ? { int_ext: b.int_ext || [], times_of_day: [], areas: [] } : { category: b.category || "prop", descriptors: [], confidence: "manual", reason: "Added by hand" }) };
+      W[m[1]].push(r); return send(201, r);
+    }
+    if ((m = u.match(/^\/api\/world\/(location|prop)\/([^/]+)$/)) && req.method === "PATCH") {
+      const r = W[m[1]].find((x) => x.id === m[2]); if (!r) return wErr(404, "AURA-WLD-404", "Not found");
+      if (!wCanEdit()) return wErr(403, "AURA-COL-403", "your role can't edit in Scene DNA. Ask the project's producer for access.");
+      if (b.revision !== r.revision) return wErr(409, "AURA-WLD-409", `someone changed this ${m[1]} since you opened it — reload to see their changes`);
+      if (b.name && W[m[1]].some((x) => x.id !== r.id && x.name.toLowerCase() === b.name.trim().toLowerCase())) return wErr(409, "AURA-WLD-409", `there's already a ${m[1]} called ${b.name}`);
+      for (const k of ["name", "description", "category", "status"]) if (b[k] !== undefined) r[k] = typeof b[k] === "string" ? b[k].trim() : b[k];
+      if (b.archived !== undefined) r.archived_at = b.archived ? now() : null;
+      r.revision++; return send(200, r);
+    }
+    if ((m = u.match(/^\/api\/world\/(location|prop)\/([^/]+)\/look(\/generate)?$/))) {
+      const kind = m[1], r = W[kind].find((x) => x.id === m[2]); if (!r) return wErr(404, "AURA-WLD-404", "Not found");
+      const sk = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/sketch/sketchAdapter.js"));
+      const style = ((globalThis.__settings || {}).settings || {}).style?.look || null;
+      const inp = (views) => ({ kind, style, views, item: { name: r.name, description: r.description || null, category: kind === "prop" ? r.category : null, int_ext: r.int_ext || [], times_of_day: r.times_of_day || [], areas: r.areas || [] } });
+      if (m[3]) {
+        if (!wCanEdit()) return wErr(403, "AURA-COL-403", "your role can't edit in Scene DNA. Ask the project's producer for access.");
+        if (b.provider && b.provider !== "aurastage-sketch") return wErr(400, "AURA-WLD-400", `${b.provider} isn't connected on the server.`);
+        const out = eng.worldLookEngine(inp(b.views));
+        const views = b.views ? out.views : out.views.filter((v) => v.in_default_set);
+        const requested = views.map((v) => { const x = { id: crypto.randomUUID(), kind, item_id: r.id, view_key: v.key, aspect_ratio: v.aspect_ratio, prompt: v.prompt, identity_hash: out.identity_hash,
+          provider: "aurastage-sketch", execution: "native", status: "queued", asset_id: null, error: null, created_at: now(), completed_at: null, _polls: 0,
+          sketch: kind === "location" ? { kind, title: r.name, subtitle: v.label, view: v.view, time: v.time, int_ext: r.int_ext || [], lines: [out.identity] } : { kind, title: r.name, subtitle: v.label, view: v.view, category: r.category, lines: [out.identity] } };
+          W.refs.unshift(x); return { id: x.id, key: v.key, status: "queued", provider: "aurastage-sketch" }; });
+        return send(200, { requested, provider: "aurastage-sketch", identity_hash: out.identity_hash });
+      }
+      // The "worker": each queued view is drawn by the real sketch renderer the second time it's read.
+      for (const x of W.refs.filter((y) => y.status === "queued" && y.item_id === r.id)) if (x._polls++ >= 1) {
+        const sreq = { model: "sketch-v1", prompt: x.prompt, negative: [], aspect_ratio: x.aspect_ratio, seed: 1, sketch: x.sketch };
+        const svg = Buffer.from(kind === "location" ? sk.renderLocationSketch(sreq) : sk.renderPropSketch(sreq));
+        const cat = kind === "location" ? "locations" : r.category === "vehicle" ? "vehicles" : "props";
+        const a = { id: crypto.randomUUID(), project_id: P, type: "image", name: `${r.name} — ${x.view_key.replace(/_/g, " ").replace(":", " · ")} reference`, bytes: svg, media_type: "image/svg+xml", created_at: now(), category: cat, tags: ["generated"], links: [{ object_type: kind, object_id: r.id }] };
+        assets.push(a); Object.assign(x, { status: "succeeded", asset_id: a.id, completed_at: now() });
+      }
+      const out = eng.worldLookEngine(inp());
+      const mine = W.refs.filter((x) => x.item_id === r.id);
+      return send(200, { item: { id: r.id, kind, name: r.name, project_id: P }, identity: out.identity, identity_hash: out.identity_hash, missing: out.missing, negative: out.negative, engine_version: out.engine_version,
+        views: out.views.map((v) => { const h = mine.filter((x) => x.view_key === v.key); const g = h.find((x) => x.status === "succeeded");
+          return { ...v, versions: h.filter((x) => x.status === "succeeded").length, latest: h[0] ? { id: h[0].id, status: h[0].status, error: h[0].error, provider: h[0].provider, execution: h[0].execution } : null,
+            image: g ? { reference_id: g.id, asset_id: g.asset_id, provider: g.provider, execution: g.execution, created_at: g.completed_at, stale: g.identity_hash !== out.identity_hash } : null }; }),
+        backends: [{ id: "aurastage-sketch", name: "AuraStage Sketch", execution: "native" }],
+        backend_statuses: [{ id: "aurastage-sketch", name: "AuraStage Sketch", state: "configured" }, { id: "openai", name: "OpenAI Images", state: "not_configured" }] });
+    }
     if ((m = u.match(/^\/api\/characters\/([^/]+)\/looks$/))) {
       if (looks.some((l) => l.character_id === m[1] && l.name.toLowerCase() === b.name.toLowerCase() && l.id !== b.id)) return send(409, { error: { code: "AURA-CHR-409", message: "this character already has a look with that name" } });
       let l = b.id && looks.find((x) => x.id === b.id);
@@ -860,6 +941,7 @@ http.createServer((req, res) => {
         { id: "assistant", label: "Ask AuraStage (story & production assistant)", where: "Every workspace", href: `/projects/${P}/scriptwriter`, backends: [B("anthropic", "Anthropic Claude", "external", "not_configured", "ANTHROPIC_API_KEY"), B("aurastage-test", "AuraStage test planner", "test", "configured")], evidence: ev(ai, ["proposed", "applied", "rejected", "undone"], "provider", "created_at") },
         { id: "storyboard", label: "Storyboard frames & still images", where: "Visual Generation", href: `/projects/${P}/visual`, backends: [B("aurastage-sketch", "AuraStage Sketch", "native", "configured"), B("runway", "Runway", "external", "not_configured", "RUNWAY_API_KEY"), B("openai", "OpenAI Images", "external", "not_configured", "OPENAI_API_KEY")], evidence: ev(takes.filter((t) => t.capability === "image")) },
         { id: "character_refs", label: "Character reference views", where: "Casting → Look & References", href: `/projects/${P}/casting`, backends: [B("aurastage-sketch", "AuraStage Sketch", "native", "configured"), B("openai", "OpenAI Images", "external", "not_configured", "OPENAI_API_KEY")], evidence: ev(refs) },
+        { id: "world_refs", label: "Location & prop reference views", where: "Locations & Props", href: `/projects/${P}/world`, backends: [B("aurastage-sketch", "AuraStage Sketch", "native", "configured"), B("openai", "OpenAI Images", "external", "not_configured", "OPENAI_API_KEY")], evidence: ev((globalThis.__world || { refs: [] }).refs) },
         { id: "video", label: "Video clips", where: "Visual Generation", href: `/projects/${P}/visual`, backends: [B("runway", "Runway", "external", "not_configured", "RUNWAY_API_KEY"), B("aurastage-animatic", "AuraStage animatic (built in)", "native", "not_built")], evidence: ev(takes.filter((t) => t.capability === "video")) },
         { id: "sound", label: "Sound effects, Foley & ambience", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-synth", "AuraStage built-in sound", "native", "configured"), B("elevenlabs", "ElevenLabs sound effects", "external", "not_built", "ELEVENLABS_API_KEY")], evidence: ev(ag.filter((g) => g.kind !== "score" && g.kind !== "voice")) },
         { id: "music", label: "Music & score", where: "Audio Studio", href: `/projects/${P}/audio`, backends: [B("aurastage-synth", "AuraStage built-in sound", "native", "configured"), B("music-provider", "Music provider (official API)", "external", "not_built")], evidence: ev(ag.filter((g) => g.kind === "score")) },

@@ -1,10 +1,12 @@
-// Character reference views (migration 0027). Claims a request, asks the Provider Gateway's image adapter for a still
+// Reference views: characters (migration 0027) and locations / props (0028). Claims a request, asks the Provider Gateway's image adapter for a still
 // from the prompt (rule 7) — the built-in sketch or a connected provider — stores it privately and hands it to the
 // Assets domain through worker_complete_character_reference. Idempotent like the take loop.
 import { createHash, randomUUID } from "node:crypto";
 
 export interface RefClaim {
-  id: string; org_id: string; project_id: string; character_id: string; angle: string; size: string; aspect_ratio: "1:1" | "9:16";
+  id: string; org_id: string; project_id: string; aspect_ratio: "1:1" | "9:16" | "16:9";
+  /** Character views name an angle and size; location / prop views a view key. */
+  character_id?: string; angle?: string; size?: string; view_key?: string;
   prompt: string; negative: string[]; provider: string; model: string; seed: number; sketch: Record<string, unknown>;
 }
 interface StillAdapter {
@@ -32,10 +34,10 @@ export async function refOnce(d: RefDeps): Promise<boolean> {
     const r = await a.generateStill({ model: g.model, prompt: g.prompt, negative: g.negative ?? [], aspect_ratio: g.aspect_ratio, seed: g.seed, sketch: g.sketch }, d.env);
     const key = `${g.org_id}/${g.project_id}/assets/${randomUUID()}.${EXT[r.media_type] ?? "bin"}`;
     await d.put(key, r.bytes, r.media_type);
-    const [w, h] = g.aspect_ratio === "9:16" ? [720, 1280] : [1024, 1024];
+    const [w, h] = g.aspect_ratio === "9:16" ? [720, 1280] : g.aspect_ratio === "16:9" ? [1280, 720] : [1024, 1024];
     const asset = await d.complete(g.id, key, createHash("sha256").update(r.bytes).digest("hex"),
       { media_type: r.media_type, size_bytes: r.bytes.length, ...(r.media_type === "image/svg+xml" ? { width: w, height: h } : {}) }, r.provider_request_id, r.cost_usd);
-    d.log("ref.succeeded", { id: g.id, asset_id: asset, view: `${g.angle}:${g.size}`, ms: Date.now() - t });
+    d.log("ref.succeeded", { id: g.id, asset_id: asset, view: g.view_key ?? `${g.angle}:${g.size}`, ms: Date.now() - t });
   } catch (e) {
     const err = e as Error & { provider_request_id?: string | null };
     await d.fail(g.id, err.message, err.provider_request_id ?? null);

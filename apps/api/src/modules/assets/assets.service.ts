@@ -69,9 +69,9 @@ const PROFILE_LABELS: Record<string, string> = {
 
 /** Where every asset is used, from the records themselves: Audio Studio clips, render manifests, and links people made. */
 async function usageIndex(db: SupabaseClient, projectId: string) {
-  const [clips, sessions, scenes, chars, links, renders] = await Promise.all([
+  const [clips, sessions, scenes, chars, links, renders, world] = await Promise.all([
     repo.listAssetClips(db, projectId), repo.listSessions(db, projectId), repo.listScenes(db, projectId),
-    repo.listCharacters(db, projectId), repo.listLinks(db, projectId), repo.listRenderSources(db, projectId),
+    repo.listCharacters(db, projectId), repo.listLinks(db, projectId), repo.listRenderSources(db, projectId), repo.listWorldNames(db, projectId),
   ]);
   const sceneLabel = (id: string) => {
     const s = scenes.find((x) => x.id === id);
@@ -89,7 +89,10 @@ async function usageIndex(db: SupabaseClient, projectId: string) {
   }
   for (const l of links) {
     if (l.object_type === "scene") push(l.asset_id, { kind: "link", scene_id: l.object_id, label: sceneLabel(l.object_id), href: `/projects/${projectId}/scene-dna` });
-    else {
+    else if (l.object_type === "location" || l.object_type === "prop") {
+      const w = world.find((x) => x.id === l.object_id);
+      push(l.asset_id, { kind: "link", scene_id: null, label: `${w?.name ?? (l.object_type === "location" ? "A location" : "A prop")} · Locations & Props`, href: `/projects/${projectId}/world` });
+    } else {
       const ch = chars.find((x) => x.id === l.object_id);
       push(l.asset_id, { kind: "link", scene_id: null, label: `${ch?.name ?? "A character"} · Casting`, href: `/projects/${projectId}/casting` });
     }

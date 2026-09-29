@@ -45,11 +45,12 @@ export async function getGenerationReadiness(db: SupabaseClient, projectId: stri
       a.execution !== "native" ? "" : kind === "voice" ? "Robotic built-in speech in each character's Voice DNA — good for timing and testing." : "Synthesised placeholder sound — good for timing and testing."));
   const planned = (id: string, name: string) => b(id, name, "external", "not_built");
 
-  const [assistant, stills, videos, looks, sounds, music, voices, renders] = await Promise.all([
+  const [assistant, stills, videos, looks, worldRefs, sounds, music, voices, renders] = await Promise.all([
     evidence(db, "ai_proposals", projectId, (q) => q.not("provider", "is", null), ["proposed", "applied", "rejected", "undone"], ["failed"], "provider", "planned_at"),
     evidence(db, "takes", projectId, (q) => q.eq("capability", "image"), ["succeeded"], ["failed"]),
     evidence(db, "takes", projectId, (q) => q.eq("capability", "video"), ["succeeded"], ["failed"]),
     evidence(db, "character_reference_images", projectId, (q) => q, ["succeeded"], ["failed"]),
+    evidence(db, "world_reference_images", projectId, (q) => q, ["succeeded"], ["failed"]),
     evidence(db, "audio_generations", projectId, (q) => q.in("kind", ["ambience", "fx", "foley"]), ["succeeded"], ["failed"]),
     evidence(db, "audio_generations", projectId, (q) => q.eq("kind", "score"), ["succeeded"], ["failed"]),
     evidence(db, "audio_generations", projectId, (q) => q.eq("kind", "voice"), ["succeeded"], ["failed"]),
@@ -60,6 +61,7 @@ export async function getGenerationReadiness(db: SupabaseClient, projectId: stri
     { id: "assistant", label: "Ask AuraStage (story & production assistant)", where: "Every workspace (top bar)", href: `${P}/scriptwriter`, backends: reasoning, evidence: assistant },
     { id: "storyboard", label: "Storyboard frames & still images", where: "Visual Generation", href: `${P}/visual`, backends: visFor("image"), evidence: stills },
     { id: "character_refs", label: "Character reference views", where: "Casting → Look & References", href: `${P}/casting`, backends: refs, evidence: looks },
+    { id: "world_refs", label: "Location & prop reference views", where: "Locations & Props", href: `${P}/world`, backends: refs.map((x) => x.id === "aurastage-sketch" ? { ...x, quality: "Labelled location and prop sketches, not AI." } : x), evidence: worldRefs },
     { id: "video", label: "Video clips", where: "Visual Generation", href: `${P}/visual`, backends: [...visFor("video"), planned("aurastage-animatic", "AuraStage animatic (built in)")].map((x) => x.id === "aurastage-animatic" ? { ...x, execution: "native" as const } : x), evidence: videos },
     { id: "sound", label: "Sound effects, Foley & ambience", where: "Audio Studio", href: `${P}/audio`, backends: [...audioFor("fx"), planned("elevenlabs", "ElevenLabs sound effects")], evidence: sounds },
     { id: "music", label: "Music & score", where: "Audio Studio", href: `${P}/audio`, backends: [...audioFor("score"), planned("music-provider", "Music provider (official API)")], evidence: music },

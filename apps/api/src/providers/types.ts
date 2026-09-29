@@ -43,7 +43,10 @@ export interface StillRequest {
   aspect_ratio: AspectRatio;
   seed: number | null;
   /** Hints for the built-in sketch renderer (it can't read prompts): what to draw and what to write on it. */
-  sketch?: { title: string; subtitle: string; angle: "front" | "three_quarter" | "profile" | "back"; size: "CU" | "MCU" | "MS" | "FULL"; lines: string[] };
+  sketch?:
+    | { kind?: "character"; title: string; subtitle: string; angle: "front" | "three_quarter" | "profile" | "back"; size: "CU" | "MCU" | "MS" | "FULL"; lines: string[] }
+    | { kind: "location"; title: string; subtitle: string; view: string; time: string | null; int_ext: string[]; lines: string[] }
+    | { kind: "prop"; title: string; subtitle: string; view: string; category: "prop" | "vehicle"; lines: string[] };
 }
 
 export interface ProviderAdapter {

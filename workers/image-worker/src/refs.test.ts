@@ -36,4 +36,13 @@ describe("character reference worker", () => {
     expect(d2.log_[0]).toBe("fail r1 OpenAI refused the request (429)");
     expect(Object.keys(d2.stored)).toEqual([]);
   });
+  it("location views (16:9, a view key) go through the same loop with the right size", async () => {
+    const loc: RefClaim = { id: "w1", org_id: "o", project_id: "p", view_key: "wide:NIGHT", aspect_ratio: "16:9", prompt: "Harbour…", negative: [],
+      provider: "aurastage-sketch", model: "sketch-v1", seed: 2, sketch: { kind: "location", title: "Lagos Harbour" } };
+    const d = deps(loc, { generateStill: async () => ({ bytes: new Uint8Array([60]), media_type: "image/svg+xml", provider_request_id: null, cost_usd: 0 }) });
+    await refOnce(d);
+    expect(d.seen()).toMatchObject({ aspect_ratio: "16:9", sketch: { kind: "location" } });
+    expect(d.log_[0]).toContain('"width":1280,"height":720');
+    expect(d.log_[1]).toBe("ref.succeeded");
+  });
 });

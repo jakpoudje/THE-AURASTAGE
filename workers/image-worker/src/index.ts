@@ -66,6 +66,17 @@ const refDeps = {
   env,
   log,
 };
+// Location & prop reference views (migration 0028): same loop, their own queue.
+const worldRefDeps = {
+  claim: () => rpc<RefClaim | null>("worker_claim_world_reference", { p_token: token }),
+  complete: (id: string, key: string, checksum: string, metadata: Record<string, unknown>, req: string | null, cost: number | null) =>
+    rpc<string>("worker_complete_world_reference", { p_token: token, p_id: id, p_storage_key: key, p_checksum: checksum, p_metadata: metadata, p_request_id: req, p_cost: cost }),
+  fail: (id: string, error: string, req: string | null) => rpc<void>("worker_fail_world_reference", { p_token: token, p_id: id, p_error: error, p_request_id: req }),
+  getAdapter,
+  put: (k: string, b: Uint8Array, ct: string) => putMedia(k, b, ct),
+  env,
+  log,
+};
 
 let stopping = false;
 process.on("SIGTERM", () => (stopping = true));
@@ -79,7 +90,8 @@ process.on("SIGINT", () => (stopping = true));
       const planned = await planOnce(plannerDeps);
       const sounded = await audioOnce(audioDeps);
       const drew = await refOnce(refDeps);
-      const worked = (await runOnce(deps)) || planned || sounded || drew;
+      const drewWorld = await refOnce(worldRefDeps);
+      const worked = (await runOnce(deps)) || planned || sounded || drew || drewWorld;
       if (!worked) await new Promise((r) => setTimeout(r, 3000));
     } catch (e) {
       log("worker.error", { error: (e as Error).message });

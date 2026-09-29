@@ -63,6 +63,11 @@ export const listAssetClips = (db: SupabaseClient, projectId: string) =>
 export const listSessions = (db: SupabaseClient, projectId: string) => rows(db.from("audio_sessions").select("id, scene_id").eq("project_id", projectId));
 export const listScenes = (db: SupabaseClient, projectId: string) =>
   rows(db.from("scenes").select("id, number, heading").eq("project_id", projectId).order("number", { ascending: true }));
+/** Location and prop names for usage labels (read-only; the Locations & Props domain owns them). */
+export const listWorldNames = async (db: SupabaseClient, projectId: string) => [
+  ...(await rows(db.from("locations").select("id, name").eq("project_id", projectId))).map((r: any) => ({ ...r, kind: "location" as const })),
+  ...(await rows(db.from("props").select("id, name").eq("project_id", projectId))).map((r: any) => ({ ...r, kind: "prop" as const })),
+];
 export const listCharacters = (db: SupabaseClient, projectId: string) =>
   rows(db.from("characters").select("id, name, status").eq("project_id", projectId).order("name", { ascending: true }));
 export const listRenderSources = (db: SupabaseClient, projectId: string) =>

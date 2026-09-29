@@ -72,7 +72,8 @@ ${who ? `<text x="${W - fs}" y="${fs * 1.6}" text-anchor="end" font-family="Helv
 /** A labelled reference figure: head and body drawn for the angle, framed for the shot size. Deterministic. */
 export function renderCharacterSketch(req: StillRequest): string {
   const [W, H] = RATIO[req.aspect_ratio] ?? RATIO["1:1"];
-  const k = req.sketch ?? { title: "Reference", subtitle: "", angle: "front", size: "MS", lines: [] };
+  const s0 = req.sketch;
+  const k = s0 && (s0.kind ?? "character") === "character" ? (s0 as Extract<NonNullable<StillRequest["sketch"]>, { angle: string }>) : { title: "Reference", subtitle: "", angle: "front" as const, size: "MS" as const, lines: [] as string[] };
   // How much of the body is in frame: head radius and head centre as fractions of the frame height.
   const frame = { CU: { r: 0.26, y: 0.5 }, MCU: { r: 0.15, y: 0.36 }, MS: { r: 0.1, y: 0.3 }, FULL: { r: 0.055, y: 0.16 } }[k.size];
   const cx = W / 2, r = H * frame.r, cy = H * frame.y;
@@ -105,6 +106,84 @@ ${lines.map((l, i) => `<text x="${fs}" y="${H - fs * ((lines.length - i) * 1.3 -
 </svg>`;
 }
 
+type Sk = NonNullable<StillRequest["sketch"]>;
+const SKY: Record<string, [string, string]> = {
+  NIGHT: ["#070b16", "#141c33"], DAWN: ["#3a2c3f", "#c98b5f"], DUSK: ["#2b1f33", "#b8674a"], MORNING: ["#5e7fa1", "#b8cbe0"],
+  EVENING: ["#2f2a40", "#a9674d"], AFTERNOON: ["#4f7ca8", "#a9c6e0"], DAY: ["#4f7ca8", "#a9c6e0"],
+};
+function frame(W: number, H: number, k: Sk, body: string) {
+  const fs = Math.round(Math.min(W, H) / 30);
+  const lines = k.lines.flatMap((l) => wrap(l, Math.round(W / (fs * 0.55)), 2)).slice(0, 3);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+${body}
+<rect x="0" y="${H - fs * (lines.length * 1.3 + 1.2)}" width="${W}" height="${fs * (lines.length * 1.3 + 1.2)}" fill="#000" opacity="0.7"/>
+${lines.map((l, i) => `<text x="${fs}" y="${H - fs * ((lines.length - i) * 1.3 - 0.4)}" font-family="Helvetica,Arial,sans-serif" font-size="${fs}" fill="#eee">${esc(l)}</text>`).join("")}
+<rect x="0" y="0" width="${W}" height="${fs * 3.8}" fill="#000" opacity="0.45"/>
+<text x="${fs}" y="${fs * 1.7}" font-family="Helvetica,Arial,sans-serif" font-size="${Math.round(fs * 1.1)}" fill="#e8b84b">${esc(k.title)}</text>
+<text x="${fs}" y="${fs * 3.1}" font-family="Helvetica,Arial,sans-serif" font-size="${Math.round(fs * 0.85)}" fill="#bbbbc4">${esc(k.subtitle)} · AURASTAGE SKETCH (not AI)</text>
+</svg>`;
+}
+
+/** A labelled location sketch: sky and light for the time of day, a skyline or a room drawn for the view. Deterministic. */
+export function renderLocationSketch(req: StillRequest): string {
+  const [W, H] = RATIO[req.aspect_ratio] ?? RATIO["16:9"];
+  const k = req.sketch as Extract<Sk, { kind: "location" }>;
+  const [top, bottom] = SKY[k.time ?? "DAY"] ?? SKY.DAY;
+  const night = k.time === "NIGHT";
+  const interior = k.int_ext.includes("INT") && !(k.view === "establishing");
+  const seed = Math.abs([...(k.title ?? "")].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7));
+  const parts: string[] = [`<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/></linearGradient></defs>`];
+  if (interior) {
+    // A room in one-point perspective: back wall, floor, a window showing the time of day, a lamp at night.
+    const bw = W * (k.view === "medium" ? 0.7 : k.view === "detail" ? 0.9 : 0.5), bh = H * (k.view === "medium" ? 0.6 : k.view === "detail" ? 0.8 : 0.45);
+    const bx = (W - bw) / 2, by = H * 0.18;
+    parts.push(`<rect width="${W}" height="${H}" fill="${night ? "#16151c" : "#3b3834"}"/>`);
+    parts.push(`<polygon points="0,${H} ${bx},${by + bh} ${bx + bw},${by + bh} ${W},${H}" fill="${night ? "#221f26" : "#5a5046"}"/>`);
+    parts.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="${night ? "#1f1d25" : "#6b635a"}" stroke="#2a2830" stroke-width="3"/>`);
+    parts.push(`<rect x="${bx + bw * 0.58}" y="${by + bh * 0.15}" width="${bw * 0.28}" height="${bh * 0.4}" fill="url(#sky)" stroke="#2a2830" stroke-width="4"/>`);
+    parts.push(`<rect x="${bx + bw * 0.1}" y="${by + bh * 0.62}" width="${bw * 0.35}" height="${bh * 0.2}" fill="#4a4038"/>`);
+    if (night) parts.push(`<circle cx="${bx + bw * 0.2}" cy="${by + bh * 0.45}" r="${bh * 0.06}" fill="#f0c86a"/><circle cx="${bx + bw * 0.2}" cy="${by + bh * 0.45}" r="${bh * 0.25}" fill="#f0c86a" opacity="0.12"/>`);
+  } else {
+    // Exterior: sky, sun or moon, a skyline from the name (so the same place always has the same skyline), ground.
+    const horizon = H * (k.view === "establishing" ? 0.62 : k.view === "wide" ? 0.68 : 0.75);
+    parts.push(`<rect width="${W}" height="${H}" fill="url(#sky)"/>`);
+    parts.push(night ? `<circle cx="${W * 0.8}" cy="${H * 0.2}" r="${H * 0.05}" fill="#dfe6f5"/>` : `<circle cx="${W * 0.78}" cy="${horizon - H * (k.time === "DAWN" || k.time === "DUSK" ? 0.05 : 0.4)}" r="${H * 0.06}" fill="#f5d27a" opacity="0.9"/>`);
+    const n = k.view === "establishing" ? 14 : k.view === "wide" ? 9 : 5;
+    for (let i = 0; i < n; i++) {
+      const w = W / n, h = H * (0.08 + ((seed >> (i % 16)) % 7) * 0.035);
+      parts.push(`<rect x="${i * w + 2}" y="${horizon - h}" width="${w - 4}" height="${h}" fill="${night ? "#0c0f18" : "#3a3a44"}"/>`);
+      if (night && i % 2 === 0) parts.push(`<rect x="${i * w + w * 0.4}" y="${horizon - h * 0.7}" width="${w * 0.12}" height="${h * 0.1}" fill="#f0c86a"/>`);
+    }
+    parts.push(`<rect x="0" y="${horizon}" width="${W}" height="${H - horizon}" fill="${night ? "#10131b" : "#4b4a44"}"/>`);
+  }
+  return frame(W, H, k, parts.join(""));
+}
+
+/** A labelled prop sketch: the object drawn for the view (a box, a vehicle silhouette), a hand for scale. Deterministic. */
+export function renderPropSketch(req: StillRequest): string {
+  const [W, H] = RATIO[req.aspect_ratio] ?? RATIO["1:1"];
+  const k = req.sketch as Extract<Sk, { kind: "prop" }>;
+  const cx = W / 2, cy = H * 0.5, parts: string[] = [`<rect width="${W}" height="${H}" fill="#2b2a31"/>`, `<ellipse cx="${cx}" cy="${H * 0.72}" rx="${W * 0.3}" ry="${H * 0.04}" fill="#1c1b21"/>`];
+  const s = k.view === "detail" ? 1.8 : k.view === "in_hand" ? 0.7 : 1;
+  if (k.category === "vehicle") {
+    const w = W * 0.55 * s, h = H * 0.16 * s, y = H * 0.66 - h;
+    parts.push(`<path d="M ${cx - w / 2} ${y + h} L ${cx - w / 2} ${y + h * 0.45} L ${cx - w * 0.25} ${y} L ${cx + w * 0.3} ${y} L ${cx + w / 2} ${y + h * 0.45} L ${cx + w / 2} ${y + h} Z" fill="#8a8795"/>`);
+    parts.push(`<circle cx="${cx - w * 0.3}" cy="${y + h}" r="${h * 0.3}" fill="#1f1e24"/><circle cx="${cx + w * 0.3}" cy="${y + h}" r="${h * 0.3}" fill="#1f1e24"/>`);
+    if (k.view === "in_hand") parts.push(`<circle cx="${cx + w * 0.75}" cy="${H * 0.66 - h * 2.3}" r="${h * 0.22}" fill="#b9b3ad"/><rect x="${cx + w * 0.7}" y="${H * 0.66 - h * 2.05}" width="${h * 0.2}" height="${h * 2.05}" fill="#7d7a88"/>`);
+  } else {
+    const w = W * 0.3 * s, h = H * 0.22 * s;
+    const skew = k.view === "three_quarter" ? w * 0.25 : 0;
+    if (k.view === "overhead") parts.push(`<rect x="${cx - w / 2}" y="${cy - w / 2}" width="${w}" height="${w}" rx="${w * 0.06}" fill="#8a8795" stroke="#55535e" stroke-width="4"/>`);
+    else {
+      parts.push(`<polygon points="${cx - w / 2},${cy - h / 2} ${cx + w / 2},${cy - h / 2} ${cx + w / 2},${cy + h / 2} ${cx - w / 2},${cy + h / 2}" fill="#8a8795"/>`);
+      if (skew) parts.push(`<polygon points="${cx + w / 2},${cy - h / 2} ${cx + w / 2 + skew},${cy - h / 2 - skew * 0.5} ${cx + w / 2 + skew},${cy + h / 2 - skew * 0.5} ${cx + w / 2},${cy + h / 2}" fill="#6c6977"/>`);
+      if (k.view === "detail") for (let i = 0; i < 5; i++) parts.push(`<line x1="${cx - w * 0.4}" x2="${cx + w * 0.4}" y1="${cy - h * 0.3 + i * h * 0.14}" y2="${cy - h * 0.3 + i * h * 0.14}" stroke="#55535e" stroke-width="3"/>`);
+    }
+    if (k.view === "in_hand") parts.push(`<path d="M ${cx - w * 0.9} ${cy + h * 1.4} Q ${cx - w * 0.7} ${cy + h * 0.3} ${cx - w * 0.45} ${cy + h * 0.2} L ${cx + w * 0.2} ${cy + h * 0.55} Q ${cx - w * 0.2} ${cy + h * 1.3} ${cx - w * 0.3} ${cy + h * 1.6} Z" fill="#b9b3ad"/>`);
+  }
+  return frame(W, H, k, parts.join(""));
+}
+
 export const sketchAdapter: ProviderAdapter = {
   id: "aurastage-sketch",
   name: "AuraStage Sketch",
@@ -117,6 +196,7 @@ export const sketchAdapter: ProviderAdapter = {
     return { bytes: new TextEncoder().encode(renderSketch(req)), media_type: "image/svg+xml", provider_request_id: null, cost_usd: 0 };
   },
   async generateStill(req: StillRequest): Promise<GenerateResult> {
-    return { bytes: new TextEncoder().encode(renderCharacterSketch(req)), media_type: "image/svg+xml", provider_request_id: null, cost_usd: 0 };
+    const svg = req.sketch?.kind === "location" ? renderLocationSketch(req) : req.sketch?.kind === "prop" ? renderPropSketch(req) : renderCharacterSketch(req);
+    return { bytes: new TextEncoder().encode(svg), media_type: "image/svg+xml", provider_request_id: null, cost_usd: 0 };
   },
 };

@@ -109,6 +109,26 @@ await check("casting Voice DNA: the voice comes from the profile and says why; r
   await page.getByTestId("voice-description").getByText(d).waitFor();
   return d;
 });
+await check("locations & props: find them in the script, describe one, make its views in the worker; reload: kept", async () => {
+  await page.goto(projectUrl + "/world");
+  await page.getByTestId("world-sync-state").waitFor();
+  await page.getByRole("button", { name: "Find locations & props in the script" }).click();
+  await page.getByText(/Found 2 locations and \d+ props? in script version 1/).waitFor();
+  await page.getByRole("list", { name: "Locations" }).getByRole("button", { name: /Lagos Harbour/ }).click();
+  await page.getByLabel("Description").fill("Rusting cranes and stacked containers at first light");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("status").getByText("Saved.").waitFor();
+  await page.getByRole("button", { name: /Generate reference set \(3 views\)/ }).click();
+  await page.getByTestId("world-summary").getByText("3 of 4 made").waitFor({ timeout: 90000 });
+  await page.getByTestId("view-establishing:DAWN").locator("img").waitFor();
+  await page.reload();
+  await page.getByRole("list", { name: "Locations" }).getByRole("button", { name: /Lagos Harbour/ }).click();
+  if ((await page.getByLabel("Description").inputValue()) !== "Rusting cranes and stacked containers at first light") throw new Error("description lost after reload");
+  await page.getByTestId("world-summary").getByText("3 of 4 made").waitFor();
+  await page.getByRole("tab", { name: /Props/ }).click();
+  await page.getByRole("list", { name: "Props" }).getByRole("button", { name: /Laptop/ }).waitFor();
+  return "harbour: 3 views; props include Laptop";
+});
 await check("dialogue: bring in + approve scene, reload: still approved", async () => {
   await page.goto(projectUrl + "/dialogue");
   await page.getByRole("button", { name: "Bring in dialogue" }).click();
@@ -424,6 +444,7 @@ await check("AI & Generation page: every generator's state with proof from this 
   await page.waitForURL("**/generation");
   await page.getByTestId("cap-storyboard").getByText("Working — proven").waitFor();
   await page.getByTestId("cap-voice").getByText("Working — proven").waitFor();
+  await page.getByTestId("cap-world_refs").getByText("Working — proven").waitFor();
   await page.reload();
   await page.getByTestId("cap-assistant").getByText(/Working — proven|Ready — not tried yet/).first().waitFor();
   return await page.getByTestId("readiness-summary").innerText();
