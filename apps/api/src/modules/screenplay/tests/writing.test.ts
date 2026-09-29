@@ -40,4 +40,18 @@ describe("AuraScript job runner (with the labelled test writer)", () => {
     expect(r.checks.every((c) => c.ok)).toBe(true);
     await expect(runWritingJob({ id: "x", kind: "outline", input: {} }, { ...deps(), reasoner: () => null })).rejects.toThrow(/ANTHROPIC_API_KEY/);
   });
+  it("asks once more when an answer is refused as retryable (regression: one bad story answer failed the whole step)", async () => {
+    let calls = 0;
+    const flaky = { ...testReasoningAdapter, complete: async (req: any, env: any) => {
+      if (++calls === 1) throw Object.assign(new Error("Claude's answer didn't match the expected shape (logline: Required)."), { retryable: true });
+      return testReasoningAdapter.complete(req, env);
+    } };
+    const r = await runWritingJob({ id: "d", kind: "develop_story", input: { brief } }, { ...deps(), reasoner: () => flaky as never });
+    expect(calls).toBe(2);
+    expect(r.usage.calls).toBe(1);
+    const hard = { ...testReasoningAdapter, complete: async () => { calls++; throw new Error("Claude rejected the API key on the server."); } };
+    calls = 0;
+    await expect(runWritingJob({ id: "d", kind: "develop_story", input: { brief } }, { ...deps(), reasoner: () => hard as never })).rejects.toThrow(/API key/);
+    expect(calls).toBe(1);
+  });
 });

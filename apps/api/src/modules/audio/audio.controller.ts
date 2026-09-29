@@ -3,7 +3,7 @@
 // Domain: Audio Studio
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { approveSession, createClip, deleteClip, getAudioWorkspace, recordMeasurement, spotScene, updateClip, updateMix, updateTrack } from "./audio.service";
+import { addTrack, approveSession, createClip, deleteClip, deleteTrack, getAudioWorkspace, moveTrack, recordMeasurement, spotScene, updateClip, updateMix, updateTrack } from "./audio.service";
 import { AudioBusyError, AudioConflictError, AudioNotFoundError, AudioNotReadyError, AudioValidationError } from "./audio.validator";
 import { generateSceneCues, generateSound } from "./audio.generation";
 import { AudioForbiddenError } from "./audio.permissions";
@@ -37,6 +37,9 @@ export async function registerAudioRoutes(app: FastifyInstance) {
   app.post("/api/projects/:id/audio/scenes/:sceneId/generate-cues", route(({ params, db }) => generateSceneCues(db, params.id, params.sceneId)));
   app.post("/api/projects/:id/audio/scenes/:sceneId/approve", route(({ params, db }) => approveSession(db, params.id, params.sceneId)));
   app.patch("/api/audio-tracks/:id", route(({ params, body, db }) => updateTrack(db, params.id, body)));
+  app.post("/api/audio-sessions/:id/tracks", route(({ params, body, db }) => addTrack(db, params.id, body)));
+  app.post("/api/audio-tracks/:id/move", route(({ params, body, db }) => moveTrack(db, params.id, body)));
+  app.delete("/api/audio-tracks/:id", route(({ params, db }) => deleteTrack(db, params.id)));
   app.put("/api/projects/:id/audio/scenes/:sceneId/mix", route(({ params, body, db }) => updateMix(db, params.id, params.sceneId, body)));
   app.post("/api/audio-sessions/:id/clips", route(({ params, body, db }) => createClip(db, params.id, body)));
   app.post("/api/audio-sessions/:id/measurements", route(({ params, body, db }) => recordMeasurement(db, params.id, body)));

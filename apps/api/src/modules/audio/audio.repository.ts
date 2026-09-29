@@ -55,6 +55,10 @@ export const spot = (db: SupabaseClient, a: { projectId: string; sceneId: string
   rpc(db, "spot_audio_session", {
     p_project_id: a.projectId, p_scene_id: a.sceneId, p_shot_plan_version_id: a.planVersionId, p_scene_seconds: a.seconds, p_tracks: a.tracks, p_clips: a.clips, p_engine_version: a.engineVersion,
   });
+export const addTrack = (db: SupabaseClient, sessionId: string, a: { name: string; family: string; after_track_id?: string }) =>
+  rpc(db, "add_audio_track", { p_session_id: sessionId, p_name: a.name, p_family: a.family, p_after: a.after_track_id ?? null });
+export const moveTrack = (db: SupabaseClient, id: string, direction: number) => rpc(db, "move_audio_track", { p_track_id: id, p_direction: direction });
+export const deleteTrack = (db: SupabaseClient, id: string) => rpc(db, "delete_audio_track", { p_track_id: id });
 export const updateTrack = (db: SupabaseClient, id: string, patch: Row) => rpc(db, "update_audio_track", { p_track_id: id, p_patch: patch });
 export const updateMix = (db: SupabaseClient, sessionId: string, mix: Row, revision: string) => rpc(db, "update_audio_mix", { p_session_id: sessionId, p_mix: mix, p_revision: revision });
 export const saveClip = (db: SupabaseClient, sessionId: string, clipId: string | null, patch: Row) => rpc(db, "save_audio_clip", { p_session_id: sessionId, p_clip_id: clipId, p_patch: patch });

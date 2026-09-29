@@ -22,7 +22,14 @@ export async function runWritingJob(job: WritingJob, d: WritingDeps): Promise<Wr
   const usage = { input_tokens: 0, output_tokens: 0, calls: 0 };
   let model = "", test = false;
   const ask = async <T>(req: { system: string; prompt: string; schema: any; max_tokens?: number }, kind: "develop_story" | "outline" | "write_scenes" | "rewrite_scene", snapshot: unknown, effort: "medium" | "high" = "high") => {
-    const res: ReasoningResult<T> = await r.complete<T>({ ...req, effort, task: { kind, snapshot } }, d.env);
+    // A retryable failure (an answer that didn't fit, a cut-off answer, a busy backend) is asked once more.
+    let res: ReasoningResult<T>;
+    try {
+      res = await r.complete<T>({ ...req, effort, task: { kind, snapshot } }, d.env);
+    } catch (e) {
+      if (!(e as { retryable?: boolean }).retryable) throw e;
+      res = await r.complete<T>({ ...req, effort, task: { kind, snapshot } }, d.env);
+    }
     usage.input_tokens += res.usage.input_tokens; usage.output_tokens += res.usage.output_tokens; usage.calls++;
     model = res.model; test = res.test_output;
     return res.data;

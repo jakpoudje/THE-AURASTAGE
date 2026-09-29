@@ -67,8 +67,17 @@ export const AudioTrackSchema = z.object({
   solo: z.boolean(),
   /** Channel strip processing; tracks saved before migration 0029 read as neutral. */
   fx: TrackFxSchema.default({}),
+  /** Added by a person (migration 0031): never removed by re-spotting; can be removed when empty. */
+  added_by_hand: z.boolean().default(false),
 });
 export type AudioTrack = z.infer<typeof AudioTrackSchema>;
+
+/** A track a person adds to a scene's session (placed last, or right after `after_track_id`). */
+export const AddAudioTrackInputSchema = z
+  .object({ name: z.string().trim().min(1).max(80), family: AudioFamilySchema, after_track_id: z.string().uuid().optional() })
+  .strict();
+export type AddAudioTrackInput = z.infer<typeof AddAudioTrackInputSchema>;
+export const MoveAudioTrackInputSchema = z.object({ direction: z.union([z.literal(-1), z.literal(1)]) }).strict();
 
 export const UpdateAudioTrackInputSchema = z
   .object({

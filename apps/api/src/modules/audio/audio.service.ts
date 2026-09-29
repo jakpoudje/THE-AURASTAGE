@@ -7,7 +7,7 @@
 // approve. Upstream changes mark sessions stale / review_required; recordings
 // are never removed (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loudnessTarget, SessionMixSchema, UpdateAudioMixInputSchema } from "@aurastage/contracts";
+import { AddAudioTrackInputSchema, loudnessTarget, MoveAudioTrackInputSchema, SessionMixSchema, UpdateAudioMixInputSchema } from "@aurastage/contracts";
 import { audioSpotting, audioSpottingEngine } from "@aurastage/engines";
 // Storyboard owns plan review state; ask it to refresh (it refreshes Scene DNA first).
 import { refreshShotPlanReview } from "../shots/shots.service";
@@ -162,6 +162,32 @@ export async function updateTrack(db: SupabaseClient, trackId: string, payload: 
   const patch = validateTrackPatch(payload);
   await assertTrackAccess(db, trackId);
   return toTrackDTO(await repo.updateTrack(db, trackId, patch));
+}
+
+const parsed = <T>(r: { success: true; data: T } | { success: false; error: { issues: { path: PropertyKey[]; message: string }[] } }): T => {
+  if (!r.success) throw new AudioValidationError(r.error.issues as never, r.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
+  return r.data;
+};
+
+/** A track a person adds (any department); re-spotting never removes it. */
+export async function addTrack(db: SupabaseClient, sessionId: string, payload: unknown) {
+  const a = parsed(AddAudioTrackInputSchema.safeParse(payload));
+  await assertSessionAccess(db, sessionId);
+  return toTrackDTO(await repo.addTrack(db, sessionId, a));
+}
+
+export async function moveTrack(db: SupabaseClient, trackId: string, payload: unknown) {
+  const { direction } = parsed(MoveAudioTrackInputSchema.safeParse(payload));
+  await assertTrackAccess(db, trackId);
+  await repo.moveTrack(db, trackId, direction);
+  return { moved: true };
+}
+
+/** Only tracks added by hand, and only when empty (the database refuses otherwise, with the reason). */
+export async function deleteTrack(db: SupabaseClient, trackId: string) {
+  await assertTrackAccess(db, trackId);
+  await repo.deleteTrack(db, trackId);
+  return { deleted: true };
 }
 
 /** Buses, shared reverb/delay and master. Validated against the shared contract; stale revision → 409. */

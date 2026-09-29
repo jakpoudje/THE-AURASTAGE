@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Project, SaveAudioClipInput, SessionMix, UpdateAudioTrackInput } from "@aurastage/contracts";
+import type { AddAudioTrackInput, Project, SaveAudioClipInput, SessionMix, UpdateAudioTrackInput } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet } from "@/lib/apiClient";
 import { audioApi } from "../api/audioApi";
@@ -100,6 +100,9 @@ export function useAudio(projectId: string) {
     spot: (sceneId: string) =>
       run("spot", () => audioApi.spot(projectId, sceneId), (r) => `Spotted ${r.cues} cues on ${r.tracks} tracks from shot plan version ${r.shot_plan_version_number}. Recordings you've placed are kept.`),
     updateTrack: (id: string, patch: UpdateAudioTrackInput, msg: string | null = null) => run("save", () => audioApi.updateTrack(id, patch), () => msg),
+    addTrack: (sessionId: string, input: AddAudioTrackInput) => run("save", () => audioApi.addTrack(sessionId, input), (t) => `Track “${t.name}” added — it stays when the scene is re-spotted.`),
+    moveTrack: (id: string, direction: -1 | 1) => run("save", () => audioApi.moveTrack(id, direction), () => null),
+    deleteTrack: (id: string) => run("save", () => audioApi.deleteTrack(id), () => "Track removed."),
     updateMix: (sceneId: string, mix: SessionMix, revision: string, msg = "Mix routing saved — measure the mix again before approving.") =>
       run("save", () => audioApi.updateMix(projectId, sceneId, mix, revision), () => msg),
     createClip: (sessionId: string, patch: SaveAudioClipInput) => run("save", () => audioApi.createClip(sessionId, patch), () => "Clip added."),

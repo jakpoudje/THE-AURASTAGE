@@ -167,3 +167,33 @@ describe("Audio Studio routes", () => {
     expect(fake.calls[0]).toMatchObject({ fn: "save_audio_clip", args: { p_session_id: SES, p_clip_id: CL, p_patch: { asset_id: A } } });
   });
 });
+
+describe("tracks added by hand (migration 0031)", () => {
+  it("adds a track of a chosen department, validates the input, and maps database refusals", async () => {
+    rows.audio_sessions = [session()];
+    rows.audio_tracks = [track()];
+    const added = track({ id: "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcd02", key: "user-x", ordinal: 2, name: "Radio", family: "FX", added_by_hand: true });
+    const fake = fakeDb(rows, (fn, a) => (fn === "add_audio_track" ? (a.p_name === "DX — Tunde" ? { error: { message: "AURA-AUD-409: there's already a track called DX — Tunde" } } : { data: added }) : {}));
+    const a = await app(fake);
+    let r = await a.inject({ method: "POST", url: `/api/audio-sessions/${SES}/tracks`, payload: { name: " Radio ", family: "FX" } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ name: "Radio", family: "FX", added_by_hand: true });
+    expect(fake.calls.at(-1)).toMatchObject({ fn: "add_audio_track", args: { p_session_id: SES, p_name: "Radio", p_family: "FX", p_after: null } });
+    r = await a.inject({ method: "POST", url: `/api/audio-sessions/${SES}/tracks`, payload: { name: "X", family: "NOPE" } });
+    expect(r.statusCode).toBe(400);
+    r = await a.inject({ method: "POST", url: `/api/audio-sessions/${SES}/tracks`, payload: { name: "DX — Tunde", family: "DX" } });
+    expect(r.statusCode).toBe(409);
+  });
+  it("moves one place and removes only when the database allows it", async () => {
+    rows.audio_sessions = [session()];
+    rows.audio_tracks = [track()];
+    const fake = fakeDb(rows, (fn) => (fn === "delete_audio_track" ? { error: { message: "AURA-AUD-409: this track still holds 1 clip(s) — move or delete them first" } } : {}));
+    const a = await app(fake);
+    expect((await a.inject({ method: "POST", url: `/api/audio-tracks/${TR}/move`, payload: { direction: -1 } })).statusCode).toBe(200);
+    expect(fake.calls.at(-1)).toMatchObject({ fn: "move_audio_track", args: { p_track_id: TR, p_direction: -1 } });
+    expect((await a.inject({ method: "POST", url: `/api/audio-tracks/${TR}/move`, payload: { direction: 5 } })).statusCode).toBe(400);
+    const r = await a.inject({ method: "DELETE", url: `/api/audio-tracks/${TR}` });
+    expect(r.statusCode).toBe(409);
+    expect(r.json().error.message).toMatch(/still holds 1 clip/);
+  });
+});

@@ -4,6 +4,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { ProviderError } from "../../types";
+import { describeIssues, fitToSchema } from "../fitToSchema";
 import type { ReasoningAdapter, ReasoningRequest, ReasoningResult } from "../types";
 
 export const CLAUDE_MODEL = "claude-opus-5-5";
@@ -70,9 +71,16 @@ export const anthropicReasoningAdapter: ReasoningAdapter = {
       } catch {
         throw new ProviderError("Claude's answer wasn't valid JSON.", res.id, true);
       }
-      // Validated against the engine's own schema before anyone sees it.
-      const parsed = req.schema.safeParse(json);
-      if (!parsed.success) throw new ProviderError("Claude's answer didn't match the expected shape.", res.id, true);
+      // Fitted to the limits structured outputs can't enforce, then validated against the engine's own schema before
+      // anyone sees it. What was adjusted, or what still doesn't fit, is logged by path (never the content).
+      const adjusted: string[] = [];
+      const parsed = req.schema.safeParse(fitToSchema(req.schema as never, json, "", adjusted));
+      if (adjusted.length) console.info(JSON.stringify({ event: "reasoning.fitted", request_id: res.id, adjusted: adjusted.slice(0, 20) }));
+      if (!parsed.success) {
+        const why = describeIssues(parsed.error.issues as never);
+        console.warn(JSON.stringify({ event: "reasoning.shape_mismatch", request_id: res.id, issues: why }));
+        throw new ProviderError(`Claude's answer didn't match the expected shape (${why}).`, res.id, true);
+      }
       return {
         data: parsed.data,
         test_output: false,

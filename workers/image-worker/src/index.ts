@@ -97,7 +97,21 @@ let stopping = false;
 process.on("SIGTERM", () => (stopping = true));
 process.on("SIGINT", () => (stopping = true));
 
+// Script writing runs in its own lane: a full script can take many minutes of model calls, and it must never hold up
+// the short interactive jobs (assistant plans, sounds, reference views, takes) in the main lane.
+async function writingLane() {
+  while (!stopping) {
+    try {
+      if (!(await writingOnce(writingDeps))) await new Promise((r) => setTimeout(r, 3000));
+    } catch (e) {
+      log("worker.error", { lane: "writing", error: (e as Error).message });
+      await new Promise((r) => setTimeout(r, 10000));
+    }
+  }
+}
+
 (async () => {
+  void writingLane();
   log("worker.started", { providers: ["aurastage-sketch", env.RUNWAY_API_KEY ? "runway" : null, env.OPENAI_API_KEY ? "openai" : null].filter(Boolean), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
   while (!stopping) {
     try {
@@ -106,8 +120,7 @@ process.on("SIGINT", () => (stopping = true));
       const sounded = await audioOnce(audioDeps);
       const drew = await refOnce(refDeps);
       const drewWorld = await refOnce(worldRefDeps);
-      const wrote = await writingOnce(writingDeps);
-      const worked = (await runOnce(deps)) || planned || sounded || drew || drewWorld || wrote;
+      const worked = (await runOnce(deps)) || planned || sounded || drew || drewWorld;
       if (!worked) await new Promise((r) => setTimeout(r, 3000));
     } catch (e) {
       log("worker.error", { error: (e as Error).message });

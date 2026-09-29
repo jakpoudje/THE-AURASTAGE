@@ -1,5 +1,5 @@
 // Thin client for the Audio Studio + Assets APIs. No logic here.
-import type { AudioClip, AudioTrack, SaveAudioClipInput, SessionMix, UpdateAudioTrackInput, LoudnessMeasurementInput } from "@aurastage/contracts";
+import type { AddAudioTrackInput, AudioClip, AudioTrack, SaveAudioClipInput, SessionMix, UpdateAudioTrackInput, LoudnessMeasurementInput } from "@aurastage/contracts";
 import { apiDelete, apiGet, apiGetBytes, apiPatch, apiPost, apiPut, apiUpload } from "@/lib/apiClient";
 import type { AudioAsset, AudioGeneration, AudioMeasurement, AudioWorkspace } from "../types";
 
@@ -9,6 +9,9 @@ export const audioApi = {
     apiPost<{ session_id: string; tracks: number; cues: number; shot_plan_version_number: number }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/spot`, {}),
   approve: (projectId: string, sceneId: string) => apiPost<{ version_number: number }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/approve`, {}),
   updateTrack: (trackId: string, patch: UpdateAudioTrackInput) => apiPatch<AudioTrack>(`/api/audio-tracks/${trackId}`, patch),
+  addTrack: (sessionId: string, input: AddAudioTrackInput) => apiPost<AudioTrack>(`/api/audio-sessions/${sessionId}/tracks`, input),
+  moveTrack: (trackId: string, direction: -1 | 1) => apiPost<{ moved: true }>(`/api/audio-tracks/${trackId}/move`, { direction }),
+  deleteTrack: (trackId: string) => apiDelete<{ deleted: true }>(`/api/audio-tracks/${trackId}`),
   updateMix: (projectId: string, sceneId: string, mix: SessionMix, revision: string) =>
     apiPut<{ session_id: string; revision: string; mix: SessionMix }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/mix`, { mix, revision }),
   createClip: (sessionId: string, patch: SaveAudioClipInput) => apiPost<AudioClip>(`/api/audio-sessions/${sessionId}/clips`, patch),
