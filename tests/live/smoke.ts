@@ -750,6 +750,27 @@ await check("audio: built-in generation makes real WAVs for the planned cues and
   assert(new TextDecoder().decode(vb.slice(0, 4)) === "RIFF" && vb.length > 44 + 8000, `voice not a real WAV (${vb.length} bytes)`);
   return `${done.length} sound(s): ${done.map((x: any) => `${x.kind} [${x.layers.map((l: any) => l.name).join(", ")}]`).join("; ")} · voice: ${spoken.layers[0]?.because ?? ""}`;
 });
+// ---- Studio mixing (migration 0029): channel strips and routing saved, validated, revision-checked ----
+await check("studio mixer: a channel strip (HPF, EQ, compressor, send, automation) and routing (buses, reverb, master) save and read back; bad values 400, stale routing 409; the measurement goes stale", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/audio`);
+  const sc = ws.scenes.find((x: any) => x.scene.id === s1);
+  const dx = sc.tracks.find((t: any) => t.family === "DX");
+  assert(dx.fx && dx.fx.comp.on === false && sc.session.mix.master.limiter === true, "neutral defaults missing");
+  const fx = { ...dx.fx, hpf_hz: 80, eq: { ...dx.fx.eq, mid: { freq: 3000, gain_db: 2, q: 1 } }, comp: { ...dx.fx.comp, on: true, threshold_db: -20 }, reverb_send_db: -18, automation: [{ t: 0, db: 0 }, { t: 1, db: -6 }] };
+  const saved = await api("PATCH", `/api/audio-tracks/${dx.id}`, { fx });
+  assert(saved.fx.hpf_hz === 80 && saved.fx.comp.on && saved.fx.automation.length === 2, JSON.stringify(saved.fx).slice(0, 200));
+  await api("PATCH", `/api/audio-tracks/${dx.id}`, { fx: { ...fx, hpf_hz: 9000 } }, [400]);
+  const ws2 = await api("GET", `/api/projects/${projectId}/audio`);
+  const sc2 = ws2.scenes.find((x: any) => x.scene.id === s1);
+  const mix = { ...sc2.session.mix, buses: { ...sc2.session.mix.buses, MX: { gain_db: -4, mute: false } }, reverb: { ...sc2.session.mix.reverb, type: "hall", decay_s: 2.2 }, master: { ...sc2.session.mix.master, gain_db: 1.5 } };
+  const r = await api("PUT", `/api/projects/${projectId}/audio/scenes/${s1}/mix`, { mix, revision: sc2.session.revision });
+  assert(r.mix.reverb.type === "hall" && r.mix.buses.MX.gain_db === -4 && r.revision !== sc2.session.revision, JSON.stringify(r).slice(0, 200));
+  await api("PUT", `/api/projects/${projectId}/audio/scenes/${s1}/mix`, { mix, revision: sc2.session.revision }, [409]);
+  const back = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1);
+  assert(back.session.mix.master.gain_db === 1.5 && back.tracks.find((t: any) => t.id === dx.id).fx.eq.mid.gain_db === 2, "not kept");
+  assert(back.readiness.some((p: any) => /measure|Loudness/i.test(p.label) && !p.ok), "the old measurement should be stale after mixing changes");
+  return "strip + routing kept; 400/409 refused";
+});
 // ---- Phase 13-1: Ask AuraStage (plans in the generation worker; test planner until a Claude key is set) ----
 async function planned(tok: string, id: string) {
   for (let i = 0; i < 60; i++) {

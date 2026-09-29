@@ -10,7 +10,11 @@ apps/api/src/modules/audio (AudioSession / Mix). Recordings belong to Assets.
 - Scene tabs (✓ approved, ! needs review) and the review banner with the reason.
 - Timeline: tracks with mute/solo, dashed "planned" cues, recordings with waveforms, drag to move, click to edit, playhead/zoom.
 - Clip inspector: label, track, recording (choose or upload), start/length/offset, gain, fades.
-- Mixer: pan, fader, mute/solo and live level meters per track.
+- Mixer: pan, fader, mute/solo and live level meters per track, and a studio channel strip per track (high-pass filter,
+  3-band EQ with its real frequency curve, compressor with live gain reduction, post-fader reverb/delay sends, volume
+  automation with "Duck under dialogue"); department buses (DX/FX/BG/MX), a shared reverb (room/hall/plate) and delay,
+  and a master with limiter and "Match loudness target". One Web Audio graph (state/mixEngine.ts) drives playback,
+  BS.1770-4 measurement and WAV/stem export, so what you hear is what is measured and delivered.
 - Loudness & delivery: measure the rendered mix (BS.1770-4), readiness checks with evidence, approve, WAV export of the full mix and DX/FX/BG/MX stems.
 - Tools & generators: AI voice/music/SFX/clean-up shown as not connected (no key yet).
 

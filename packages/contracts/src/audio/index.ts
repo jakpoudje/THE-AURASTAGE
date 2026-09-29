@@ -13,6 +13,48 @@ export const FAMILY_BUS: Record<AudioFamily, "DX" | "FX" | "BG" | "MX"> = {
   DX: "DX", ADR: "DX", VO: "DX", FOLEY: "FX", FX: "FX", WALLA: "FX", BG: "BG", MX: "MX", SCORE: "MX",
 };
 
+// ---- Studio processing (migration 0029). Every value is bounded; missing = neutral (no effect). ----
+/** Per-track channel strip: filter, 3-band EQ, compressor, effect sends and volume automation. */
+export const TrackFxSchema = z.object({
+  hpf_hz: z.number().min(0).max(500).default(0),
+  eq: z.object({
+    low: z.object({ freq: z.number().min(40).max(500), gain_db: z.number().min(-15).max(15) }).default({ freq: 120, gain_db: 0 }),
+    mid: z.object({ freq: z.number().min(150).max(8000), gain_db: z.number().min(-15).max(15), q: z.number().min(0.3).max(8) }).default({ freq: 1500, gain_db: 0, q: 1 }),
+    high: z.object({ freq: z.number().min(1500).max(16000), gain_db: z.number().min(-15).max(15) }).default({ freq: 8000, gain_db: 0 }),
+  }).default({}),
+  comp: z.object({
+    on: z.boolean(), threshold_db: z.number().min(-60).max(0), ratio: z.number().min(1).max(20),
+    attack_ms: z.number().min(0.5).max(200), release_ms: z.number().min(10).max(1000), makeup_db: z.number().min(0).max(24),
+  }).default({ on: false, threshold_db: -18, ratio: 3, attack_ms: 10, release_ms: 150, makeup_db: 0 }),
+  /** Post-fader send levels to the shared reverb and delay (dB; -60 = off). */
+  reverb_send_db: z.number().min(-60).max(6).default(-60),
+  delay_send_db: z.number().min(-60).max(6).default(-60),
+  /** Volume automation on top of the fader: points in scene seconds, joined by straight ramps. */
+  automation: z.array(z.object({ t: z.number().min(0).max(36000), db: z.number().min(-60).max(12) })).max(400).default([]),
+});
+export type TrackFx = z.infer<typeof TrackFxSchema>;
+export const NEUTRAL_TRACK_FX: TrackFx = TrackFxSchema.parse({});
+
+/** Session-level routing: department buses, shared reverb and delay, and the master with its limiter. */
+export const SessionMixSchema = z.object({
+  buses: z.object({
+    DX: z.object({ gain_db: z.number().min(-60).max(12), mute: z.boolean() }).default({ gain_db: 0, mute: false }),
+    FX: z.object({ gain_db: z.number().min(-60).max(12), mute: z.boolean() }).default({ gain_db: 0, mute: false }),
+    BG: z.object({ gain_db: z.number().min(-60).max(12), mute: z.boolean() }).default({ gain_db: 0, mute: false }),
+    MX: z.object({ gain_db: z.number().min(-60).max(12), mute: z.boolean() }).default({ gain_db: 0, mute: false }),
+  }).default({}),
+  reverb: z.object({ type: z.enum(["room", "hall", "plate"]), decay_s: z.number().min(0.2).max(8), pre_delay_ms: z.number().min(0).max(200), return_db: z.number().min(-60).max(6) })
+    .default({ type: "room", decay_s: 1.2, pre_delay_ms: 15, return_db: 0 }),
+  delay: z.object({ time_ms: z.number().min(20).max(2000), feedback: z.number().min(0).max(0.9), return_db: z.number().min(-60).max(6) })
+    .default({ time_ms: 320, feedback: 0.3, return_db: 0 }),
+  master: z.object({ gain_db: z.number().min(-24).max(24), limiter: z.boolean(), ceiling_db: z.number().min(-12).max(0) })
+    .default({ gain_db: 0, limiter: true, ceiling_db: -1 }),
+});
+export type SessionMix = z.infer<typeof SessionMixSchema>;
+export const NEUTRAL_SESSION_MIX: SessionMix = SessionMixSchema.parse({});
+export const UpdateAudioMixInputSchema = z.object({ mix: SessionMixSchema, revision: z.string().uuid() }).strict();
+export type UpdateAudioMixInput = z.infer<typeof UpdateAudioMixInputSchema>;
+
 export const AudioTrackSchema = z.object({
   id: z.string().uuid(),
   session_id: z.string().uuid(),
@@ -23,6 +65,8 @@ export const AudioTrackSchema = z.object({
   pan: z.number(),
   mute: z.boolean(),
   solo: z.boolean(),
+  /** Channel strip processing; tracks saved before migration 0029 read as neutral. */
+  fx: TrackFxSchema.default({}),
 });
 export type AudioTrack = z.infer<typeof AudioTrackSchema>;
 
@@ -33,6 +77,7 @@ export const UpdateAudioTrackInputSchema = z
     pan: z.number().min(-1).max(1),
     mute: z.boolean(),
     solo: z.boolean(),
+    fx: TrackFxSchema,
   })
   .partial()
   .strict();

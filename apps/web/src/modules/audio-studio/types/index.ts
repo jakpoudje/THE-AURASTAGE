@@ -1,4 +1,4 @@
-import type { AudioClip, AudioTrack, ReadinessPredicate } from "@aurastage/contracts";
+import type { AudioClip, AudioTrack, ReadinessPredicate, SessionMix } from "@aurastage/contracts";
 
 export interface AudioMeasurement {
   id: string; session_revision: string; integrated_lufs: number | null; true_peak_dbtp: number | null; lra_lu: number | null;
@@ -10,6 +10,8 @@ export interface AudioScene {
   session: {
     id: string; status: "draft" | "approved"; review_state: "current" | "review_required" | "stale"; review_reason: string | null;
     revision: string; scene_seconds: number; approved_version_number: number | null;
+    /** Routing: department buses, shared reverb and delay, master with limiter. */
+    mix: SessionMix;
   } | null;
   tracks: AudioTrack[];
   clips: AudioClip[];

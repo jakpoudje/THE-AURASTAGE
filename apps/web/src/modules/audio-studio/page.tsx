@@ -69,7 +69,7 @@ export default function AudioStudioPage() {
       setPlaying(false);
       return;
     }
-    await player.play(pos >= seconds ? 0 : pos, s.tracks, s.clips, d.buffers);
+    await player.play(pos >= seconds ? 0 : pos, s.tracks, s.clips, d.buffers, s.session.mix);
     setPlaying(true);
     const stopAt = (seconds - (pos >= seconds ? 0 : pos)) * 1000 + 200;
     setTimeout(() => {
@@ -223,7 +223,9 @@ export default function AudioStudioPage() {
                         voiceReady={ws.generators.some((g) => g.kinds.includes("voice") && g.state === "configured")}
                       />
                     )}
-                    <Mixer tracks={s.tracks} player={player} busy={d.busy !== null} onChange={(tid, p) => d.updateTrack(tid, p)} />
+                    <Mixer tracks={s.tracks} clips={s.clips} player={player} busy={d.busy !== null} seconds={seconds} position={pos}
+                      mix={s.session.mix} measurement={s.measurement} target={ws.target}
+                      onChange={(tid, p, msg) => d.updateTrack(tid, p, msg ?? null)} onMix={(mix, msg) => d.updateMix(s.scene.id, mix, s.session!.revision, msg)} />
                   </>
                 ) : (
                   <p className="rounded-xl border border-dashed border-aura-border p-8 text-center text-sm text-white/50">

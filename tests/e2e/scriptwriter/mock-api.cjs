@@ -645,8 +645,9 @@ http.createServer((req, res) => {
         out.push({ scene: { id: scene.id, number: scene.number, heading: scene.heading },
           plan: pv ? { version_id: pv.id, version_number: pv.version_number, usable: plan.status === "approved" && plan.review_state === "current" } : null,
           session: s ? { id: s.id, status: s.status, review_state: s.review_state, review_reason: s.review_reason, revision: s.revision, scene_seconds: s.scene_seconds,
+            mix: cc0.SessionMixSchema.parse(s.mix || {}),
             approved_version_number: s.approved_version_id ? aversions.find((v) => v.id === s.approved_version_id).version_number : null } : null,
-          tracks: st, clips: sc.map(clipDTO), measurement: me, readiness: r ? r.readiness : [], ready_for_approval: r ? r.ready : false,
+          tracks: st.map((t) => ({ ...t, fx: cc0.TrackFxSchema.parse(t.fx || {}) })), clips: sc.map(clipDTO), measurement: me, readiness: r ? r.readiness : [], ready_for_approval: r ? r.ready : false,
           generations: agens.filter((g) => g.scene_id === scene.id).map((g) => agenWork(g)) });
       }
       return send(200, { target: { ...cc0.loudnessTarget(ST.settings.technical.loudness_standard), standard: ST.settings.technical.loudness_standard },
@@ -685,8 +686,16 @@ http.createServer((req, res) => {
         tracks: atracks.filter((t) => t.session_id === s.id).map((t) => ({ ...t })), clips: aclips.filter((c) => c.session_id === s.id).map((c) => ({ ...c })), measurement: { duration_seconds: s.scene_seconds } }; aversions.push(v);
       Object.assign(s, { status: "approved", approved_version_id: v.id }); return send(200, { version_id: v.id, version_number: v.version_number });
     }
+    // Mix routing (mirrors apps/api audio.service updateMix + migration 0029): validated by the shared contract; stale → 409.
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/audio\/scenes\/([^/]+)\/mix$/)) && req.method === "PUT") {
+      const s = asessions.find((x) => x.scene_id === m[1]); if (!s) return aerr(412, "Spot this scene's audio first.");
+      const p = cc0.UpdateAudioMixInputSchema.safeParse(b); if (!p.success) return aerr(400, p.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+      if (p.data.revision !== s.revision) return aerr(409, "the mix changed since you opened it — reload to see the latest");
+      s.mix = p.data.mix; atouch(s); s.status = "draft"; return send(200, { session_id: s.id, revision: s.revision, mix: s.mix });
+    }
     if ((m = u.match(/^\/api\/audio-tracks\/([^/]+)$/)) && req.method === "PATCH") {
-      const t = atracks.find((x) => x.id === m[1]); Object.assign(t, b); const s = asessions.find((x) => x.id === t.session_id); atouch(s); s.status = "draft"; return send(200, t);
+      const pt = cc0.UpdateAudioTrackInputSchema.safeParse(b); if (!pt.success) return aerr(400, pt.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+      const t = atracks.find((x) => x.id === m[1]); Object.assign(t, pt.data); const s = asessions.find((x) => x.id === t.session_id); atouch(s); s.status = "draft"; return send(200, t);
     }
     const saveClip = (s, c) => {
       if (b.asset_id) { c.asset_id = b.asset_id; c.kind = "asset"; } else if ("asset_id" in b) { c.asset_id = null; c.kind = "cue"; }

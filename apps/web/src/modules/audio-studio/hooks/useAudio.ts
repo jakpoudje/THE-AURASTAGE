@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Project, SaveAudioClipInput, UpdateAudioTrackInput } from "@aurastage/contracts";
+import type { Project, SaveAudioClipInput, SessionMix, UpdateAudioTrackInput } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet } from "@/lib/apiClient";
 import { audioApi } from "../api/audioApi";
@@ -99,7 +99,9 @@ export function useAudio(projectId: string) {
     project, ws, loading, busy, error, notice, buffers,
     spot: (sceneId: string) =>
       run("spot", () => audioApi.spot(projectId, sceneId), (r) => `Spotted ${r.cues} cues on ${r.tracks} tracks from shot plan version ${r.shot_plan_version_number}. Recordings you've placed are kept.`),
-    updateTrack: (id: string, patch: UpdateAudioTrackInput) => run("save", () => audioApi.updateTrack(id, patch), () => null),
+    updateTrack: (id: string, patch: UpdateAudioTrackInput, msg: string | null = null) => run("save", () => audioApi.updateTrack(id, patch), () => msg),
+    updateMix: (sceneId: string, mix: SessionMix, revision: string, msg = "Mix routing saved — measure the mix again before approving.") =>
+      run("save", () => audioApi.updateMix(projectId, sceneId, mix, revision), () => msg),
     createClip: (sessionId: string, patch: SaveAudioClipInput) => run("save", () => audioApi.createClip(sessionId, patch), () => "Clip added."),
     updateClip: (id: string, patch: SaveAudioClipInput, msg: string | null = "Clip saved.") => run("save", () => audioApi.updateClip(id, patch), () => msg),
     deleteClip: (id: string) => run("save", () => audioApi.deleteClip(id), () => "Clip removed."),
@@ -123,7 +125,7 @@ export function useAudio(projectId: string) {
         "measure",
         async () => {
           if (missing(s)) throw new Error("Some recordings are still loading — try again in a moment.");
-          const buf = await renderMix(s.session!.scene_seconds, s.tracks, s.clips, buffers);
+          const buf = await renderMix(s.session!.scene_seconds, s.tracks, s.clips, buffers, undefined, s.session!.mix);
           const r = measure(buf);
           return audioApi.recordMeasurement(s.session!.id, {
             integrated_lufs: r.integrated_lufs, true_peak_dbtp: r.true_peak_dbtp, lra_lu: r.lra_lu, duration_seconds: r.duration_seconds,
@@ -145,7 +147,7 @@ export function useAudio(projectId: string) {
       setError(null);
       try {
         if (missing(s)) throw new Error("Some recordings are still loading — try again in a moment.");
-        const buf = await renderMix(s.session!.scene_seconds, s.tracks, s.clips, buffers, bus);
+        const buf = await renderMix(s.session!.scene_seconds, s.tracks, s.clips, buffers, bus, s.session!.mix);
         const url = URL.createObjectURL(encodeWav(buf));
         const a = document.createElement("a");
         a.href = url;

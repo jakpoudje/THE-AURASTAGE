@@ -99,7 +99,7 @@ export function GeneratorsPanel({ generators, canGenerate, busy, onGenerateCues 
         {generators.map((g) => (
           <li key={g.id} data-testid={`generator-${g.id}`}>
             <span className={STATE[g.state]?.dot ?? "text-white/30"}>●</span> {g.label}{" "}
-            <span className="text-[11px] text-white/40">{g.execution === "native" && g.state === "configured" ? "built in · free" : STATE[g.state]?.text ?? g.state}</span>
+            <span className="text-[11px] text-white/40">{g.execution === "native" ? (g.state === "configured" ? "built in · free" : g.state === "not_configured" ? "built in · not installed on this server" : STATE[g.state]?.text ?? g.state) : STATE[g.state]?.text ?? g.state}</span>
             <span className="block text-[11px] text-white/35">{g.note}</span>
           </li>
         ))}

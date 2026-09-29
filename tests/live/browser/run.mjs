@@ -438,6 +438,25 @@ await check("help: open Help from a workspace; live status and the assistant ans
   await page.getByTestId("session-current").waitFor();
   return render.replace(/\s+/g, " ");
 });
+await check("studio mixer: dialogue clean-up on the dialogue channel and hall reverb routing; reload: kept", async () => {
+  await page.goto(projectUrl + "/audio");
+  await page.getByText("Professional Sound for").waitFor();
+  const strip = page.getByRole("button", { name: /^Channel strip DX/ }).first();
+  await strip.click();
+  const ed = page.getByRole("region", { name: /^Channel strip editor DX/ });
+  await ed.getByRole("button", { name: /Dialogue clean-up preset/ }).click();
+  await ed.getByRole("img", { name: "EQ curve" }).waitFor();
+  await ed.getByRole("button", { name: "Save channel" }).click();
+  await page.getByText(/channel strip — measure the mix again/).waitFor();
+  const routing = page.getByRole("region", { name: "Buses and master" });
+  await routing.getByLabel("Reverb type").selectOption("hall");
+  await routing.getByRole("button", { name: "Save routing" }).click();
+  await page.getByText(/Mix routing saved/).waitFor();
+  await reload("Professional Sound for");
+  await page.getByRole("button", { name: /^Channel strip DX/ }).first().getByText(/HPF · EQ/).waitFor();
+  if ((await page.getByRole("region", { name: "Buses and master" }).getByLabel("Reverb type").inputValue()) !== "hall") throw new Error("routing lost after reload");
+  return "HPF + presence EQ on dialogue, hall reverb";
+});
 await check("AI & Generation page: every generator's state with proof from this project; reload: same", async () => {
   await page.goto(projectUrl + "/scriptwriter");
   await page.getByRole("link", { name: "AI & Generation" }).click();

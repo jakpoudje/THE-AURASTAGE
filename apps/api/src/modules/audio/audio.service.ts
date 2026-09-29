@@ -7,7 +7,7 @@
 // approve. Upstream changes mark sessions stale / review_required; recordings
 // are never removed (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loudnessTarget } from "@aurastage/contracts";
+import { loudnessTarget, SessionMixSchema, UpdateAudioMixInputSchema } from "@aurastage/contracts";
 import { audioSpotting, audioSpottingEngine } from "@aurastage/engines";
 // Storyboard owns plan review state; ask it to refresh (it refreshes Scene DNA first).
 import { refreshShotPlanReview } from "../shots/shots.service";
@@ -17,7 +17,7 @@ import { toClipDTO, toMeasurementDTO, toTrackDTO } from "./audio.mapper";
 import { audioReadiness } from "./audio.readiness";
 // Project Settings owns the loudness standard; Audio reads it.
 import { readProjectSettings } from "../settings/settings.read";
-import { AudioNotReadyError, validateClipPatch, validateMeasurement, validateTrackPatch } from "./audio.validator";
+import { AudioNotReadyError, AudioValidationError, validateClipPatch, validateMeasurement, validateTrackPatch } from "./audio.validator";
 
 export const SPOTTING_ENGINE_VERSION = audioSpotting.ENGINE_VERSION;
 type Row = Record<string, any>;
@@ -94,6 +94,8 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
             id: session.id, status: session.status, review_state: session.review_state, review_reason: session.review_reason, revision: session.revision,
             recordings_replaced: session.status === "approved" && !!replacedSince(session, clips, sessionVersions, assetTimes),
             scene_seconds: Number(session.scene_seconds),
+            // Routing (buses, reverb, delay, master); sessions saved before migration 0029 read as neutral.
+            mix: SessionMixSchema.parse(session.mix ?? {}),
             approved_version_number: session.approved_version_id ? sessionVersions.find((v) => v.id === session!.approved_version_id)?.version_number ?? null : null,
           }
         : null,
@@ -160,6 +162,17 @@ export async function updateTrack(db: SupabaseClient, trackId: string, payload: 
   const patch = validateTrackPatch(payload);
   await assertTrackAccess(db, trackId);
   return toTrackDTO(await repo.updateTrack(db, trackId, patch));
+}
+
+/** Buses, shared reverb/delay and master. Validated against the shared contract; stale revision → 409. */
+export async function updateMix(db: SupabaseClient, projectId: string, sceneId: string, payload: unknown) {
+  const p = UpdateAudioMixInputSchema.safeParse(payload);
+  if (!p.success) throw new AudioValidationError(p.error.issues, p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
+  await assertSceneInProject(db, projectId, sceneId);
+  const session = (await repo.listSessions(db, projectId)).find((s) => s.scene_id === sceneId);
+  if (!session) throw new AudioNotReadyError("Spot this scene's audio first.");
+  const s = await repo.updateMix(db, session.id, p.data.mix, p.data.revision);
+  return { session_id: s.id, revision: s.revision, mix: SessionMixSchema.parse(s.mix ?? {}) };
 }
 
 export async function createClip(db: SupabaseClient, sessionId: string, payload: unknown) {

@@ -6,3 +6,5 @@ export * as proceduralAudio from "./proceduralAudioEngine";
 export { proceduralAudioEngine } from "./proceduralAudioEngine";
 export * as voiceCasting from "./voiceCastingEngine";
 export { voiceCastingEngine } from "./voiceCastingEngine";
+export * as mixAssist from "./mixAssistEngine";
+export { duckUnderDialogue, loudnessCorrection } from "./mixAssistEngine";

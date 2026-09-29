@@ -56,6 +56,7 @@ export const spot = (db: SupabaseClient, a: { projectId: string; sceneId: string
     p_project_id: a.projectId, p_scene_id: a.sceneId, p_shot_plan_version_id: a.planVersionId, p_scene_seconds: a.seconds, p_tracks: a.tracks, p_clips: a.clips, p_engine_version: a.engineVersion,
   });
 export const updateTrack = (db: SupabaseClient, id: string, patch: Row) => rpc(db, "update_audio_track", { p_track_id: id, p_patch: patch });
+export const updateMix = (db: SupabaseClient, sessionId: string, mix: Row, revision: string) => rpc(db, "update_audio_mix", { p_session_id: sessionId, p_mix: mix, p_revision: revision });
 export const saveClip = (db: SupabaseClient, sessionId: string, clipId: string | null, patch: Row) => rpc(db, "save_audio_clip", { p_session_id: sessionId, p_clip_id: clipId, p_patch: patch });
 export const deleteClip = (db: SupabaseClient, id: string) => rpc(db, "delete_audio_clip", { p_clip_id: id });
 export const recordMeasurement = (db: SupabaseClient, sessionId: string, m: Row) => rpc(db, "record_audio_measurement", { p_session_id: sessionId, p_m: m });

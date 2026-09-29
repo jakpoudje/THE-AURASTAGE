@@ -54,6 +54,15 @@ is gated `audio:generate`; the generation worker makes the WAV, stores it privat
 engine version, seed). Using it on a cue is the person's choice ("Use this" = the normal clip save), so nothing is
 placed or replaced automatically (rule 11).
 
+## Studio mixing (migration 0029)
+Each track carries `fx` (the channel strip: high-pass, 3-band EQ, compressor, reverb/delay sends, volume automation) and
+each session carries `mix` (department buses, shared reverb and delay, master gain and limiter), both validated against the
+shared contract (`TrackFxSchema`, `SessionMixSchema`) and saved through `update_audio_track` / `update_audio_mix`
+(`PUT /api/projects/:id/audio/scenes/:sceneId/mix` with the session `revision`; stale → 409). Any change bumps the
+revision, so the loudness measurement goes stale and the mix must be measured again before approval; approved versions
+snapshot the strips and the routing. `engines/audio/mixAssistEngine` 1.0.0 computes dialogue ducking automation and the
+master correction for the loudness target.
+
 ## Downstream consumers
 Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 
