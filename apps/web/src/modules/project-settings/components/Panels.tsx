@@ -180,6 +180,11 @@ export function ProductionPanel({ d, update, disabled }: { d: ProjectSettings; u
             <option value="slow">Slow</option><option value="medium">Medium</option><option value="fast">Fast</option>
           </select>
         </label>
+        <label className="mt-2 flex items-center gap-2 text-sm">
+          <input type="checkbox" className="accent-[#d4a64a]" aria-label="Theme tune under the titles" disabled={disabled || (!d.titles.opening_title && !d.titles.end_credits)} checked={d.titles.music === "theme"}
+            onChange={(e) => update((x) => ((x.titles.music = e.target.checked ? "theme" : "none"), x))} />
+          Play the film&apos;s main theme under the titles (built in, from the story&apos;s genre and tone — the same tune every time)
+        </label>
         <p className="mt-2 text-[11px] text-white/40">Added by the render worker to masters and review copies; the Picture Lock itself doesn&apos;t change. Only credits you fill in are shown.</p>
       </div>
     </section>

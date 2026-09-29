@@ -75,11 +75,17 @@ function titlesFor(project: { title: string }, L: Locked, settings: ProjectSetti
   };
 }
 
-function manifestInput(project: { id: string; title: string }, L: Locked, profileId: string, options: { watermark: string | null; burn_timecode: boolean }, settings: ProjectSettings) {
+function manifestInput(project: { id: string; title: string; genre?: string | null; tone?: string | null }, L: Locked, profileId: string, options: { watermark: string | null; burn_timecode: boolean }, settings: ProjectSettings) {
   const profile = profileFor(profileId, settings);
   return {
     project: { id: project.id, title: project.title, credits: creditsOf(settings) },
     titles: titlesFor(project, L, settings, profile, L.version?.fps ?? TIMELINE_FPS),
+    // The film's own main theme (same tune every render: seeded by the project) in the story's genre and tone.
+    title_music: settings.titles.music === "theme"
+      ? { description: `Main theme for the titles and credits of ${project.title}`.slice(0, 300),
+          mood: [project.genre, project.tone].filter((x): x is string => !!x).flatMap((x) => x.split(/[,/]| and /)).map((x) => x.trim().slice(0, 40)).filter(Boolean).slice(0, 8),
+          seed: parseInt(createHash("sha256").update(project.id).digest("hex").slice(0, 7), 16) }
+      : null,
     profile,
     options,
     picture_lock: { id: L.lock!.id, lock_number: L.lock!.lock_number, timeline_version_id: L.version!.id },

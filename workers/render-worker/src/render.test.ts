@@ -1,7 +1,7 @@
 // End-to-end render with the real ffmpeg: every available delivery profile is
 // rendered from a manifest compiled by the real manifest engine, then measured
 // and checked by final QC. Skipped only when ffmpeg isn't installed.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, statSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -140,7 +140,17 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
     expect(bright(1)).toBeGreaterThan(120); // the title is on screen mid-card
     expect(bright(0.02)).toBeLessThan(60); // …and fades in from black
     expect(bright(4 + (t.end_credits!.frames / 24) * 0.45)).toBeGreaterThan(100); // credit lines are scrolling through
-  }, 180000);
+    // With the theme on, the title card is no longer silent (and the cut's own sound is unchanged).
+    const r2 = await render("streaming_master", { titles, title_music: { description: "Main theme for the titles", mood: ["tense"], seed: 3 } });
+    // Mean volume of the title card (0.3–1.5 s), from ffmpeg's volumedetect report.
+    const probe = (store: string) => {
+      const res = spawnSync("ffmpeg", ["-v", "info", "-ss", "0.3", "-t", "1.2", "-i", join(store, "streaming_1080p24.mp4"), "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
+      const m = /mean_volume: (-?[\d.]+|-inf) dB/.exec(res.stderr)?.[1];
+      return m === undefined || m === "-inf" ? -99 : Number(m);
+    };
+    expect(probe(r.store)).toBeLessThan(-80); // silent title card without the theme
+    expect(probe(r2.store)).toBeGreaterThan(-40); // the theme plays under it
+  }, 240000);
   it("subtitles and EDL", async () => {
     const s = await render("subtitles");
     expect(s.qc.passed).toBe(true);

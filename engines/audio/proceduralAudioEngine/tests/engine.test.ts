@@ -28,3 +28,17 @@ describe("proceduralAudioEngine", () => {
     expect(proceduralAudioEngine({ kind: "score", description: "Score — hopeful", duration_seconds: 4 }).layers[0].name).toBe("bright major progression");
   });
 });
+
+describe("proceduralAudioEngine 1.1.0: a main theme for titles and credits", () => {
+  const theme = (seed: number) => proceduralAudioEngine({ kind: "score", description: "Main theme for the titles", duration_seconds: 8, mood: ["tense"], seed, sample_rate: 44100 });
+  it("adds a melody over the chords, the same tune every time for the same film", () => {
+    const a = theme(7);
+    expect(a.layers[0].name).toBe("tense minor pulse + main theme melody");
+    expect(Array.from(a.channels[0].slice(0, 44100 * 4))).toEqual(Array.from(theme(7).channels[0].slice(0, 44100 * 4)));
+    expect(Array.from(theme(8).channels[0].slice(0, 44100 * 4))).not.toEqual(Array.from(a.channels[0].slice(0, 44100 * 4)));
+  });
+  it("other score cues are exactly as in 1.0.0 (no melody unless a theme is asked for)", () => {
+    const plain = proceduralAudioEngine({ kind: "score", description: "Score — tense", duration_seconds: 2, mood: ["tense"], seed: 1 });
+    expect(plain.layers[0].name).toBe("tense minor pulse");
+  });
+});

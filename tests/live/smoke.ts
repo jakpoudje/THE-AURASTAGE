@@ -640,11 +640,12 @@ await check("settings → delivery: required deliverables tracked; credits writt
 // ---- Titles & credits (Project Settings → render worker): opening card and end-credits roll on video deliverables ----
 await check("titles & credits: with them on, a review copy opens on the title card and ends on the credit roll; real ffmpeg render passes QC", async () => {
   const st = await api("GET", `/api/projects/${projectId}/settings`);
-  await api("PUT", `/api/projects/${projectId}/settings`, { base_revision: st.revision, settings: { ...st.settings, titles: { ...st.settings.titles, opening_title: true, opening_seconds: 3, end_credits: true, credits_speed: "fast" } } });
+  await api("PUT", `/api/projects/${projectId}/settings`, { base_revision: st.revision, settings: { ...st.settings, titles: { ...st.settings.titles, opening_title: true, opening_seconds: 3, end_credits: true, credits_speed: "fast", music: "theme" } } });
   const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "review_copy" });
   const m = (await api("GET", `/api/renders/${r.render_id}/manifest`)).manifest;
   const kinds = m.picture.map((s: any) => s.kind);
   assert(kinds[0] === "title" && kinds.at(-1) === "credits" && m.picture[0].duration === 72, kinds.join(","));
+  assert(m.title_music && /Main theme/.test(m.title_music.description), "the theme should play under the titles");
   assert(m.picture.at(-1).svg.includes("LIVE CHECK DIRECTOR") || m.picture.at(-1).svg.includes("Live Check Director"), "credits missing the director");
   let x: any;
   for (let i = 0; i < 80; i++) {

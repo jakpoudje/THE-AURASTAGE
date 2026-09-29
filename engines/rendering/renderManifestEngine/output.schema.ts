@@ -49,6 +49,8 @@ export const RenderManifestSchema = z.object({
   sources: z.object({ take_ids: z.array(z.string()), audio_session_version_ids: z.array(z.string()), asset_ids: z.array(z.string()), dialogue_line_ids: z.array(z.string()),
     automation_revision: z.string().nullable().default(null) }),
   engine_versions: z.record(z.string()),
+  /** Main theme under the title card and the credit roll (manifest ≥ 1.4.0); the worker synthesises it. */
+  title_music: z.object({ description: z.string(), mood: z.array(z.string()), seed: z.number().int() }).nullable().default(null),
 });
 export type RenderManifest = z.infer<typeof RenderManifestSchema>;
 export const RenderManifestOutputSchema = z.object({ manifest: RenderManifestSchema.nullable(), missing: z.array(z.string()), engine_version: z.string() });

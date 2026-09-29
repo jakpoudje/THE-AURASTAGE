@@ -44,5 +44,7 @@ export const RenderManifestInputSchema = z.object({
     end_credits: z.object({ frames: z.number().int().positive(), svg: z.string().max(2_000_000), image_height: z.number().int().positive() }).nullable(),
     engine_version: z.string(),
   }).nullable().default(null),
+  /** The built-in main theme under the titles (proceduralAudioEngine "theme" score), when Project Settings asks for it. */
+  title_music: z.object({ description: z.string().max(300), mood: z.array(z.string().max(40)).max(8), seed: z.number().int().min(0) }).nullable().default(null),
 });
 export type RenderManifestInput = z.infer<typeof RenderManifestInputSchema>;

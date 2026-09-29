@@ -134,6 +134,43 @@ const MOOD: { words: RegExp; minor: boolean; bpm: number; root: number; name: st
   { words: /eerie|dark|cold|mysterious|uneasy/i, minor: true, bpm: 70, root: 98, name: "dark drone", pulse: false, low: true },
   { words: /chaotic|action|chase|frenetic|fight/i, minor: true, bpm: 140, root: 123.47, name: "driving minor ostinato", pulse: true, low: true },
 ];
+/** A plucked/bell note: a few harmonics with an exponential decay (the theme's melody voice). */
+function pluck(b: Buf, at: number, secs: number, freq: number, amp: number, pan: number) {
+  const len = Math.floor(secs * b.sr);
+  for (let k = 0; k < len; k++) {
+    const t = k / b.sr, env = Math.min(1, k / (0.004 * b.sr)) * Math.exp(-t / (secs * 0.45));
+    const s = amp * env * (Math.sin(TAU * freq * t) + 0.35 * Math.sin(TAU * 2 * freq * t) + 0.12 * Math.sin(TAU * 3 * freq * t) * Math.exp(-t * 6));
+    add(b, at + k, s * (1 - pan), s * pan);
+  }
+}
+/**
+ * A main theme: a four-bar motif over the chord progression, stated, answered a step higher, then resolved — with a
+ * walking bass. Deterministic from the seed, so the same film always gets the same tune. Used for "theme", "main
+ * title" and "credits" cues (1.1.0); other score cues are unchanged.
+ */
+function theme(b: Buf, root: number, minor: boolean, bpm: number, prog: number[][]) {
+  const scale = minor ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+  const beat = 60 / bpm, bar = beat * 4, total = b.n / b.sr;
+  // The motif: 8 notes over 2 bars, as scale degrees chosen from the seed (stepwise, leaning on chord tones).
+  const rhythm = [1, 0.5, 0.5, 1, 1, 1.5, 0.5, 2];
+  const motif: number[] = [];
+  let deg = 4;
+  for (let i = 0; i < rhythm.length; i++) { deg = Math.max(0, Math.min(9, deg + [-2, -1, 1, 2, 0, 1][Math.floor(b.rand() * 6)])); motif.push(deg); }
+  motif[motif.length - 1] = 0; // resolve home
+  const noteHz = (d: number, shift: number) => root * 2 * Math.pow(2, (scale[(d + shift) % 7] + 12 * Math.floor((d + shift) / 7)) / 12);
+  for (let t = 0, phrase = 0; t < total - beat; phrase++) {
+    const shift = phrase % 4 === 1 ? 1 : phrase % 4 === 3 ? -1 : 0; // statement, answer a step higher, statement, resolution
+    for (let i = 0; i < motif.length && t < total - beat * 0.5; i++) {
+      pluck(b, Math.floor(t * b.sr), Math.min(rhythm[i] * beat * 1.6, 2.5), noteHz(motif[i], shift), 0.12, 0.45 + 0.1 * Math.sin(i));
+      t += rhythm[i] * beat;
+    }
+  }
+  for (let t = 0, idx = 0; t < total; t += beat, idx++) {
+    const chord = prog[Math.floor(t / bar) % prog.length];
+    tone(b, Math.floor(t * b.sr), beat * 0.9, (root / 2) * Math.pow(2, chord[idx % 2 ? 2 : 0] / 12), 0.07, 0.5, beat * 0.6);
+  }
+}
+
 function score(b: Buf, text: string, mood: string[]) {
   const all = `${text} ${mood.join(" ")}`;
   const m = MOOD.find((x) => x.words.test(all)) ?? { minor: false, bpm: 80, root: 164.81, name: "neutral pad", pulse: false, low: false, words: /./ };
@@ -148,6 +185,7 @@ function score(b: Buf, text: string, mood: string[]) {
     if (m.low) tone(b, at, len, (m.root / 2) * Math.pow(2, chord[0] / 12), 0.08, 0.5);
     if (m.pulse) for (let q = 0; q < 8; q++) { const pt = t + (q * bar) / 8; if (pt < total) tone(b, Math.floor(pt * b.sr), (bar / 8) * 0.6, m.root * 2 * Math.pow(2, chord[q % chord.length] / 12), 0.035, q % 2 ? 0.35 : 0.65, 0.12); }
   }
+  if (/\b(theme|main title|title music|titles|credits|theme tune)\b/i.test(text)) { theme(b, m.root, m.minor, m.bpm, prog); return `${m.name} + main theme melody`; }
   return m.name;
 }
 

@@ -124,6 +124,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
       dialogue_line_ids: [...new Set(subtitles.cues.map((c) => c.line_id))],
       automation_revision: i.automation.A1.length ? i.automation_revision : null,
     },
+    title_music: titled ? i.title_music : null,
     engine_versions: { manifest: ENGINE_VERSION, subtitles: SUB_V, audio_mix: MIX_V, profile: p.version, ...(titled ? { titles: i.titles!.engine_version } : {}) },
   };
   return { manifest: missing.length ? null : manifest, missing, engine_version: ENGINE_VERSION };

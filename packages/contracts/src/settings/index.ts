@@ -81,6 +81,8 @@ export const ProjectSettingsSchema = z
         opening_subtitle: text(200),
         end_credits: z.boolean().default(false),
         credits_speed: z.enum(["slow", "medium", "fast"]).default("medium"),
+        /** "theme": the film's built-in main theme plays under the title card and the credits (same tune every render). */
+        music: z.enum(["none", "theme"]).default("none"),
       })
       .strict()
       .default({}),
