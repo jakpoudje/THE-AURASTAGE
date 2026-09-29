@@ -8,8 +8,11 @@
 FROM node:22-slim
 
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
-# espeak-ng: the built-in voice (AuraStage built-in voice adapter, providers/audio/voice).
-RUN apt-get update && apt-get install -y --no-install-recommends espeak-ng && rm -rf /var/lib/apt/lists/*
+# espeak-ng: the robotic fallback voice (providers/audio/voice). curl: downloads the neural voice below.
+RUN apt-get update && apt-get install -y --no-install-recommends espeak-ng curl ca-certificates && rm -rf /var/lib/apt/lists/*
+# The neural voice (Piper + VCTK / LibriTTS-R voices, measured) — before the source copy so it stays cached between deploys.
+COPY apps/api/scripts/piper-install.sh apps/api/scripts/piper-measure.mjs /tmp/
+RUN sh /tmp/piper-install.sh
 
 WORKDIR /app
 

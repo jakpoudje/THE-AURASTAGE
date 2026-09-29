@@ -42,5 +42,12 @@ adapters — added with their phases (Audio Studio etc.).
 - `audio/` — `AudioAdapter` contract (ambience, fx, foley, score, voice). `aurastage-synth` is native (free, always
   configured) and never makes voices. `aurastage-voice` is native and speaks dialogue with espeak-ng using the Voice DNA
   in `params.voice` (configured only where the espeak-ng program exists; arguments passed without a shell).
-  `audioBackendsFor(kind, env)` only returns backends that can make that kind AND are configured. Paid sound/voice
-  providers will be added here.
+  `aurastage-neural-voice` (the default voice) runs Piper with multi-speaker VCTK and LibriTTS-R models; each speaker's
+  register is measured at image build time (`apps/api/scripts/piper-install.sh`, `piper-measure.mjs`) and matched to the
+  character's Voice DNA (`audio/neural/voices.ts`). `audioBackendsFor(kind, env)` only returns backends that can make
+  that kind AND are configured. Paid sound/voice providers will be added here.
+
+## Third-party voice credits
+- Piper text-to-speech — © Michael Hansen, MIT licence (https://github.com/rhasspy/piper).
+- en_GB-vctk-medium — trained on the CSTR VCTK Corpus (Yamagishi, Veaux, MacDonald; University of Edinburgh), CC BY 4.0.
+- en_US-libritts_r-medium — trained on LibriTTS-R (Koizumi et al., Google), CC BY 4.0.

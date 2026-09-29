@@ -318,7 +318,7 @@ await check("audio: spot the approved scene into tracks and cues (unplanned scen
   const sc = ws.scenes.find((x: any) => x.scene.id === s1);
   assert(sc.session.id === sessionId && sc.tracks.length >= 2 && sc.clips.some((c: any) => c.source.dialogue_line_id), "no dialogue cue");
   // Honest generators: the built-in synthesiser is ready; nothing unbuilt claims to be connected.
-  assert(ws.generators.every((g: any) => ["aurastage-synth", "aurastage-voice"].includes(g.id) ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
+  assert(ws.generators.every((g: any) => ["aurastage-synth", "aurastage-voice", "aurastage-neural-voice"].includes(g.id) ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
   return `${r.tracks} tracks, ${r.cues} cues from plan v${r.shot_plan_version_number}`;
 });
 await check("audio: upload a WAV to the private library (non-audio refused); bytes round-trip", async () => {
@@ -718,14 +718,14 @@ await check("locations & props: found in the approved script (names are never pr
 // ---- Built-in sound: generate the scene's planned ambience/effects/score in the worker, real WAV in the Assets Library ----
 await check("audio: built-in generation makes real WAVs for the planned cues and speaks a line in the character's Voice DNA; use one on its cue", async () => {
   const ws0 = await api("GET", `/api/projects/${projectId}/audio`);
-  assert(ws0.generators.some((g: any) => g.id === "aurastage-synth" && g.state === "configured") && ws0.generators.some((g: any) => g.id === "aurastage-voice" && g.state === "configured"), "generators");
+  assert(ws0.generators.some((g: any) => g.id === "aurastage-synth" && g.state === "configured") && ws0.generators.some((g: any) => g.id === "aurastage-neural-voice" && g.state === "configured"), "the neural voice isn't installed on the API");
   const r = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate-cues`, {});
-  assert(r.requested.length >= 1 && r.requested.every((g: any) => ["aurastage-synth", "aurastage-voice"].includes(g.provider) && g.execution === "native"), JSON.stringify(r).slice(0, 300));
+  assert(r.requested.length >= 1 && r.requested.every((g: any) => ["aurastage-synth", "aurastage-neural-voice"].includes(g.provider) && g.execution === "native"), JSON.stringify(r).slice(0, 300));
   // Voice: the dialogue cue's line, spoken in the speaker's Voice DNA (Casting profile + the line's emotion).
   const dx = ws0.scenes.find((x: any) => x.scene.id === s1).clips.find((c: any) => c.source?.dialogue_line_id);
   await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { kind: "voice", duration_seconds: 2 }, [400]);
   const v = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { clip_id: dx.id, kind: "voice", duration_seconds: 2 });
-  assert(v.provider === "aurastage-voice" && v.description.length > 0, JSON.stringify(v).slice(0, 300));
+  assert(v.provider === "aurastage-neural-voice" && v.description.length > 0, JSON.stringify(v).slice(0, 300));
   r.requested.push(v);
   let sc: any;
   for (let i = 0; i < 40; i++) {
@@ -748,7 +748,7 @@ await check("audio: built-in generation makes real WAVs for the planned cues and
   const spoken = done.find((x: any) => x.id === v.id);
   const vb = new Uint8Array(await (await fetch(`${API}/api/assets/${spoken.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
   assert(new TextDecoder().decode(vb.slice(0, 4)) === "RIFF" && vb.length > 44 + 8000, `voice not a real WAV (${vb.length} bytes)`);
-  return `${done.length} sound(s): ${done.map((x: any) => `${x.kind} [${x.layers.map((l: any) => l.name).join(", ")}]`).join("; ")}`;
+  return `${done.length} sound(s): ${done.map((x: any) => `${x.kind} [${x.layers.map((l: any) => l.name).join(", ")}]`).join("; ")} · voice: ${spoken.layers[0]?.because ?? ""}`;
 });
 // ---- Phase 13-1: Ask AuraStage (plans in the generation worker; test planner until a Claude key is set) ----
 async function planned(tok: string, id: string) {

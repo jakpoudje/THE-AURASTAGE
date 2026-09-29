@@ -230,7 +230,7 @@ await check("audio: speak the line in Tunde's Voice DNA with the built-in voice 
   await v.getByRole("button", { name: "Generate voice" }).click();
   await v.getByTestId("generation").getByText("Ready").waitFor({ timeout: 90000 });
   const label = await v.getByTestId("generation").first().innerText();
-  if (!/Built-in voice \(robotic\)/.test(label)) throw new Error("not labelled as the built-in voice: " + label);
+  if (!/Built-in neural voice/.test(label)) throw new Error("not the built-in neural voice: " + label);
   await v.getByRole("button", { name: "▶ Listen" }).click();
   await v.getByLabel("Generated sound").waitFor();
   await reload("Professional Sound for");

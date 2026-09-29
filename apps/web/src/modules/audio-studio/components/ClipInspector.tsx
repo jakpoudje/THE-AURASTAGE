@@ -98,7 +98,7 @@ export function ClipInspector({
               {generations.map((g) => (
                 <li key={g.id} className="flex flex-wrap items-center gap-2" data-testid="generation">
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] ${g.status === "succeeded" ? "border-emerald-400/50 text-emerald-300" : g.status === "failed" ? "border-red-400/50 text-red-300" : "border-white/20 text-white/50"}`}>{STATUS[g.status]}</span>
-                  <span className="text-white/60">{g.execution === "native" ? "Built-in voice (robotic)" : g.provider}{g.layers.length ? ` · ${g.layers.map((l) => l.name.replace(/^Voice: /, "")).join(", ")}` : ""}</span>
+                  <span className="text-white/60">{g.provider === "aurastage-neural-voice" ? "Built-in neural voice" : g.provider === "aurastage-voice" ? "Built-in voice (robotic)" : g.provider}{g.layers.length ? ` · ${g.layers.map((l) => l.name.replace(/^Voice: /, "")).join(", ")}` : ""}</span>
                   {g.error && <span className="text-red-300">{g.error}</span>}
                   {g.asset_id && <Listen assetId={g.asset_id} />}
                   {g.asset_id && (clip.asset_id === g.asset_id
@@ -108,7 +108,7 @@ export function ClipInspector({
               ))}
             </ul>
           )}
-          <p className="mt-1 text-white/35">The built-in voice is free and robotic — good for timing and rhythm. Replace it with a recording or a voice provider for the film.</p>
+          <p className="mt-1 text-white/35">The built-in neural voice is free and natural-sounding, matched to the character's Voice DNA. For full acting range, record the line or connect a voice provider.</p>
         </section>
       )}
       {genKind && genKind !== "voice" && onGenerate && (

@@ -28,7 +28,7 @@ export function VoiceDnaTab({ character, projectId, dirty }: { character: Charac
           <div><dt className="text-white/40">Voice type</dt><dd><span className="capitalize">{base.age_band}</span> · {base.gender === "unspecified" ? "gender not set" : base.gender}</dd></div>
           <div><dt className="text-white/40">Register</dt><dd>{base.pitch} / 99</dd></div>
           <div><dt className="text-white/40">Pace</dt><dd>{base.speed} words/min</dd></div>
-          <div><dt className="text-white/40">Built-in voice</dt><dd className="font-mono">{base.voice_id}</dd></div>
+          <div><dt className="text-white/40">Fallback voice</dt><dd className="font-mono">{base.voice_id}</dd></div>
         </dl>
         <div className="mt-3 text-[11px] uppercase tracking-wider text-white/50">Why this voice</div>
         <ul aria-label="Why this voice" className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-white/70">
@@ -57,7 +57,7 @@ export function VoiceDnaTab({ character, projectId, dirty }: { character: Charac
 
       <p className="text-xs text-white/60">
         To hear {character.name}, open a scene in <Link href={`/projects/${projectId}/audio`} className="text-aura-gold underline">Audio Studio</Link>, pick one of their dialogue cues and choose <b>Generate voice</b>.
-        The built-in voice is free and robotic — good for timing and rhythm. A voice provider (added later) uses the same description to pick a natural voice.
+        AuraStage's built-in neural voice is free: it picks a real recorded speaker whose measured register and accent match this Voice DNA, and the same speaker is used for every line. A voice provider (added later) uses the same description for full acting range.
       </p>
     </div>
   );

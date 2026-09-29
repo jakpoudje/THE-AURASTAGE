@@ -1206,7 +1206,7 @@ http.createServer((req, res) => {
       { id: "worker:render-worker", label: "Render worker", state: "down", evidence: "last checked in 9 min ago" },
     ], jobs_24h: [{ engine_id: "rendering.render", completed: 2, failed: 1, cancelled: 0, running: 0, queued: 0, oldest_queued_seconds: null }],
       providers: [{ id: "aurastage-sketch", name: "AuraStage Sketch", state: "configured", capabilities: ["image"] }, { id: "runway", name: "Runway", state: "not_configured", capabilities: ["video"] }],
-      not_connected: [{ id: "voice", name: "Studio-quality voices", note: "Not connected yet — needs a voice provider account (the built-in robotic voice works meanwhile)" }] });
+      not_connected: [{ id: "voice", name: "Studio-quality voices", note: "Not connected yet — needs a voice provider account (the built-in neural voice works meanwhile)" }] });
     if (u === "/api/help/guides") return send(200, { guides: eng.GUIDES, troubleshooting: eng.TROUBLESHOOTING });
     if (u === "/api/help/assistant") {
       const k = eng.knowledgeRetrievalEngine({ query: b.question, module: b.module ?? null, limit: 3 });

@@ -73,8 +73,10 @@ export async function generateSound(db: SupabaseClient, projectId: string, scene
     if (!ls || ls.line.scene_id !== sceneId) throw new AudioValidationError([], "That line isn't in this scene.");
     const who = (ls.character ?? { name: ls.line.speaker_name }) as { name: string };
     const voice = voiceCasting.voiceCastingEngine({ character: who, line: { emotion: ls.line.emotion, intensity: ls.line.intensity } });
+    // The base voice (profile only) picks the speaker, so a character sounds like the same person in every line.
+    const voice_base = voiceCasting.voiceCastingEngine({ character: who });
     description = String(ls.line.text).slice(0, 500);
-    params = { voice, line_id: lineId, character_id: ls.line.character_id ?? null };
+    params = { voice, voice_base, character_name: who.name, line_id: lineId, character_id: ls.line.character_id ?? null };
     engineVersion = voice.engine_version;
   } else if (!description) throw new AudioValidationError([], "Describe the sound");
   const g = await repo.requestGeneration(db, {
