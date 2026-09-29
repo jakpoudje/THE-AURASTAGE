@@ -1,7 +1,7 @@
 # engines/audio
 
 Implemented:
-- `audioSpottingEngine` v1.0.0 — deterministic cue sheet (DX/VO per line, FX from Scene DNA sound candidates, BG ambience, score) with evidence per cue.
+- `audioSpottingEngine` v1.1.0 — deterministic cue sheet (DX/VO per line, FX from Scene DNA sound candidates, BG ambience, score) with evidence per cue. 1.1.0: each FX/Foley cue is placed where its action line falls in the script, between the spoken lines around it (proportional to the script lines between them); without script positions cues are spread as in 1.0.0.
 - `loudnessMeterEngine` v1.0.0 — ITU-R BS.1770-4 K-weighting (libebur128 coefficient derivation at any sample rate), gated integrated loudness, EBU Tech 3342 loudness range, 4× oversampled true peak.
 
 Planned (SRS): `foleyRecommendationEngine`, `adrConformEngine`, `mixRoutingEngine`, `musicCueEngine`.

@@ -15,7 +15,7 @@ import type { AudioSpottingOutput } from "./output.schema";
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
-  const { scene, scene_seconds: T, shots, lines, dna } = validateAudioSpottingInput(raw);
+  const { scene, scene_seconds: T, shots, lines, dna, script_lines } = validateAudioSpottingInput(raw);
   const tracks: AudioSpottingOutput["tracks"] = [];
   const clips: AudioSpottingOutput["clips"] = [];
   const addTrack = (key: string, name: string, family: AudioSpottingOutput["tracks"][number]["family"]) => {
@@ -28,6 +28,8 @@ export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
   for (const s of [...shots].sort((a, b) => a.ordinal - b.ordinal)) for (const id of s.dialogue_line_ids) if (!shotOf.has(id)) shotOf.set(id, s);
   const cursor = new Map<number, number>(); // shot ordinal -> next free time inside it
   let last = 0;
+  // Where each spoken line sits in the script and in time — the anchors sound cues are placed between.
+  const anchors: { line: number; start: number; end: number; text: string }[] = [];
   for (const l of lines) {
     const who = l.character_name ?? l.speaker;
     const key = addTrack(`dx:${l.character_id ?? l.speaker}`, `${l.voice_over ? "VO" : "DX"} — ${who}`, l.voice_over ? "VO" : "DX");
@@ -44,6 +46,7 @@ export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
       duration_seconds: r2(dur),
       source: { dialogue_line_id: l.id, evidence: shot ? `Shot ${shot.ordinal} of the approved shot plan` : "Script order (no shot covers this line)" },
     });
+    if (l.script_line) anchors.push({ line: l.script_line, start: Math.min(start, Math.max(0, T - 0.5)), end: Math.min(T, start + dur), text: l.text });
     if (shot) cursor.set(shot.ordinal, start + dur + LINE_PAD_SECONDS);
     last = start + dur + LINE_PAD_SECONDS;
   }
@@ -60,18 +63,40 @@ export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
     source: { cue: "ambience", evidence: `Scene ${scene.number} heading${bgBits ? " + Scene DNA weather/atmosphere" : ""}` },
   });
 
-  // FX / Foley from Scene DNA's detected sound cues, spread through the scene for a person to position.
+  // FX / Foley from Scene DNA's detected sound cues. When the script positions are known, each cue is placed where its
+  // action line falls between the spoken lines around it (in proportion to the script lines between them); otherwise
+  // cues are spread through the scene for a person to position.
+  const placeByScript = anchors.length > 0 && dna.sound_candidates.length > 0;
+  if (placeByScript) {
+    anchors.sort((a, b) => a.line - b.line);
+    const lo = Math.min(script_lines?.start ?? Infinity, ...dna.sound_candidates.map((c) => c.line), anchors[0].line) - 1;
+    const hi = Math.max(script_lines?.end ?? -Infinity, ...dna.sound_candidates.map((c) => c.line), anchors[anchors.length - 1].line) + 1;
+    anchors.unshift({ line: lo, start: 0, end: 0, text: "" });
+    anchors.push({ line: hi, start: T, end: T, text: "" });
+  }
+  const used = new Map<string, number>(); // track -> end of the last cue placed on it (cues on one track don't pile up)
   dna.sound_candidates.forEach((c, i) => {
     const foley = FOLEY_WORDS.test(c.cue);
     const key = addTrack(foley ? "foley" : "fx", foley ? "Foley" : "FX", foley ? "FOLEY" : "FX");
     const n = dna.sound_candidates.length;
-    const centre = (T * (i + 0.5)) / n;
+    const dur = Math.min(FX_CUE_SECONDS, T);
+    let at: number, where = "";
+    if (placeByScript) {
+      const prev = [...anchors].reverse().find((a) => a.line <= c.line)!;
+      const next = anchors.find((a) => a.line > c.line) ?? anchors[anchors.length - 1];
+      const frac = next.line === prev.line ? 0 : (c.line - prev.line) / (next.line - prev.line);
+      at = prev.end + Math.max(0, next.start - prev.end) * frac;
+      where = prev.text ? ` — after “${prev.text.length > 30 ? prev.text.slice(0, 27) + "…" : prev.text}”` : next.text ? ` — before “${next.text.length > 30 ? next.text.slice(0, 27) + "…" : next.text}”` : "";
+    } else at = (T * (i + 0.5)) / n - FX_CUE_SECONDS / 2;
+    at = Math.max(at, used.get(key) ?? 0);
+    const start = r2(Math.max(0, Math.min(T - 0.5, at)));
+    used.set(key, start + dur * 0.5);
     clips.push({
       track_key: key,
       label: c.cue,
-      start_seconds: r2(Math.max(0, Math.min(T - 0.5, centre - FX_CUE_SECONDS / 2))),
-      duration_seconds: r2(Math.min(FX_CUE_SECONDS, T)),
-      source: { cue: c.cue, evidence: `Script line ${c.line}: ${c.text}` },
+      start_seconds: start,
+      duration_seconds: r2(dur),
+      source: { cue: c.cue, evidence: `Script line ${c.line}: ${c.text}${placeByScript ? ` (placed by its script position${where})` : ""}` },
     });
   });
 

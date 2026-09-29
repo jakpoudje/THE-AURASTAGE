@@ -52,6 +52,8 @@ TUNDE OKAFOR (35), an investigative journalist, reviews documents.
 TUNDE
 Someone has to tell the truth.
 
+He types fast at the keyboard.
+
 EXT. LAGOS HARBOUR - DAWN
 
 AMARA BELLO (32) waits by the water. DETECTIVE RAMOS watches from a car.
@@ -320,9 +322,14 @@ await check("audio: spot the approved scene into tracks and cues (unplanned scen
   const ws = await api("GET", `/api/projects/${projectId}/audio`);
   const sc = ws.scenes.find((x: any) => x.scene.id === s1);
   assert(sc.session.id === sessionId && sc.tracks.length >= 2 && sc.clips.some((c: any) => c.source.dialogue_line_id), "no dialogue cue");
+  // Sound cues from the action lines are placed where they happen in the script (audioSpottingEngine 1.1.0).
+  const fx = sc.clips.filter((c: any) => c.source.cue && !["ambience", "score"].includes(c.source.cue));
+  assert(fx.length >= 1 && fx.every((c: any) => /placed by its script position/.test(c.source.evidence)), `cues not placed by script: ${fx.map((c: any) => c.source.evidence).join(" | ") || "none"}`);
+  const typing = fx.find((c: any) => c.label === "Keyboard typing"), said = sc.clips.find((c: any) => c.source.dialogue_line_id);
+  assert(typing && typing.start_seconds >= said.start_seconds + said.duration_seconds - 0.01, `typing should follow the line it comes after (${typing?.start_seconds} vs ${said.start_seconds}+${said.duration_seconds})`);
   // Honest generators: the built-in synthesiser is ready; nothing unbuilt claims to be connected.
   assert(ws.generators.every((g: any) => ["aurastage-synth", "aurastage-voice", "aurastage-neural-voice"].includes(g.id) ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
-  return `${r.tracks} tracks, ${r.cues} cues from plan v${r.shot_plan_version_number}`;
+  return `${r.tracks} tracks, ${r.cues} cues from plan v${r.shot_plan_version_number}; ${fx.map((c: any) => `${c.label}@${c.start_seconds}s`).join(", ") || "no FX cues in this scene"}`;
 });
 await check("audio: upload a WAV to the private library (non-audio refused); bytes round-trip", async () => {
   const bad = await fetch(`${API}/api/projects/${projectId}/assets/audio?name=x.wav&duration=1&sample_rate=48000&channels=1`, {

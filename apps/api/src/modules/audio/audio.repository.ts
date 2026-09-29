@@ -32,12 +32,18 @@ async function rpc<T = Row>(db: SupabaseClient, fn: string, args: Row): Promise<
 }
 
 export const listScenes = (db: SupabaseClient, p: string) =>
-  rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status").eq("project_id", p).order("number", { ascending: true }));
+  rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, element_start, element_end").eq("project_id", p).order("number", { ascending: true }));
 export const listPlans = (db: SupabaseClient, p: string) => rows(db.from("shot_plans").select("id, scene_id, status, review_state, review_reason, approved_version_id").eq("project_id", p));
 export const listPlanVersions = (db: SupabaseClient, p: string) => rows(db.from("shot_plan_versions").select("id, plan_id, version_number, scene_dna_version_id, shots").eq("project_id", p));
 export const listDnaVersions = (db: SupabaseClient, p: string) => rows(db.from("scene_dna_versions").select("id, content").eq("project_id", p));
 export const listLines = (db: SupabaseClient, p: string) =>
-  rows(db.from("dialogue_lines").select("id, speaker_name, character_id, text, estimated_seconds, extensions").eq("project_id", p));
+  rows(db.from("dialogue_lines").select("id, speaker_name, character_id, text, estimated_seconds, extensions, element_index, source_version_id").eq("project_id", p));
+/** Source line of each element of a script version (read-only; Scriptwriter owns it) — to place sound cues by script position. */
+export async function scriptElementLines(db: SupabaseClient, versionId: string): Promise<Map<number, number>> {
+  const { data, error } = await db.from("script_versions").select("elements").eq("id", versionId).maybeSingle();
+  if (error) throw error;
+  return new Map(((data?.elements ?? []) as { index: number; line: number }[]).map((e) => [e.index, e.line]));
+}
 export const listCharacters = (db: SupabaseClient, p: string) => rows(db.from("characters").select("id, name").eq("project_id", p));
 export const listSessions = (db: SupabaseClient, p: string) => rows(db.from("audio_sessions").select("*").eq("project_id", p));
 export const listTracks = (db: SupabaseClient, p: string) => rows(db.from("audio_tracks").select("*").eq("project_id", p).order("ordinal", { ascending: true }));

@@ -69,3 +69,35 @@ describe("audioSpottingEngine", () => {
     expect(audioSpottingEngine(base())).toEqual(audioSpottingEngine(base()));
   });
 });
+
+describe("audioSpottingEngine 1.1.0: sound cues placed by their script position", () => {
+  const placed = () => {
+    const input = base() as any;
+    input.script_lines = { start: 1, end: 12 };
+    // Script: 3 rain (before anyone speaks), 4 "You came.", 5 footsteps, 6 "I didn't think…", 9 "Breaking news."
+    input.lines[0].script_line = 4; input.lines[1].script_line = 6; input.lines[2].script_line = 9;
+    return audioSpottingEngine(input);
+  };
+  it("a cue between two lines lands between them; a cue before the first line lands before it", () => {
+    const fx = placed().clips.filter((c) => c.track_key === "fx" || c.track_key === "foley");
+    const rain = fx.find((c) => c.label === "Rain ambience")!, steps = fx.find((c) => c.label === "Footsteps")!;
+    // "You came." is 4–5 s, "I didn't think you would." starts at 5.5 s; line 5 is halfway between lines 4 and 6.
+    expect(steps.start_seconds).toBe(5.25);
+    expect(steps.source.evidence).toBe("Script line 5: Footsteps approach. (placed by its script position — after “You came.”)");
+    // Line 3 is 3/4 of the way from the scene start (line 0) to "You came." (line 4, at 4 s).
+    expect(rain.start_seconds).toBe(3);
+    expect(rain.start_seconds).toBeLessThan(4);
+  });
+  it("without script positions, cues are spread as before (1.0.0 behaviour)", () => {
+    const fx = audioSpottingEngine(base()).clips.filter((c) => c.track_key === "fx" || c.track_key === "foley");
+    expect(fx.map((c) => c.start_seconds)).toEqual([4, 14]);
+    expect(fx[1].source.evidence).toBe("Script line 5: Footsteps approach.");
+  });
+  it("cues on the same track never start on top of each other", () => {
+    const input = base() as any;
+    input.lines[0].script_line = 4; input.lines[1].script_line = 20;
+    input.dna.sound_candidates = [{ cue: "Footsteps", line: 5, text: "a" }, { cue: "Door knock", line: 5, text: "b" }];
+    const f = audioSpottingEngine(input).clips.filter((c) => c.track_key === "foley");
+    expect(f[1].start_seconds).toBeGreaterThan(f[0].start_seconds);
+  });
+});

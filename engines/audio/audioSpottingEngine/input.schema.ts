@@ -16,8 +16,12 @@ export const AudioSpottingInputSchema = z.object({
       text: z.string(),
       estimated_seconds: z.number().nonnegative(),
       voice_over: z.boolean().default(false),
+      /** The line's position in the approved script (source line number), so sound cues can be placed around it. */
+      script_line: z.number().int().positive().nullable().optional(),
     })
   ),
+  /** The scene's first and last source lines in the approved script (for placing cues before/after the dialogue). */
+  script_lines: z.object({ start: z.number().int().positive(), end: z.number().int().positive() }).nullable().optional(),
   /** Sound notes from the locked Scene DNA version. */
   dna: z.object({
     sound_intent: z.string().nullable(),

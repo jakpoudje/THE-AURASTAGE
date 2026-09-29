@@ -138,16 +138,21 @@ export async function spotScene(db: SupabaseClient, projectId: string, sceneId: 
   const name = new Map(chars.map((c) => [c.id as string, c.name as string]));
   const shots = ((pv.shots as Row[]) ?? []).map((s) => ({ ordinal: s.ordinal, story_start: Number(s.story_start), story_end: Number(s.story_end), dialogue_line_ids: s.dialogue_line_ids ?? [] }));
   const seconds = Math.max(1, ...shots.map((s) => s.story_end));
+  const sceneLines = lineIds.map((id) => lines.find((l) => l.id === id)).filter((l): l is Row => !!l);
+  // Script positions (source lines) of the spoken lines and the scene, so sound cues land where the action happens.
+  const sourceVersion = sceneLines[0]?.source_version_id as string | undefined;
+  const at = sourceVersion ? await repo.scriptElementLines(db, sourceVersion) : new Map<number, number>();
+  const bounds = [at.get(scene.element_start), at.get(scene.element_end)];
   const { tracks, clips, engine_version } = audioSpottingEngine({
     scene: { number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day },
     scene_seconds: seconds,
     shots,
-    lines: lineIds
-      .map((id) => lines.find((l) => l.id === id))
-      .filter((l): l is Row => !!l)
+    script_lines: bounds[0] && bounds[1] ? { start: bounds[0], end: bounds[1] } : null,
+    lines: sceneLines
       .map((l) => ({
         id: l.id, speaker: l.speaker_name, character_id: l.character_id, character_name: l.character_id ? name.get(l.character_id) ?? null : null,
         text: l.text, estimated_seconds: Number(l.estimated_seconds), voice_over: (l.extensions ?? []).some((e: string) => /V\.?O/i.test(e)),
+        script_line: at.get(l.element_index) ?? null,
       })),
     dna: {
       sound_intent: editable.sound_intent ?? null, weather: editable.weather ?? null, atmosphere: editable.atmosphere ?? null,

@@ -78,7 +78,7 @@ what was approved is what is heard in the cut and in delivered files.
 Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 
 ## Relevant engines
-- `engines/audio/audioSpottingEngine` — tracks and cues from shots, lines and Scene DNA (evidence per cue).
+- `engines/audio/audioSpottingEngine` — tracks and cues from shots, lines and Scene DNA (evidence per cue). The service passes each line's script position (read from the approved script version) so sound cues land where the action happens.
 - `engines/audio/loudnessMeterEngine` — ITU-R BS.1770-4 / EBU R128 (integrated, true peak, LRA). Runs in the browser on the rendered mix.
 - `engines/audio/proceduralAudioEngine` — the built-in synthesiser's layer plan.
 - `engines/audio/voiceCastingEngine` — Voice DNA per character and line (also shown in Casting → Voice DNA).
