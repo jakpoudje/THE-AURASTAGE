@@ -14,6 +14,7 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 import { CommentsDrawer, type CommentContext } from "@/modules/team-collaboration/components/CommentsDrawer";
 import { NotificationBell } from "@/modules/team-collaboration/components/NotificationBell";
 import { AskAuraStage } from "@/modules/ask-aurastage/components/AskAuraStage";
+import { ASK_EVENT } from "@/modules/ask-aurastage/askBus";
 import type { AssistantModule } from "@/modules/ask-aurastage/api/assistantApi";
 
 export const STAGES = [
@@ -73,6 +74,12 @@ export function AppShell({
   const stageModule = active in STAGE_MODULE ? STAGE_MODULE[active as StageKey] : null;
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
+  const [askRequest, setAskRequest] = useState<{ text: string; n: number } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => { setAskRequest({ text: (e as CustomEvent<{ text: string }>).detail.text, n: Date.now() }); setAskOpen(true); setCommentsOpen(false); };
+    window.addEventListener(ASK_EVENT, on);
+    return () => window.removeEventListener(ASK_EVENT, on);
+  }, []);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(null);
   useEffect(() => {
@@ -214,7 +221,7 @@ export function AppShell({
           </div>
         )}
         <main>{children}</main>
-        {askOpen && project && <AskAuraStage projectId={project.id} module={assistantModule} onClose={() => setAskOpen(false)} />}
+        {askOpen && project && <AskAuraStage projectId={project.id} module={assistantModule} request={askRequest} onClose={() => (setAskOpen(false), setAskRequest(null))} />}
         {commentsOpen && commentContext && project && (
           <CommentsDrawer
             projectId={project.id}

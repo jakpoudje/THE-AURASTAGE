@@ -6,6 +6,7 @@
 import { ProviderError } from "../../types";
 import type { ReasoningAdapter, ReasoningRequest, ReasoningResult } from "../types";
 import * as writer from "./testWriter";
+import { storyAccentEngine } from "@aurastage/engines";
 
 type Item = { ref: { type: string; id: string; label: string }; data: Record<string, any> };
 type Snapshot = {
@@ -61,8 +62,30 @@ function plan(snap: Snapshot) {
     ?? (sceneNum ? byType("scene").find((i) => String(i.data.number) === sceneNum) : undefined)
     ?? (byType("scene").length === 1 ? byType("scene")[0] : undefined);
 
+  const profile = /\bdevelop\b[^.]*\bprofile\b/i.test(text);
+  // ---- A character's whole profile: the test planner can only fill what the story states (accent, languages) ----
+  if (profile) {
+    const ch = (text.match(/\b[A-Z][a-z]+\b/g) ?? []).map((n) => named("character", n)).find(Boolean);
+    if (!ch) questions.push("Which character? Open them in Casting and ask again.");
+    else {
+      const project = byType("project")[0];
+      const d = ch.data as Record<string, any>;
+      const s = storyAccentEngine({ character: { nationality: d.nationality ?? null, description: d.description ?? null, backstory: d.backstory ?? null },
+        scene_locations: [], project: { setting: project?.data.setting ?? null, logline: project?.data.logline ?? null } }).suggestion;
+      const changes: Record<string, string> = {};
+      if (s && !d.accent) changes.accent = s.accent;
+      if (s && !d.languages) changes.languages = s.languages.join(", ");
+      if (Object.keys(changes).length) {
+        add("updateCharacter", { character_id: ch.ref.id, changes }, `${ch.ref.label}: ${Object.keys(changes).join(" and ")} from the story (${s!.evidence[0]})`);
+        done.push(`set ${ch.ref.label}'s ${Object.keys(changes).join(" and ")} from the story`);
+      }
+      const prose = ["personality", "backstory", "motivation", "fears", "strengths", "weaknesses", "arc", "description", "occupation"].filter((k) => !d[k]);
+      if (prose.length) not_possible.push(`Writing ${prose.join(", ")} needs a connected writer (Claude, OpenAI or Gemini) — the built-in test planner doesn't invent character details.`);
+    }
+  }
+
   // ---- One pass over a whole scene: every spoken line's performance + the scene's DNA (only empty fields) ----
-  const whole = /\b(annotate|one pass|in one go|every line|all (?:the |of the )?lines|develop (?:the |this )?(?:whole )?scene)\b/i.test(text);
+  const whole = !profile && /\b(annotate|one pass|in one go|every line|all (?:the |of the )?lines|develop (?:the |this )?(?:whole )?scene)\b/i.test(text);
   if (whole) {
     if (!scene) questions.push("Which scene? Open it in Dialogue Intelligence or Scene DNA and ask again.");
     else {

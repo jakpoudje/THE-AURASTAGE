@@ -12,7 +12,7 @@ const EMOTIONS = ["anger", "fear", "sadness", "joy", "tension", "love"] as const
 
 export function VoiceDnaTab({ character, projectId, dirty }: { character: Character; projectId: string; dirty: boolean }) {
   const who = useMemo(() => ({
-    name: character.name, age: character.age ?? null, gender: character.gender ?? null, nationality: character.nationality ?? null,
+    name: character.name, age: character.age ?? null, gender: character.gender ?? null, nationality: character.nationality ?? null, accent: character.accent ?? null,
     personality: character.personality ?? null, description: character.description ?? null,
   }), [character]);
   const base = useMemo(() => voiceCastingEngine({ character: who }), [who]);

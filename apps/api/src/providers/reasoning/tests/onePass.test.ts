@@ -35,3 +35,22 @@ describe("one pass over a scene (test planner)", () => {
     expect(readLine("Okay.")).toMatchObject({ emotion: "neutral", intensity: 3 });
   });
 });
+
+describe("develop a character's profile (test planner)", () => {
+  const C = "44444444-4444-4444-8444-444444444444";
+  const snap = (data: Record<string, unknown>) => ({
+    request: { text: "Develop Amara Bello's profile in one pass: fill every empty field (accent, languages, personality) from the script and the story.", module: "casting", object: null },
+    context: { focus: null, items: [{ ref: { type: "project", id: "p", label: "Shadows" }, data: { setting: "Lagos, Nigeria" } }, { ref: { type: "character", id: C, label: "Amara Bello" }, data }] },
+    tools: ["updateCharacter"],
+  });
+  const plan = async (data: Record<string, unknown>) => (await testReasoningAdapter.complete({ system: "", prompt: "", schema: PlanSchema, task: { kind: "plan", snapshot: snap(data) } }, {})).data;
+  it("fills accent and languages from the story and says plainly what needs a real writer", async () => {
+    const p = await plan({ name: "Amara Bello", accent: null, languages: null, personality: null });
+    expect(JSON.parse(p.calls[0].input_json)).toEqual({ character_id: C, changes: { accent: "Nigerian English (south-west, Lagos)", languages: "English, Yoruba, Nigerian Pidgin" } });
+    expect(p.not_possible.join(" ")).toMatch(/personality.*needs a connected writer/);
+  });
+  it("keeps an accent the writer already chose", async () => {
+    const p = await plan({ name: "Amara Bello", accent: "Received Pronunciation", languages: "English, French" });
+    expect(p.calls).toHaveLength(0);
+  });
+});

@@ -17,7 +17,7 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
   const [projectRows, scenes, chars, looks, dna] = await Promise.all([
     rows(db.from("projects").select("id, title, type, genre, subgenre, tone, setting, time_period, logline, target_runtime_minutes, updated_at").eq("id", P)),
     rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, element_start, element_end, source_version_id, updated_at").eq("project_id", P).eq("status", "active").order("number", { ascending: true }).limit(200)),
-    rows(db.from("characters").select("id, name, role, status, age, gender, occupation, description, merged_into, updated_at").eq("project_id", P).is("merged_into", null).limit(100)),
+    rows(db.from("characters").select("id, name, role, status, age, gender, nationality, accent, languages, occupation, description, personality, backstory, motivation, fears, strengths, weaknesses, arc, merged_into, updated_at").eq("project_id", P).is("merged_into", null).limit(100)),
     rows(db.from("wardrobe_looks").select("id, character_id, name, description, updated_at").eq("project_id", P).limit(300)),
     rows(db.from("scene_dna").select("id, scene_id, status, mood, weather, atmosphere, lighting_intent, sound_intent, story_time, camera_energy, wardrobe, updated_at").eq("project_id", P)),
   ]);
@@ -64,7 +64,8 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
       dna: d ? { mood: d.mood, weather: d.weather, atmosphere: d.atmosphere, lighting_intent: d.lighting_intent, sound_intent: d.sound_intent, story_time: d.story_time, camera_energy: d.camera_energy, status: d.status } : null }));
   }
   for (const c of chars) {
-    items.push(item("character", c, c.name, { name: c.name, role: c.role, age: c.age, gender: c.gender, occupation: c.occupation, description: c.description,
+    items.push(item("character", c, c.name, { name: c.name, role: c.role, age: c.age, gender: c.gender, nationality: c.nationality, accent: c.accent, languages: c.languages, occupation: c.occupation, description: c.description,
+      personality: c.personality, backstory: c.backstory, motivation: c.motivation, fears: c.fears, strengths: c.strengths, weaknesses: c.weaknesses, arc: c.arc,
       looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })) }));
   }
   for (const l of lines) items.push(item("dialogue_line", l, `${l.speaker_name} line ${l.ordinal}`, { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity }));

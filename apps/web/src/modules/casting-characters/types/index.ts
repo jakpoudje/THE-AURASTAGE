@@ -1,5 +1,5 @@
 import type { Character, CharacterAlias, CharacterAppearance, CharacterRelationship, WardrobeLook } from "@aurastage/contracts";
-import type { CharacterCandidate } from "@aurastage/engines";
+import type { CharacterCandidate, StoryAccentOutput } from "@aurastage/engines";
 
 /** Response of GET /api/projects/:id/characters (apps/api/src/modules/characters). */
 export interface CastingWorkspace {
@@ -17,4 +17,6 @@ export interface CastingWorkspace {
     new_from_script: number;
   };
   pending: CharacterCandidate[];
+  /** How each character might speak, suggested from the story (never from a name), by character id. */
+  accent_suggestions?: Record<string, StoryAccentOutput>;
 }

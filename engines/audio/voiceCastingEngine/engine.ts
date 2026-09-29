@@ -9,7 +9,7 @@ import { ENGINE_VERSION } from "./version";
 export const VoiceInputSchema = z.object({
   character: z.object({
     name: z.string().min(1).max(120), age: z.string().max(40).nullable().optional(), gender: z.string().max(60).nullable().optional(),
-    nationality: z.string().max(100).nullable().optional(), personality: z.string().max(4000).nullable().optional(), description: z.string().max(2000).nullable().optional(),
+    nationality: z.string().max(100).nullable().optional(), accent: z.string().max(120).nullable().optional(), personality: z.string().max(4000).nullable().optional(), description: z.string().max(2000).nullable().optional(),
   }),
   line: z.object({ emotion: z.string().max(40).nullable().optional(), intensity: z.number().min(0).max(10).nullable().optional() }).nullable().default(null),
 });
@@ -59,9 +59,11 @@ export function voiceCastingEngine(raw: VoiceInput): VoiceOutput {
   const pool = POOLS[`${sex}:${age_band}`];
   const variant = pool[h % pool.length];
 
-  const nat = (c.nationality ?? "").toLowerCase();
+  // The accent the writer chose in Casting leads; otherwise the stated nationality (1.0.0 behaviour).
+  const nat = (c.accent || c.nationality || "").toLowerCase();
   const language = /americ|u\.?s\.?a?\b|canad/.test(nat) ? "en-us" : /scot/.test(nat) ? "en-gb-scotland" : /irish|ireland/.test(nat) ? "en-gb-x-rp" : "en-gb";
-  if (c.nationality) why.push(`${c.nationality} → ${language === "en-us" ? "American" : language === "en-gb-scotland" ? "Scottish" : "British"} English${/niger|ghan|kenya|south africa|africa|jamaica|india/.test(nat) ? " (the built-in voice has no " + c.nationality + " accent; a paid voice provider can match it)" : ""}`);
+  if (c.accent) why.push(`Accent (profile): ${c.accent} → built-in voice speaks ${language === "en-us" ? "American" : language === "en-gb-scotland" ? "Scottish" : "British"} English${/americ|scot|british|english \(southern|irish|london|northern english/.test(nat) ? "" : "; a paid voice provider matches the accent itself"}`);
+  else if (c.nationality) why.push(`${c.nationality} → ${language === "en-us" ? "American" : language === "en-gb-scotland" ? "Scottish" : "British"} English${/niger|ghan|kenya|south africa|africa|jamaica|india/.test(nat) ? " (the built-in voice has no " + c.nationality + " accent; a paid voice provider can match it)" : ""}`);
 
   let pitch = (sex === "female" ? 62 : 38) + (age_band === "child" ? 18 : age_band === "elder" ? -8 : age_band === "young" ? 4 : 0) + ((h >>> 3) % 13) - 6;
   let speed = 165 + ((h >>> 7) % 21) - 10;
@@ -83,6 +85,6 @@ export function voiceCastingEngine(raw: VoiceInput): VoiceOutput {
   pitch = clamp(pitch, 0, 99); speed = clamp(speed, 80, 260); amplitude = clamp(amplitude, 40, 200);
   const pace = speed < 150 ? "slow" : speed > 185 ? "quick" : "medium";
   const register = pitch < 35 ? "low" : pitch > 65 ? "high" : "mid";
-  const description = `${age_band === "adult" ? "Adult" : age_band[0].toUpperCase() + age_band.slice(1)} ${sex} voice, ${register} register, ${pace} pace, ${language === "en-us" ? "American" : language === "en-gb-scotland" ? "Scottish" : "British"} English${c.nationality ? `; character is ${c.nationality}` : ""}${delivery}.`;
+  const description = `${age_band === "adult" ? "Adult" : age_band[0].toUpperCase() + age_band.slice(1)} ${sex} voice, ${register} register, ${pace} pace, ${language === "en-us" ? "American" : language === "en-gb-scotland" ? "Scottish" : "British"} English${c.accent ? `; accent: ${c.accent}` : ""}${c.nationality ? `; character is ${c.nationality}` : ""}${delivery}.`;
   return { voice_id: `${language}+${variant}`, language, variant, pitch, speed, amplitude, gender, age_band, description, why, engine_version: ENGINE_VERSION };
 }

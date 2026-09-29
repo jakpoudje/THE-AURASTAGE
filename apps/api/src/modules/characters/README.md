@@ -80,3 +80,12 @@ view's `age_state_id`; views for each age are kept apart from today's. Without a
 exactly what 1.0.0 made, so existing views aren't flagged by the upgrade. Scene DNA chooses the age per scene; the prompt
 compiler (1.3.0) then describes the character at that age and only uses reference views made at that age.
 Tests: `engines/character/characterLookEngine/tests`, `tests/integration/character_ages_db.sql`, `tests/e2e/casting/run.cjs`.
+
+## Accent and languages (migration 0037, task 41)
+`characters.accent` and `characters.languages` are the writer's choice, saved through `update_character`
+(gate_write casting/edit). The workspace read adds `accent_suggestions` per character from
+`engines/character/storyAccentEngine` 1.0.0: the stated nationality first, then where the description/background says
+they are from, then where their scenes are set, then the project setting — each suggestion lists its evidence. A name
+is never evidence. Voice DNA (`voiceCastingEngine` 1.1.0) speaks with the chosen accent where the built-in voice can
+and passes it to paid voice providers. The Profile tab lists fields still empty and offers "Develop the rest with AI"
+(an Ask AuraStage suggestion, reviewed before anything changes).

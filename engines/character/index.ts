@@ -9,3 +9,6 @@ export { characterLookEngine } from "./characterLookEngine";
 export * as characterAppearance from "./characterAppearanceEngine";
 export { characterAppearanceEngine } from "./characterAppearanceEngine";
 export type { Appearance } from "./characterAppearanceEngine";
+export * as storyAccent from "./storyAccentEngine";
+export { storyAccentEngine } from "./storyAccentEngine";
+export type { StoryAccentOutput, AccentSuggestion } from "./storyAccentEngine";

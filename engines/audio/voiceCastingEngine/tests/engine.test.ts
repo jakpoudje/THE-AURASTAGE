@@ -40,3 +40,19 @@ describe("voiceCastingEngine (Voice DNA)", () => {
     }
   });
 });
+
+describe("voiceCastingEngine 1.1.0: the accent chosen in Casting", () => {
+  it("leads the voice and its description; without it the voice is exactly as before", () => {
+    const base = { name: "Amara Bello", age: "32", gender: "female", nationality: "British" };
+    const a = voiceCastingEngine({ character: { ...base, accent: "Scottish English" } });
+    expect(a.language).toBe("en-gb-scotland");
+    expect(a.description).toContain("accent: Scottish English");
+    const before = voiceCastingEngine({ character: base });
+    expect(before.language).toBe("en-gb");
+    expect(before.description).not.toContain("accent:");
+  });
+  it("says when only a paid voice can match the accent", () => {
+    const v = voiceCastingEngine({ character: { name: "Tunde", gender: "male", accent: "Nigerian English (south-west, Lagos)" } });
+    expect(v.why.join(" ")).toMatch(/paid voice provider matches the accent/);
+  });
+});

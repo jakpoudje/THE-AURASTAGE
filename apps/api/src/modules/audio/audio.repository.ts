@@ -87,7 +87,7 @@ export async function getLineWithSpeaker(db: SupabaseClient, lineId: string) {
   if (error) throw mapDbError(error);
   if (!l) return null;
   const c = (l as Row).character_id
-    ? ((await db.from("characters").select("id, name, age, gender, nationality, personality, description").eq("id", (l as Row).character_id).maybeSingle()).data as Row | null)
+    ? ((await db.from("characters").select("id, name, age, gender, nationality, accent, personality, description").eq("id", (l as Row).character_id).maybeSingle()).data as Row | null)
     : null;
   return { line: l as Row, character: c };
 }

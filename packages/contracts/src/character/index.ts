@@ -18,6 +18,10 @@ export const CharacterProfileFieldsSchema = z.object({
   age: z.string().max(40).nullable().optional(),
   gender: z.string().max(60).nullable().optional(),
   nationality: z.string().max(100).nullable().optional(),
+  /** How the character speaks (e.g. "Lagos Nigerian English"), chosen by the writer; suggested from the story, never from a name. */
+  accent: z.string().max(120).nullable().optional(),
+  /** Languages the character speaks, most used first (e.g. "English, Yoruba, Nigerian Pidgin"). */
+  languages: z.string().max(200).nullable().optional(),
   occupation: z.string().max(150).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
   personality: z.string().max(4000).nullable().optional(),

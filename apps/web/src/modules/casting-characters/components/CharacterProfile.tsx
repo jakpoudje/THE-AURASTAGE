@@ -25,6 +25,8 @@ import { LookPanel, useReferenceImage } from "./LookPanel";
 import { VoiceDnaTab } from "./VoiceDnaTab";
 import { lookApi } from "../api/lookApi";
 import { can, useProjectAccess } from "@/lib/useProjectAccess";
+import type { StoryAccentOutput } from "@aurastage/engines";
+import { askAuraStage } from "@/modules/ask-aurastage/askBus";
 
 type Tab = "profile" | "personality" | "look" | "ages" | "voice" | "relationships" | "wardrobe" | "scenes" | "names";
 const TABS: { key: Tab | string; label: string; soon?: boolean }[] = [
@@ -39,11 +41,11 @@ const TABS: { key: Tab | string; label: string; soon?: boolean }[] = [
   { key: "names", label: "Names & Merges" },
 ];
 const ROLES: CharacterRole[] = ["lead", "supporting", "minor", "extra"];
-const PROFILE_FIELDS = ["name", "age", "gender", "nationality", "occupation", "description"] as const;
+const PROFILE_FIELDS = ["name", "age", "gender", "nationality", "accent", "languages", "occupation", "description"] as const;
 const STORY_FIELDS = ["personality", "backstory", "motivation", "fears", "strengths", "weaknesses", "arc"] as const;
 type Field = (typeof PROFILE_FIELDS)[number] | (typeof STORY_FIELDS)[number];
 const LABELS: Record<Field, string> = {
-  name: "Name", age: "Age", gender: "Gender", nationality: "Nationality", occupation: "Occupation", description: "Description",
+  name: "Name", age: "Age", gender: "Gender", nationality: "Nationality", accent: "Accent", languages: "Languages", occupation: "Occupation", description: "Description",
   personality: "Personality", backstory: "Background", motivation: "Motivation", fears: "Fears", strengths: "Strengths",
   weaknesses: "Weaknesses", arc: "Character arc (by act)",
 };
@@ -55,6 +57,7 @@ export function CharacterProfile({
   characters,
   aliases,
   appearances,
+  accent,
   projectId,
   busy,
   onSave,
@@ -72,6 +75,7 @@ export function CharacterProfile({
   characters: Character[];
   aliases: CharacterAlias[];
   appearances: CharacterAppearance[];
+  accent?: StoryAccentOutput | null;
   projectId: string;
   busy: string | null;
   onSave: (input: UpdateCharacterInput) => void;
@@ -116,6 +120,10 @@ export function CharacterProfile({
   };
 
   const mine = appearances.filter((a) => a.character_id === character.id);
+  // Every field developed: what's still empty, and one request to develop the rest (reviewed before anything changes).
+  const empty = ([...PROFILE_FIELDS, ...STORY_FIELDS] as Field[]).filter((k) => k !== "name" && !form[k].trim());
+  const develop = () => askAuraStage(`Develop ${character.name}'s profile in one pass: fill every empty field (${empty.map((k) => LABELS[k].toLowerCase()).join(", ")}) from the script and the story — including the accent and languages the story suggests. Keep what is already written.`);
+  const sug = accent?.suggestion ?? null;
   const myAliases = aliases.filter((a) => a.character_id === character.id && a.source !== "name");
   const mergedIntoMe = characters.filter((c) => c.merged_into === character.id);
   const mergeOptions = characters.filter((c) => c.id !== character.id && !c.merged_into);
@@ -206,8 +214,33 @@ export function CharacterProfile({
               {field("gender")}
               {field("nationality")}
               {field("occupation")}
+              {field("accent")}
+              {field("languages")}
             </div>
+            {sug && (form.accent.trim() !== sug.accent || form.languages.trim() !== sug.languages.join(", ")) && (
+              <div data-testid="accent-suggestion" className="rounded-md border border-aura-border bg-black/20 p-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-white/50">From the story:</span>
+                  <span className="text-white/90">{sug.accent} · {sug.languages.join(", ")}</span>
+                  <button type="button" onClick={() => setForm({ ...form, accent: sug.accent, languages: sug.languages.join(", ") })} className="rounded border border-aura-gold/60 px-2 py-0.5 text-aura-gold">
+                    Use this
+                  </button>
+                </div>
+                <p className="mt-1 text-white/40">Why: {sug.evidence.join(" · ")}. A suggestion only — people everywhere speak in many ways; you decide.</p>
+                {(accent?.alternatives.length ?? 0) > 0 && <p className="mt-1 text-white/40">Also possible: {accent!.alternatives.map((a) => a.accent).join(" · ")}</p>}
+              </div>
+            )}
             {field("description", true)}
+            <div data-testid="profile-completeness" className="flex flex-wrap items-center gap-2 rounded-md border border-aura-border p-3 text-xs">
+              {empty.length === 0 ? <span className="text-emerald-300">Every field is filled in.</span> : (
+                <>
+                  <span className="text-white/60">Still empty ({empty.length}): {empty.map((k) => LABELS[k]).join(", ")}</span>
+                  <button type="button" onClick={develop} className="rounded border border-aura-gold/60 px-2 py-0.5 text-aura-gold">
+                    Develop the rest with AI
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
 

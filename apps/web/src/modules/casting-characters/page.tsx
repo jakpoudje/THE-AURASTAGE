@@ -119,6 +119,7 @@ export default function CastingCharactersPage() {
                 characters={c.ws.characters}
                 aliases={c.ws.aliases}
                 appearances={c.ws.appearances}
+                accent={c.ws.accent_suggestions?.[selected.id] ?? null}
                 projectId={id}
                 busy={c.busy}
                 onSave={(input) => c.save(selected.id, input)}

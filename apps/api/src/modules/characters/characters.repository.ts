@@ -108,3 +108,14 @@ export const listAgeStates = (db: SupabaseClient, characterId: string) =>
 export const saveAgeState = (db: SupabaseClient, id: string | null, characterId: string, label: string, age: string, description: string | null) =>
   rpc<Record<string, unknown>>(db, "save_character_age_state", { p_id: id, p_character_id: characterId, p_label: label, p_age: age, p_description: description });
 export const deleteAgeState = (db: SupabaseClient, id: string) => rpc<null>(db, "delete_character_age_state", { p_id: id });
+
+/** Where the story is set and each scene's location (read-only; Projects and Scriptwriter own them) — for accent suggestions. */
+export async function storyPlaces(db: SupabaseClient, projectId: string) {
+  const [p, sc] = await Promise.all([
+    db.from("projects").select("setting, time_period, logline").eq("id", projectId).maybeSingle(),
+    db.from("scenes").select("id, location").eq("project_id", projectId).eq("status", "active"),
+  ]);
+  if (p.error) throw p.error;
+  if (sc.error) throw sc.error;
+  return { project: p.data as { setting: string | null; time_period: string | null; logline: string | null } | null, scenes: (sc.data ?? []) as { id: string; location: string | null }[] };
+}

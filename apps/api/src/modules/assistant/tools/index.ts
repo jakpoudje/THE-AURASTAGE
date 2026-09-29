@@ -69,7 +69,7 @@ const CharacterChanges = UpdateCharacterInputSchema.omit({ status: true, name: t
 const updateCharacter: ToolImpl<{ character_id: string; changes: Row }> = {
   def: {
     name: "updateCharacter", module: "casting", action: "edit", target: "character",
-    description: "Change a character's profile: age, gender, nationality, occupation, description, personality, backstory, motivation, fears, strengths, weaknesses, arc. Never renames or approves.",
+    description: "Change a character's profile: age, gender, nationality, accent, languages, occupation, description, personality, backstory, motivation, fears, strengths, weaknesses, arc. Never renames or approves. Accent and languages come from the story (where they are from, where they live), never from a name.",
     input: z.object({ character_id: z.string().uuid(), changes: CharacterChanges }).strict(),
     impact: ["Scene DNA (locked scenes with this character are flagged for review)", "Visual Generation prompts"], undo: "inverse",
   },

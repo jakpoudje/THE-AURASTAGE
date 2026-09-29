@@ -9,6 +9,7 @@ import {
   characterCandidateExtractionEngine,
   characterIdentityResolutionEngine,
   sceneBoundaryEngine,
+  storyAccentEngine,
   type Resolution,
 } from "@aurastage/engines";
 import { z } from "zod";
@@ -70,7 +71,7 @@ function toSyncItem(r: Resolution) {
 
 export async function getCastingWorkspace(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
-  const [chars, aliases, apps, sync, resolved, relationships, looks] = await Promise.all([
+  const [chars, aliases, apps, sync, resolved, relationships, looks, story] = await Promise.all([
     repo.listCharacters(db, projectId),
     repo.listAliases(db, projectId),
     repo.listAppearances(db, projectId),
@@ -78,7 +79,15 @@ export async function getCastingWorkspace(db: SupabaseClient, projectId: string)
     resolveFromApprovedScript(db, projectId),
     repo.listRelationships(db, projectId),
     repo.listLooks(db, projectId),
+    repo.storyPlaces(db, projectId),
   ]);
+  // How each character might speak, from what the story says (never from a name) — a suggestion the writer can use.
+  const locationOf = new Map(story.scenes.map((s) => [s.id as string, String(s.location ?? "")]));
+  const accent_suggestions = Object.fromEntries(chars.map((c) => [c.id as string, storyAccentEngine({
+    character: { nationality: c.nationality ?? null, description: c.description ?? null, backstory: c.backstory ?? null, occupation: c.occupation ?? null },
+    scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => locationOf.get(a.scene_id as string) ?? "").filter(Boolean).slice(0, 400),
+    project: { setting: story.project?.setting ?? null, time_period: story.project?.time_period ?? null, logline: story.project?.logline ?? null },
+  })]));
   const approvedVersionId = resolved?.version.id ?? null;
   const syncedVersionId = sync?.input_snapshot?.script_version_id ?? null;
   const pending = (resolved?.resolutions ?? []).filter((r) => r.decision === "confirm").map((r) => r.candidate);
@@ -98,6 +107,7 @@ export async function getCastingWorkspace(db: SupabaseClient, projectId: string)
       new_from_script: newFromScript,
     },
     pending,
+    accent_suggestions,
   };
 }
 

@@ -219,7 +219,10 @@ http.createServer((req, res) => {
       const newFromScript = r ? r.rs.filter((y) => y.decision === "create").length : 0;
       return send(200, { characters: chars, aliases, appearances: apps, relationships: rels, wardrobe_looks: looks, script: r ? { approved_version_id: r.v.id, version_number: r.v.version_number } : null,
         sync: { state: !r ? "no_script" : !lastSyncVersion ? "never" : lastSyncVersion === r.v.id && newFromScript === 0 ? "current" : "stale", synced_version_id: lastSyncVersion, synced_at: lastSyncAt, engine_version: "1.0.0", new_from_script: newFromScript },
-        pending: r ? r.rs.filter((y) => y.decision === "confirm").map((y) => y.candidate) : [] });
+        pending: r ? r.rs.filter((y) => y.decision === "confirm").map((y) => y.candidate) : [],
+        // Mirrors characters.service: accent suggestions from the story (storyAccentEngine), never from a name.
+        accent_suggestions: Object.fromEntries(chars.map((c) => [c.id, eng.storyAccentEngine({ character: { nationality: c.nationality ?? null, description: c.description ?? null, backstory: c.backstory ?? null },
+          scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => (scenes.find((x) => x.id === a.scene_id) || {}).location).filter(Boolean), project: { setting: project.setting ?? null, logline: project.logline ?? null } })])) });
     }
     if (u === `/api/projects/${P}/characters/sync`) return approved() ? send(200, doSync(b.confirm || [])) : send(412, { error: { code: "AURA-CHR-412", message: "Approve the script in Scriptwriter first — characters are built from the approved script." } });
     if (u === `/api/projects/${P}/characters/merge`) {

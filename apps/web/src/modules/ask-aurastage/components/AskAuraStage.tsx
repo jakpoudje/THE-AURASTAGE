@@ -23,7 +23,7 @@ const EXAMPLES: Partial<Record<AssistantModule, string>> = {
   script: "Change the tone to Tense and brooding",
 };
 
-export function AskAuraStage({ projectId, module, onClose }: { projectId: string; module: AssistantModule; onClose: () => void }) {
+export function AskAuraStage({ projectId, module, request, onClose }: { projectId: string; module: AssistantModule; request?: { text: string; n: number } | null; onClose: () => void }) {
   const [text, setText] = useState("");
   const [current, setCurrent] = useState<Proposal | null>(null);
   const [recent, setRecent] = useState<Proposal[]>([]);
@@ -67,6 +67,12 @@ export function AskAuraStage({ projectId, module, onClose }: { projectId: string
   });
   // One pass over a whole scene: every spoken line's performance and the scene's DNA, as one suggestion to review.
   const [passScene, setPassScene] = useState("1");
+  // A page asked on the user's behalf (e.g. "Develop this character's profile"): ask it once.
+  const asked = useRef<number | null>(null);
+  useEffect(() => {
+    if (request && asked.current !== request.n) { asked.current = request.n; ask(request.text); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.n]);
   const onePass = module === "dialogue" || module === "scene_dna";
   const annotateScene = () => ask(`Annotate scene ${passScene} in one pass: every line's intention, subtext, emotion and intensity, and the scene's Scene DNA (purpose, stakes, mood, atmosphere, lighting, sound and camera energy). Fill what is empty; keep what is already written.`);
   const act = (fn: (id: string) => Promise<Proposal>) => current && run(async () => {

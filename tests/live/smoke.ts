@@ -299,7 +299,8 @@ await check("visual: approve the take; unconnected providers are refused plainly
   const ws = await api("GET", `/api/projects/${projectId}/visual`);
   const pkgId = ws.scenes[0].shots[0].package.id;
   for (const p of ws.providers.filter((x: any) => x.state === "not_configured")) {
-    const r = await api("POST", `/api/visual/packages/${pkgId}/takes`, { provider: p.id, model: p.models[0].id, capability: "image" }, [412]);
+    // Each provider with its own first model and capability (video-only providers like Kling are asked for video).
+    const r = await api("POST", `/api/visual/packages/${pkgId}/takes`, { provider: p.id, model: p.models[0].id, capability: p.models[0].capability }, [412]);
     assert(/isn't connected yet/.test(r.error.message), r.error.message);
   }
   assert(ws.scenes[0].shots[0].approved_take_id === takeId, "approval not persisted");
@@ -710,6 +711,17 @@ await check("casting look: 8 reference views from the profile (one identity), re
   const after = await api("GET", `/api/characters/${amaraId}/look`);
   assert(after.views.filter((v: any) => v.image).every((v: any) => v.image.stale), "a profile change should mark the views");
   return `${made.length} views · identity ${lk.identity_hash} · age ${age}`;
+});
+// ---- Accent and languages (migration 0037): suggested from the story, never a name; saved; Voice DNA follows ----
+await check("casting accent: suggested from where the character's scenes are set (with why); saved with languages; re-read keeps them", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/characters`);
+  const s = ws.accent_suggestions?.[amaraId]?.suggestion;
+  assert(s && /Nigerian English/.test(s.accent) && s.evidence.some((e: string) => /Lagos/.test(e)), `suggestion ${JSON.stringify(s)}`);
+  await api("PATCH", `/api/characters/${amaraId}`, { accent: s.accent, languages: s.languages.join(", ") });
+  await api("PATCH", `/api/characters/${amaraId}`, { accent: "x".repeat(200) }, [400]);
+  const c = (await api("GET", `/api/projects/${projectId}/characters`)).characters.find((x: any) => x.id === amaraId);
+  assert(c.accent === s.accent && c.languages === s.languages.join(", "), "not saved");
+  return `${s.accent} · ${c.languages} (${s.evidence[0]})`;
 });
 // ---- Ages (migration 0035): a flashback age with its own reference views, kept apart from today's ----
 await check("casting ages: a flashback age (duplicate name 409); its reference view is made at that age in the worker and kept apart from today's views", async () => {
