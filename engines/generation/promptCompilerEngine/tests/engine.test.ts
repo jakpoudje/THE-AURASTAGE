@@ -66,7 +66,7 @@ describe("promptCompilerEngine", () => {
   it("applies the Project Settings look and records its settings version (1.1.0)", () => {
     const withLook = { ...base(), project: { ...base().project, look: "Desaturated teal-and-amber, handheld" }, provenance: { ...base().provenance, settings_version: 3 } };
     const { package: p, engine_version } = promptCompilerEngine(withLook);
-    expect(engine_version).toBe("1.2.0");
+    expect(engine_version).toBe("1.3.0");
     expect(p.prompt).toContain("Look: Desaturated teal-and-amber, handheld.");
     expect(p.provenance.settings_version).toBe(3);
     expect(p.checks.find((c) => c.id === "style")).toMatchObject({ ok: true, evidence: expect.stringContaining("settings v3") });
@@ -101,5 +101,20 @@ describe("promptCompilerEngine", () => {
     const c = Object.fromEntries(p.checks.map((x) => [x.id, x]));
     expect(c.location_described).toMatchObject({ ok: false });
     expect(c.references).toMatchObject({ ok: false });
+  });
+  it("1.3.0: a character shown at another age in this scene is described at that age, and its references are checked", () => {
+    const ST = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const young = (b: ReturnType<typeof base>) => ({
+      ...b, characters: b.characters.map((c) => (c.id === A ? { ...c, age: "10", age_state: { id: ST, label: "Flashback, 1995", description: "Braided hair" } } : c)),
+    });
+    const { package: p } = promptCompilerEngine(young(base()));
+    expect(p.prompt).toContain("In frame: Amara Bello (aged 10, Flashback, 1995: Braided hair) — Activist.");
+    expect(p.characters[0]).toMatchObject({ age: "10", age_state: { id: ST, label: "Flashback, 1995" } });
+    const c = Object.fromEntries(p.checks.map((x) => [x.id, x]));
+    expect(c.age).toMatchObject({ ok: false, evidence: expect.stringContaining("No reference views at this age yet: Amara Bello (Flashback, 1995)") });
+    const withRef = promptCompilerEngine({ ...young(base()), references: [{ kind: "character", object_id: A, name: "Amara Bello", view: "front · MS", asset_id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000001" }] });
+    expect(Object.fromEntries(withRef.package.checks.map((x) => [x.id, x])).age).toMatchObject({ ok: true, evidence: "Amara Bello: Flashback, 1995 (10)" });
+    // No age states: no age check, prompt as before.
+    expect(promptCompilerEngine(base()).package.checks.some((x) => x.id === "age")).toBe(false);
   });
 });

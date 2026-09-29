@@ -59,7 +59,11 @@ export const GenerationPackageContentSchema = z.object({
     duration_seconds: z.number(),
   }),
   characters: z.array(
-    z.object({ id: z.string(), name: z.string(), description: z.string().nullable(), age: z.string().nullable(), wardrobe: z.string().nullable() })
+    z.object({
+      id: z.string(), name: z.string(), description: z.string().nullable(), age: z.string().nullable(), wardrobe: z.string().nullable(),
+      /** The character's age state in this scene (Casting, chosen in Scene DNA; promptCompilerEngine ≥ 1.3.0). */
+      age_state: z.object({ id: z.string(), label: z.string(), description: z.string().nullable() }).optional(),
+    })
   ),
   performance: z.object({ action: z.string(), dialogue: z.array(z.object({ speaker: z.string(), text: z.string(), emotion: z.string().nullable() })) }),
   lighting: z.string().nullable(),

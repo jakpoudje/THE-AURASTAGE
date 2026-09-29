@@ -225,6 +225,16 @@ export function SceneEditor({
 
         {tab === "Performance" && (
           <>
+            {entry.story_time && entry.story_time.cues.length > 0 && (
+              <div role="note" aria-label="Story time" className="rounded-lg border border-sky-400/40 bg-sky-400/5 p-3 text-sm">
+                <p className="text-sky-200">
+                  {entry.story_time.other_time ? "The script suggests this scene happens at another time — choose each character's age below." : "The script marks a return to the present."}
+                </p>
+                <p className="mt-1 text-xs text-white/60">
+                  {entry.story_time.cues.map((c) => `“${c.text}” (${c.where === "heading" ? "heading" : `line ${c.line}`})`).join(" · ")}
+                </p>
+              </div>
+            )}
             <div>
               <span className="text-xs uppercase tracking-wider text-white/50">Characters in scene</span>
               {p.participants.length === 0 && <p className="mt-1 text-sm text-white/40">Casting found nobody in this scene.</p>}
@@ -260,6 +270,32 @@ export function SceneEditor({
                           ))}
                         </select>
                       )}
+                      {c.presence === "on_screen" && (() => {
+                        const ages = (entry.ages ?? []).filter((a) => a.character_id === c.character_id);
+                        const chosenAge = (form.ages ?? {})[c.character_id] ?? "";
+                        return (
+                          <select
+                            aria-label={`Age of ${c.name} in this scene`}
+                            value={chosenAge}
+                            disabled={ages.length === 0 && !chosenAge}
+                            title={ages.length ? undefined : "Add other ages for this character in Casting → Ages"}
+                            onChange={(e) => {
+                              const next = { ...(form.ages ?? {}) };
+                              if (e.target.value) next[c.character_id] = e.target.value;
+                              else delete next[c.character_id];
+                              set("ages", next);
+                            }}
+                            className="rounded-md border border-aura-border bg-black/40 px-2 py-1 text-sm disabled:opacity-50"
+                          >
+                            <option value="">{ages.length ? "Age as in the profile" : "No other ages (add in Casting)"}</option>
+                            {ages.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.label} ({a.age})
+                              </option>
+                            ))}
+                          </select>
+                        );
+                      })()}
                     </li>
                   );
                 })}

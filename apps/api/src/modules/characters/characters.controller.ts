@@ -7,7 +7,10 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   addCharacterAlias,
   createCharacter,
+  deleteAgeState,
   deleteLook,
+  listAgeStates,
+  saveAgeState,
   deleteRelationship,
   editCharacter,
   getCastingWorkspace,
@@ -59,8 +62,11 @@ export async function registerCharactersRoutes(app: FastifyInstance) {
   app.post("/api/projects/:id/characters", route(({ params, body, db }) => createCharacter(db, params.id, body), 201));
   app.post("/api/projects/:id/relationships", route(({ params, body, db }) => setRelationship(db, params.id, body)));
   app.delete("/api/relationships/:id", route(({ params, db }) => deleteRelationship(db, params.id)));
-  app.get("/api/characters/:id/look", route(({ params, db, query }) => getCharacterLook(db, params.id, query.look_id || null)));
+  app.get("/api/characters/:id/look", route(({ params, db, query }) => getCharacterLook(db, params.id, query.look_id || null, process.env, query.age_state_id || null)));
   app.post("/api/characters/:id/look/generate", route(({ params, body, db }) => generateCharacterLook(db, params.id, body)));
   app.post("/api/characters/:id/looks", route(({ params, body, db }) => saveLook(db, params.id, body)));
   app.delete("/api/looks/:id", route(({ params, db }) => deleteLook(db, params.id)));
+  app.get("/api/characters/:id/ages", route(({ params, db }) => listAgeStates(db, params.id)));
+  app.post("/api/characters/:id/ages", route(({ params, body, db }) => saveAgeState(db, params.id, body)));
+  app.delete("/api/ages/:id", route(({ params, db }) => deleteAgeState(db, params.id)));
 }

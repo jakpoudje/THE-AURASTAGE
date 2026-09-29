@@ -23,6 +23,8 @@ export const SceneDnaEditableSchema = z.object({
   silent_scene: z.boolean().default(false),
   /** character_id -> wardrobe_look_id chosen for this scene. */
   wardrobe: z.record(z.string().uuid(), z.string().uuid()).default({}),
+  /** character_id -> character_age_state_id: the character's age in this scene (flashbacks, time jumps; migration 0035). */
+  ages: z.record(z.string().uuid(), z.string().uuid()).default({}),
   notes: z.string().max(4000).nullable().default(null),
 });
 export type SceneDnaEditable = z.infer<typeof SceneDnaEditableSchema>;

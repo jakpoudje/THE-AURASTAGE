@@ -10,6 +10,7 @@ export interface LookView {
 export interface CharacterLookView {
   character: { id: string; name: string; project_id: string };
   looks: { id: string; name: string }[]; look_id: string | null;
+  age_states: { id: string; label: string; age: string }[]; age_state_id: string | null;
   identity: string; wardrobe: string | null; identity_hash: string; missing: string[]; negative: string[]; engine_version: string;
   views: LookView[];
   backends: { id: string; name: string; model: string; execution: "native" | "external"; note: string }[];
@@ -17,8 +18,13 @@ export interface CharacterLookView {
 }
 
 export const lookApi = {
-  get: (characterId: string, lookId: string | null) => apiGet<CharacterLookView>(`/api/characters/${characterId}/look${lookId ? `?look_id=${lookId}` : ""}`),
-  generate: (characterId: string, body: { look_id: string | null; views?: string[]; provider?: string }) =>
+  get: (characterId: string, lookId: string | null, ageStateId: string | null = null) => {
+    const q = new URLSearchParams();
+    if (lookId) q.set("look_id", lookId);
+    if (ageStateId) q.set("age_state_id", ageStateId);
+    return apiGet<CharacterLookView>(`/api/characters/${characterId}/look${q.toString() ? `?${q}` : ""}`);
+  },
+  generate: (characterId: string, body: { look_id: string | null; age_state_id?: string | null; views?: string[]; provider?: string }) =>
     apiPost<{ requested: { id: string; key: string }[]; provider: string }>(`/api/characters/${characterId}/look/generate`, body),
   image: (assetId: string) => apiGetBytes(`/api/assets/${assetId}/content`),
 };

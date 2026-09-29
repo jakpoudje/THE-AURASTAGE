@@ -250,22 +250,46 @@ http.createServer((req, res) => {
     }
     if ((m = u.match(/^\/api\/relationships\/([^/]+)$/)) && req.method === "DELETE") { const i = rels.findIndex((x) => x.id === m[1]); if (i >= 0) rels.splice(i, 1); return send(200, { deleted: true }); }
     // ---- Character look panel (mirrors apps/api/src/modules/characters/characters.look + migration 0027; REAL engine + REAL sketch renderer) ----
+    // Ages (mirrors apps/api/src/modules/characters ages + migration 0035): Casting-owned, casting:edit to change.
+    const AGES = globalThis.__ages || (globalThis.__ages = []);
+    const castEdit = () => { const T0 = globalThis.__team || { as: "owner" }; return T0.as === "owner" || T0.as === "producer"; };
+    if ((m = u.match(/^\/api\/characters\/([^/]+)\/ages$/))) {
+      if (req.method === "GET") return send(200, { age_states: AGES.filter((a) => a.character_id === m[1]) });
+      if (!castEdit()) return send(403, { error: { code: "AURA-COL-403", message: "your role can't edit in Casting & Characters. Ask the project's producer for access." } });
+      const lbl = String(b.label || "").trim(), ag = String(b.age || "").trim();
+      if (!lbl || !ag) return send(400, { error: { code: "AURA-CHR-002", message: "An age needs a name and an age" } });
+      if (AGES.some((a) => a.character_id === m[1] && a.label.toLowerCase() === lbl.toLowerCase() && a.id !== b.id)) return send(409, { error: { code: "AURA-CHR-409", message: "this character already has an age with that name" } });
+      let a = b.id && AGES.find((x) => x.id === b.id);
+      if (!a) { a = { id: crypto.randomUUID(), project_id: P, character_id: m[1], created_at: now() }; AGES.push(a); }
+      Object.assign(a, { label: lbl, age: ag, description: (b.description || "").trim() || null, updated_at: now() });
+      return send(200, a);
+    }
+    if ((m = u.match(/^\/api\/ages\/([^/]+)$/)) && req.method === "DELETE") {
+      if (!castEdit()) return send(403, { error: { code: "AURA-COL-403", message: "your role can't edit in Casting & Characters. Ask the project's producer for access." } });
+      const i = AGES.findIndex((x) => x.id === m[1]); if (i >= 0) AGES.splice(i, 1);
+      for (const r of globalThis.__refs || []) if (r.age_state_id === m[1]) r.age_state_id = null;
+      return send(200, { deleted: true });
+    }
     if ((m = u.match(/^\/api\/characters\/([^/]+)\/look(\/generate)?$/))) {
       const LK = eng.characterLook, sk = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/sketch/sketchAdapter.js"));
       const refs = globalThis.__refs || (globalThis.__refs = []);
       const c = chars.find((x) => x.id === m[1]); if (!c) return send(404, { error: { code: "AURA-CHR-404", message: "Character not found" } });
       const lookId = (m[2] ? b.look_id : new URL(req.url, "http://x").searchParams.get("look_id")) || null;
       const look = lookId ? looks.find((l) => l.id === lookId && l.character_id === c.id) : null;
+      const ageId = (m[2] ? b.age_state_id : new URL(req.url, "http://x").searchParams.get("age_state_id")) || null;
+      const ageSt = ageId ? AGES.find((a) => a.id === ageId && a.character_id === c.id) : null;
+      if (ageId && !ageSt) return send(400, { error: { code: "AURA-CHR-400", message: "That age isn't this character's" } });
       const style = ((globalThis.__settings || {}).settings || {}).style?.look || null;
       const all = LK.LOOK_ANGLES.flatMap((a) => LK.LOOK_SIZES.map((z) => [a, z]));
-      const inp = (views) => ({ character: { name: c.name, age: c.age ?? null, gender: c.gender ?? null, nationality: c.nationality ?? null, occupation: c.occupation ?? null, description: c.description ?? null }, wardrobe: look ? { name: look.name, description: look.description ?? null } : null, style, views });
+      const inp = (views) => ({ character: { name: c.name, age: c.age ?? null, gender: c.gender ?? null, nationality: c.nationality ?? null, occupation: c.occupation ?? null, description: c.description ?? null }, wardrobe: look ? { name: look.name, description: look.description ?? null } : null, style, views,
+        age_state: ageSt ? { label: ageSt.label, age: ageSt.age, description: ageSt.description ?? null } : null });
       if (m[2]) {
         const T0 = globalThis.__team || { as: "owner" };
         if (T0.as !== "owner" && T0.as !== "producer") return send(403, { error: { code: "AURA-COL-403", message: "your role can't edit in Casting & Characters. Ask the project's producer for access." } });
         const out = LK.characterLookEngine(inp(b.views ? b.views.map((k) => k.split(":")) : undefined));
-        const requested = out.views.map((v) => { const r = { id: crypto.randomUUID(), character_id: c.id, look_id: look ? look.id : null, angle: v.angle, size: v.size, aspect_ratio: v.aspect_ratio, prompt: v.prompt, identity_hash: out.identity_hash,
+        const requested = out.views.map((v) => { const r = { id: crypto.randomUUID(), character_id: c.id, look_id: look ? look.id : null, age_state_id: ageSt ? ageSt.id : null, angle: v.angle, size: v.size, aspect_ratio: v.aspect_ratio, prompt: v.prompt, identity_hash: out.identity_hash,
           provider: "aurastage-sketch", model: "sketch-v1", execution: "native", status: "queued", asset_id: null, error: null, created_at: now(), completed_at: null, _polls: 0,
-          sketch: { title: c.name, subtitle: v.label, angle: v.angle, size: v.size, lines: [out.identity, out.wardrobe].filter(Boolean) } }; refs.unshift(r); return { id: r.id, key: v.key }; });
+          sketch: { title: c.name, subtitle: ageSt ? `${v.label} · ${ageSt.label} (${ageSt.age})` : v.label, angle: v.angle, size: v.size, lines: [out.identity, out.wardrobe].filter(Boolean) } }; refs.unshift(r); return { id: r.id, key: v.key }; });
         return send(200, { requested, provider: "aurastage-sketch", identity_hash: out.identity_hash });
       }
       // The "worker": each queued view is drawn by the real sketch renderer the second time it's read.
@@ -276,8 +300,9 @@ http.createServer((req, res) => {
         assets.push(a); Object.assign(r, { status: "succeeded", asset_id: a.id, completed_at: now() });
       }
       const out = LK.characterLookEngine(inp(all));
-      const mine = refs.filter((r) => r.character_id === c.id && (r.look_id || null) === (look ? look.id : null));
+      const mine = refs.filter((r) => r.character_id === c.id && (r.look_id || null) === (look ? look.id : null) && (r.age_state_id || null) === (ageSt ? ageSt.id : null));
       return send(200, { character: { id: c.id, name: c.name, project_id: P }, looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })), look_id: look ? look.id : null,
+        age_states: AGES.filter((a) => a.character_id === c.id).map((a) => ({ id: a.id, label: a.label, age: a.age })), age_state_id: ageSt ? ageSt.id : null,
         identity: out.identity, wardrobe: out.wardrobe, identity_hash: out.identity_hash, missing: out.missing, negative: out.negative, engine_version: out.engine_version,
         views: out.views.map((v) => { const h = mine.filter((r) => `${r.angle}:${r.size}` === v.key); const g = h.find((r) => r.status === "succeeded");
           return { ...v, in_default_set: LK.DEFAULT_VIEWS.some(([a, z]) => `${a}:${z}` === v.key), versions: h.filter((r) => r.status === "succeeded").length,
@@ -442,7 +467,7 @@ http.createServer((req, res) => {
     // ---- Scene DNA (mirrors apps/api/src/modules/scene-dna + migration 0011 semantics) ----
     const pg = require(require("path").resolve(__dirname, "../../../packages/production-graph/dist/index.js"));
     const follow = (id) => { let c = chars.find((x) => x.id === id); while (c && c.merged_into) c = chars.find((x) => x.id === c.merged_into); return c ? c.id : id; };
-    const EDIT = { purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, notes: null };
+    const EDIT = { purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, ages: {}, notes: null };
     const sdnaEntry = (scene) => {
       const v = approved(); const rec = sdna.find((r) => r.scene_id === scene.id);
       const editable = rec ? Object.fromEntries(Object.keys(EDIT).map((k) => [k, rec[k]])) : { ...EDIT };
@@ -465,9 +490,15 @@ http.createServer((req, res) => {
         ...participants.map((x) => { const c = chars.find((y) => y.id === x.character_id); return { type: "character", id: c.id, fingerprint: fp(c.name, c.kind, c.status, c.role, c.age, c.gender, c.description, x.voice_only), strength: "soft", label: c.name }; }),
         ...lines.map((l) => ({ type: "dialogue_line", id: l.id, fingerprint: fp(l.text_hash, l.character_id, l.intention, l.subtext, l.emotion, l.intensity, l.approval), strength: "soft", label: `${l.speaker_name}: “${l.text.slice(0, 40)}”` })),
         ...proposal.participants.filter((x) => x.wardrobe_look_id).map((x) => { const lk = looks.find((l) => l.id === x.wardrobe_look_id); return { type: "wardrobe_look", id: lk.id, fingerprint: fp(lk.name, lk.description), strength: "soft", label: `${x.name} — ${lk.name}` }; })];
+      const AGES_ = globalThis.__ages || []; const agesUsed = {};
+      for (const x of participants) { const st = AGES_.find((a) => a.id === (editable.ages || {})[x.character_id] && follow(a.character_id) === x.character_id); if (!st) continue;
+        agesUsed[x.character_id] = st.id; deps.push({ type: "character_age", id: st.id, fingerprint: fp(st.label, st.age, st.description), strength: "soft", label: `${x.name} — ${st.label} (age ${st.age})` }); }
       const ver = rec && sdnaVersions.find((x) => x.id === rec.approved_version_id);
       if (rec && ver) { const drift = pg.computeDrift(ver.dependencies, deps); rec.review_state = pg.descendantState(drift); rec.drift = drift.map((d) => ({ type: d.ref.type, id: d.ref.id, label: d.ref.label, kind: d.kind, effect: d.effect, message: d.message })); }
-      return { rec, ver, editable, proposal, engine_version, deps, avail };
+      const ageOpts = AGES_.filter((a) => ids.has(follow(a.character_id))).map((a) => ({ id: a.id, character_id: follow(a.character_id), label: a.label, age: a.age, description: a.description ?? null }));
+      const story_time = eng.storyTimeCueEngine({ scenes: [{ id: scene.id, number: scene.number, heading: scene.heading, action: scene.status === "active" ? v.elements.filter((e) => e.index >= scene.element_start && e.index <= scene.element_end && e.type === "action").map((e) => ({ line: e.line, text: e.text })) : [] }],
+        characters: chars.filter((c) => !c.merged_into).map((c) => ({ id: c.id, name: c.name, age: c.age ?? null })) }).scenes[0];
+      return { rec, ver, editable, proposal, engine_version, deps, avail, agesUsed, ageOpts, story_time };
     };
     if (u === `/api/projects/${P}/scene-dna` && req.method === "GET") {
       const v = approved();
@@ -476,7 +507,7 @@ http.createServer((req, res) => {
         const e = sdnaEntry(scene);
         return { scene: { id: scene.id, number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day, estimated_seconds: scene.estimated_seconds, status: scene.status },
           record: e.rec ? { ...e.rec, approved_version_number: e.ver ? e.ver.version_number : null } : null, editable: e.editable, proposal: e.proposal,
-          looks: e.avail.map((l) => ({ ...l, description: looks.find((x) => x.id === l.id).description ?? null })), engine_version: e.engine_version };
+          looks: e.avail.map((l) => ({ ...l, description: looks.find((x) => x.id === l.id).description ?? null })), ages: e.ageOpts, story_time: e.story_time, engine_version: e.engine_version };
       });
       return send(200, { script: { approved_version_id: v.id, version_number: v.version_number }, scenes: out,
         summary: { scenes: out.filter((x) => x.scene.status === "active").length, approved: out.filter((x) => x.record?.status === "approved" && x.record.review_state === "current").length, ready: out.filter((x) => x.proposal.ready_for_approval).length, needs_review: out.filter((x) => x.record && x.record.review_state !== "current").length } });
@@ -494,7 +525,7 @@ http.createServer((req, res) => {
       const scene = scenes.find((s) => s.id === m[1]); const e = sdnaEntry(scene);
       if (!e.proposal.ready_for_approval) { const f = e.proposal.readiness.filter((x) => x.blocking && !x.ok); return send(412, { error: { code: "AURA-SDNA-412", message: `Not ready to lock yet: ${f.map((x) => x.label.toLowerCase()).join("; ")}.` } }); }
       let rec = e.rec; if (!rec) { rec = { id: crypto.randomUUID(), project_id: P, scene_id: m[1], ...EDIT, drift: [] }; sdna.push(rec); }
-      const ver = { id: crypto.randomUUID(), scene_dna_id: rec.id, version_number: sdnaVersions.filter((x) => x.scene_dna_id === rec.id).length + 1, dependencies: e.deps, content: { editable: e.editable, proposal: e.proposal } };
+      const ver = { id: crypto.randomUUID(), scene_dna_id: rec.id, version_number: sdnaVersions.filter((x) => x.scene_dna_id === rec.id).length + 1, dependencies: e.deps, content: { editable: { ...e.editable, ages: e.agesUsed }, proposal: e.proposal } };
       sdnaVersions.push(ver); Object.assign(rec, { status: "approved", review_state: "current", drift: [], approved_version_id: ver.id, updated_at: now() });
       return send(200, { version_id: ver.id, version_number: ver.version_number, dependencies: e.deps.length });
     }
@@ -630,7 +661,8 @@ http.createServer((req, res) => {
       const r = eng.promptCompilerEngine({ project: { title: project.title, genre: project.genre ?? null, tone: project.tone ?? null, setting: project.setting ?? null, time_period: project.time_period ?? null },
         scene: { number: scene.number, heading: scene.heading, location: scene.location, int_ext: scene.int_ext, time_of_day: scene.time_of_day, purpose: ed.purpose, mood: ed.mood || [], weather: ed.weather, atmosphere: ed.atmosphere, lighting_intent: ed.lighting_intent },
         shot: { ...shot, lighting: shot.lighting ?? null, composition: shot.composition ?? null },
-        characters: chars.filter((c) => shot.character_ids.includes(c.id)).map((c) => ({ id: c.id, name: c.name, age: c.age ?? null, description: c.description ?? null, wardrobe: look(c.id) })),
+        characters: chars.filter((c) => shot.character_ids.includes(c.id)).map((c) => { const st = (globalThis.__ages || []).find((a) => a.id === (ed.ages || {})[c.id] && a.character_id === c.id);
+          return { id: c.id, name: c.name, age: st ? st.age : c.age ?? null, description: c.description ?? null, wardrobe: look(c.id), age_state: st ? { id: st.id, label: st.label, description: st.description ?? null } : null }; }),
         dialogue: dlines.filter((l) => shot.dialogue_line_ids.includes(l.id)).map((l) => ({ id: l.id, speaker: l.speaker_name, text: l.text, emotion: l.emotion })),
         aspect_ratio: b.aspect_ratio || "16:9", provenance: { shot_plan_version_id: version.id, scene_dna_version_id: dv.id, script_version_id: null } });
       const pkg = { id: crypto.randomUUID(), shot_id: shot.id, shot_plan_version_id: version.id, content: r.package, review_state: "current", review_reason: null, engine_version: r.engine_version, created_at: now() };

@@ -29,7 +29,9 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
   ].filter(Boolean).join(", ");
 
   const people = inFrame.map((c) => {
-    const bits = [c.name, c.age ? `(${c.age})` : null, clean(c.description) ? `— ${clean(c.description)}` : null, clean(c.wardrobe) ? `wearing ${clean(c.wardrobe)}` : null];
+    const when = c.age_state ? `${clean(c.age_state.label)}${clean(c.age_state.description) ? `: ${clean(c.age_state.description)}` : ""}` : "";
+    const age = c.age && when ? `(aged ${c.age}, ${when})` : c.age ? `(${c.age})` : when ? `(${when})` : null;
+    const bits = [c.name, age, clean(c.description) ? `— ${clean(c.description)}` : null, clean(c.wardrobe) ? `wearing ${clean(c.wardrobe)}` : null];
     return bits.filter(Boolean).join(" ");
   });
   // The canonical location (described once in Locations & Props) is named and described in every shot of the scene.
@@ -67,6 +69,8 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
   const negative = [...BASE_NEGATIVE, ...(inFrame.length ? [`no people other than ${inFrame.map((c) => c.name).join(", ")}`] : ["no people"])];
   const missingLooks = inFrame.filter((c) => !clean(c.wardrobe)).map((c) => c.name);
   const undescribed = inFrame.filter((c) => !clean(c.description)).map((c) => c.name);
+  const aged = inFrame.filter((c) => c.age_state);
+  const agedWithoutRefs = aged.filter((c) => !refs.some((r) => r.kind === "character" && r.object_id === c.id)).map((c) => `${c.name} (${c.age_state!.label})`);
 
   const pkg: GenerationPackageContent = {
     project,
@@ -78,7 +82,7 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
       size: shot.size, size_label: sizeLabel, angle: shot.angle, movement: shot.movement, lens_mm: shot.lens_mm, focus: shot.focus,
       composition: shot.composition, duration_seconds: shot.duration_seconds,
     },
-    characters: inFrame.map((c) => ({ id: c.id, name: c.name, description: c.description, age: c.age, wardrobe: c.wardrobe })),
+    characters: inFrame.map((c) => ({ id: c.id, name: c.name, description: c.description, age: c.age, wardrobe: c.wardrobe, ...(c.age_state ? { age_state: c.age_state } : {}) })),
     performance: { action: clean(shot.description), dialogue: lines.map((l) => ({ speaker: l.speaker, text: l.text, emotion: l.emotion })) },
     lighting,
     technical: { aspect_ratio },
@@ -118,6 +122,16 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
         ok: undescribed.length === 0,
         evidence: inFrame.length ? (undescribed.length ? `No description in Casting: ${undescribed.join(", ")}` : inFrame.map((c) => c.name).join(", ")) : "Nobody in frame",
       },
+      ...(aged.length
+        ? [{
+            id: "age",
+            label: "Age for this scene",
+            ok: agedWithoutRefs.length === 0,
+            evidence: agedWithoutRefs.length
+              ? `No reference views at this age yet: ${agedWithoutRefs.join(", ")} — make them in Casting → Look & references`
+              : aged.map((c) => `${c.name}: ${c.age_state!.label}${c.age ? ` (${c.age})` : ""}`).join(", "),
+          }]
+        : []),
       {
         id: "wardrobe",
         label: "Wardrobe applied",

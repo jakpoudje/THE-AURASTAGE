@@ -6,6 +6,7 @@ import {
   AddAliasInputSchema,
   CreateCharacterInputSchema,
   SaveWardrobeLookInputSchema,
+  SaveCharacterAgeStateInputSchema,
   SetRelationshipInputSchema,
   MergeCharactersInputSchema,
   SyncCharactersInputSchema,
@@ -49,3 +50,4 @@ export function validateUpdateInput(p: unknown) {
 export const validateCreateInput = (p: unknown) => parse(CreateCharacterInputSchema, p);
 export const validateRelationshipInput = (p: unknown) => parse(SetRelationshipInputSchema, p);
 export const validateLookInput = (p: unknown) => parse(SaveWardrobeLookInputSchema, p);
+export const validateAgeStateInput = (p: unknown) => parse(SaveCharacterAgeStateInputSchema, p);

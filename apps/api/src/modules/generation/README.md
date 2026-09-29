@@ -70,3 +70,8 @@ sketch and Runway video (which starts from the approved frame) take none.
 ## Not built yet
 Visual QC (identity/wardrobe/lighting checks on the result), targeted repair, cost estimates
 before generating (providers don't return prices; we never guess).
+
+## Age per scene (promptCompilerEngine 1.3.0, migration 0035)
+When the locked Scene DNA gives a character another age in this scene, the prompt describes them at that age ("Amara
+Bello (aged 10, Flashback, 1995: braided hair)") and only reference views made at that age are chosen — a flashback never
+borrows today's face. An "Age for this scene" check says when no views exist at that age yet.

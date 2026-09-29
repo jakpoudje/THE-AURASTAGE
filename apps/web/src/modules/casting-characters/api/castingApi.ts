@@ -5,6 +5,8 @@ import type {
   CharacterRelationship,
   CreateCharacterInput,
   SaveWardrobeLookInput,
+  CharacterAgeState,
+  SaveCharacterAgeStateInput,
   SetRelationshipInput,
   UpdateCharacterInput,
   WardrobeLook,
@@ -31,4 +33,7 @@ export const castingApi = {
   deleteRelationship: (id: string) => apiDelete<{ deleted: boolean }>(`/api/relationships/${id}`),
   saveLook: (characterId: string, input: SaveWardrobeLookInput) => apiPost<WardrobeLook>(`/api/characters/${characterId}/looks`, input),
   deleteLook: (id: string) => apiDelete<{ deleted: boolean }>(`/api/looks/${id}`),
+  listAges: (characterId: string) => apiGet<{ age_states: CharacterAgeState[] }>(`/api/characters/${characterId}/ages`),
+  saveAge: (characterId: string, input: SaveCharacterAgeStateInput) => apiPost<CharacterAgeState>(`/api/characters/${characterId}/ages`, input),
+  deleteAge: (id: string) => apiDelete<{ deleted: boolean }>(`/api/ages/${id}`),
 };

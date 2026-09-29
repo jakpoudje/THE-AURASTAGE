@@ -15,6 +15,8 @@ export const CharacterLookInputSchema = z.object({
     name: z.string().min(1).max(120), age: txt(40), gender: txt(60), nationality: txt(100), occupation: txt(150), description: txt(2000), personality: txt(4000),
   }),
   wardrobe: z.object({ name: z.string().max(80), description: z.string().max(2000).nullable() }).nullable().default(null),
+  /** The character at another point in the story (flashback, time jump): replaces the profile age (≥ 1.1.0). */
+  age_state: z.object({ label: z.string().max(80), age: z.string().max(40), description: z.string().max(2000).nullable() }).nullable().default(null),
   /** Project look from Project Settings (style.look), so references match the film. */
   style: z.string().max(500).nullable().default(null),
   views: z.array(z.tuple([z.enum(LOOK_ANGLES), z.enum(LOOK_SIZES)])).min(1).max(16).optional(),

@@ -45,6 +45,7 @@ function Cell({ v, selected, onSelect }: { v: LookView; selected: boolean; onSel
 
 export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: string; canEdit: boolean; onPortrait?: (assetId: string | null) => void }) {
   const [lookId, setLookId] = useState<string | null>(null);
+  const [ageStateId, setAgeStateId] = useState<string | null>(null);
   const [data, setData] = useState<CharacterLookView | null>(null);
   const [provider, setProvider] = useState<string>("");
   const [sel, setSel] = useState<string>("front:CU");
@@ -54,14 +55,15 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    const d = await lookApi.get(characterId, lookId);
+    const d = await lookApi.get(characterId, lookId, ageStateId);
     setData(d);
-    onPortrait?.(d.views.find((v) => v.key === "front:CU")?.image?.asset_id ?? null);
+    // The portrait is the character as in the profile (no specific age).
+    if (!ageStateId) onPortrait?.(d.views.find((v) => v.key === "front:CU")?.image?.asset_id ?? null);
     if (timer.current) clearTimeout(timer.current);
     // Views are made by the generation worker; check back while any is waiting.
     if (d.views.some((v) => v.latest && (v.latest.status === "queued" || v.latest.status === "running"))) timer.current = setTimeout(() => load().catch(() => null), 2000);
     return d;
-  }, [characterId, lookId, onPortrait]);
+  }, [characterId, lookId, ageStateId, onPortrait]);
 
   useEffect(() => {
     load().catch((e) => setError(e instanceof Error ? e.message : "Couldn't load the look"));
@@ -71,7 +73,7 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
   async function generate(views?: string[]) {
     setBusy(true); setError(null); setNotice(null);
     try {
-      const r = await lookApi.generate(characterId, { look_id: lookId, views, ...(provider ? { provider } : {}) });
+      const r = await lookApi.generate(characterId, { look_id: lookId, age_state_id: ageStateId, views, ...(provider ? { provider } : {}) });
       setNotice(`Making ${r.requested.length} view${r.requested.length === 1 ? "" : "s"} with ${data?.backends.find((b) => b.id === r.provider)?.name ?? r.provider}. They appear here and in the Assets Library under Characters.`);
       await load();
     } catch (e) {
@@ -95,6 +97,7 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
         {data.missing.length > 0 && (
           <p className="mt-2 text-xs text-amber-300">Add {data.missing.join(", ")} in the Profile tab so every view shows the same person more precisely.</p>
         )}
+        {data.age_states.length === 0 && <p className="mt-2 text-[11px] text-white/40">Flashback or time jump? Add the character's other ages in the Ages tab, then make views for each age here.</p>}
         <p className="mt-2 text-[11px] text-white/40">Built from this character's profile, wardrobe look and the project look in Project Settings. When any of them changes, existing views are marked “Profile changed” — nothing is replaced automatically.</p>
       </div>
 
@@ -103,6 +106,12 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
           <select aria-label="Wardrobe for these views" value={lookId ?? ""} onChange={(e) => setLookId(e.target.value || null)} className="mt-1 block rounded-md border border-aura-border bg-black px-2 py-1.5 text-sm">
             <option value="">No specific outfit</option>
             {data.looks.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </label>
+        <label className="text-white/60">Age
+          <select aria-label="Age for these views" value={ageStateId ?? ""} onChange={(e) => setAgeStateId(e.target.value || null)} className="mt-1 block rounded-md border border-aura-border bg-black px-2 py-1.5 text-sm">
+            <option value="">As in the profile</option>
+            {data.age_states.map((a) => <option key={a.id} value={a.id}>{a.label} ({a.age})</option>)}
           </select>
         </label>
         <label className="text-white/60">Made by

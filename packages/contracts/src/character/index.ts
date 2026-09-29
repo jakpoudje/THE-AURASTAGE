@@ -159,3 +159,24 @@ export const SaveWardrobeLookInputSchema = z.object({
   description: z.string().trim().max(2000).optional(),
 });
 export type SaveWardrobeLookInput = z.infer<typeof SaveWardrobeLookInputSchema>;
+
+/** A character at another point in the story (flashback, time jump), canonical owner Casting (migration 0035). */
+export const CharacterAgeStateSchema = z.object({
+  id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  character_id: z.string().uuid(),
+  label: z.string(),
+  age: z.string(),
+  description: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type CharacterAgeState = z.infer<typeof CharacterAgeStateSchema>;
+
+export const SaveCharacterAgeStateInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  label: z.string().trim().min(1).max(80),
+  age: z.string().trim().min(1).max(40),
+  description: z.string().trim().max(2000).optional(),
+}).strict();
+export type SaveCharacterAgeStateInput = z.infer<typeof SaveCharacterAgeStateInputSchema>;

@@ -18,6 +18,13 @@ export interface SceneDnaEntry {
   editable: SceneDnaEditable;
   proposal: SceneDnaProposal;
   looks: { id: string; character_id: string; name: string; description: string | null }[];
+  /** The participants' ages from Casting (flashbacks, time jumps). */
+  ages?: { id: string; character_id: string; label: string; age: string; description: string | null }[];
+  /** Story-time clues found in the script's own words (storyTimeCueEngine). */
+  story_time?: {
+    other_time: boolean;
+    cues: { kind: "flashback" | "back_to_present" | "time_jump" | "year" | "character_age"; text: string; where: "heading" | "action"; line: number | null; character_id?: string; age?: string }[];
+  };
   engine_version: string;
 }
 

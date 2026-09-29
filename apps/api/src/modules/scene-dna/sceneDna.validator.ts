@@ -34,6 +34,7 @@ const FIELD_LABEL: Record<string, string> = {
   sound_intent: "Sound",
   camera_energy: "Camera energy",
   wardrobe: "Wardrobe",
+  ages: "Ages",
   notes: "Notes",
 };
 

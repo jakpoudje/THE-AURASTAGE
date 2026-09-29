@@ -38,11 +38,14 @@ export interface CharacterLookOutput {
 export function characterLookEngine(raw: CharacterLookInput): CharacterLookOutput {
   const input = CharacterLookInputSchema.parse(raw);
   const c = input.character;
-  const who = [clean(c.gender), clean(c.age) && `aged ${clean(c.age).replace(/^aged\s+/i, "")}`, clean(c.nationality)].filter(Boolean).join(", ");
+  const st = input.age_state;
+  const age = st ? clean(st.age) : clean(c.age);
+  const who = [clean(c.gender), age && `aged ${age.replace(/^aged\s+/i, "")}`, clean(c.nationality)].filter(Boolean).join(", ");
   const identity = [
     `${clean(c.name)}${who ? ` — ${who}` : ""}.`,
     clean(c.occupation) && `${clean(c.occupation)}.`,
     clean(c.description) && `${clean(c.description).replace(/\.$/, "")}.`,
+    st && `At this point in the story (${clean(st.label)})${clean(st.description) ? `: ${clean(st.description).replace(/\.$/, "")}` : ""}.`,
   ].filter(Boolean).join(" ");
   const wardrobe = input.wardrobe ? `Wearing: ${clean(input.wardrobe.name)}${clean(input.wardrobe.description) ? ` — ${clean(input.wardrobe.description)}` : ""}.` : null;
   const style = clean(input.style) ? `Visual style: ${clean(input.style)}.` : null;
@@ -56,7 +59,9 @@ export function characterLookEngine(raw: CharacterLookInput): CharacterLookOutpu
     ].filter(Boolean).join(" "),
   }));
   const missing = (["age", "gender", "description"] as const).filter((k) => !clean(c[k]));
-  const identity_hash = hash16(JSON.stringify([identity, wardrobe, style, ENGINE_VERSION]));
+  // 1.1.0 only adds the age state; without one the prompts are word for word what 1.0.0 made, so the hash keeps the
+  // 1.0.0 salt and existing views are not flagged "profile changed" by the version bump alone.
+  const identity_hash = hash16(JSON.stringify(st ? [identity, wardrobe, style, ENGINE_VERSION] : [identity, wardrobe, style, "1.0.0"]));
   return {
     identity, identity_hash, wardrobe, views, missing, engine_version: ENGINE_VERSION,
     negative: ["a different person", "inconsistent face or hair", "extra people", "text or watermark", "distorted anatomy"],

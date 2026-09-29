@@ -8,7 +8,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ScreenplayElementSchema } from "@aurastage/contracts";
 import type { SceneDnaDrift, SceneDnaEditable } from "@aurastage/contracts";
-import { dialogueExtraction, sceneDnaAssembly, sceneDnaAssemblyEngine } from "@aurastage/engines";
+import { dialogueExtraction, sceneDnaAssembly, sceneDnaAssemblyEngine, storyTimeCueEngine } from "@aurastage/engines";
 import type { SceneDnaProposal } from "@aurastage/engines";
 import { computeDrift, descendantState } from "@aurastage/production-graph";
 import type { DependencyRef, Drift } from "@aurastage/production-graph";
@@ -30,13 +30,14 @@ interface Upstream {
   follow: (id: string) => string;
   apps: Row[];
   looks: Row[];
+  ages: Row[];
   lines: Row[];
   records: Map<string, Row>;
   versions: Map<string, Row>;
 }
 
 async function loadUpstream(db: SupabaseClient, projectId: string): Promise<Upstream> {
-  const [version, scenes, chars, apps, looks, lines, records, versions] = await Promise.all([
+  const [version, scenes, chars, apps, looks, lines, records, versions, ages] = await Promise.all([
     repo.getApprovedVersion(db, projectId),
     repo.listScenes(db, projectId),
     repo.listCharacters(db, projectId),
@@ -45,6 +46,7 @@ async function loadUpstream(db: SupabaseClient, projectId: string): Promise<Upst
     repo.listLines(db, projectId),
     repo.listSceneDna(db, projectId),
     repo.listVersions(db, projectId),
+    repo.listAgeStates(db, projectId),
   ]);
   const byId = new Map(chars.map((c) => [c.id as string, c]));
   const follow = (id: string) => {
@@ -59,10 +61,20 @@ async function loadUpstream(db: SupabaseClient, projectId: string): Promise<Upst
     follow,
     apps,
     looks,
+    ages,
     lines,
     records: new Map(records.map((r) => [r.scene_id as string, r])),
     versions: new Map(versions.map((v) => [v.id as string, v])),
   };
+}
+
+function actionOf(u: Upstream, scene: Row) {
+  const elements = u.version?.elements ?? [];
+  return scene.status === "active"
+    ? elements
+        .filter((e) => e.index >= scene.element_start && e.index <= scene.element_end && e.type === "action")
+        .map((e) => ({ line: e.line, text: e.text }))
+    : [];
 }
 
 /** Builds one scene's engine input and its current dependency refs. */
@@ -72,13 +84,7 @@ function assembleScene(u: Upstream, scene: Row, editable: SceneDnaEditable) {
   const adj = (s: Row | undefined) =>
     s ? { number: s.number, heading: s.heading, location: s.location, time_of_day: s.time_of_day, int_ext: s.int_ext } : null;
 
-  const elements = u.version?.elements ?? [];
-  const action =
-    scene.status === "active"
-      ? elements
-          .filter((e) => e.index >= scene.element_start && e.index <= scene.element_end && e.type === "action")
-          .map((e) => ({ line: e.line, text: e.text }))
-      : [];
+  const action = actionOf(u, scene);
 
   // Participants: Casting appearances for this scene, merge-followed and de-duplicated.
   const part = new Map<string, { voice_only: boolean; speaking: boolean; line_count: number }>();
@@ -166,7 +172,17 @@ function assembleScene(u: Upstream, scene: Row, editable: SceneDnaEditable) {
         return { type: "wardrobe_look", id: look.id, fingerprint: fp(look.name, look.description), strength: "soft", label: `${p.name} — ${look.name}` };
       }),
   ];
-  return { proposal, engine_version, deps };
+  // Ages chosen for this scene (flashbacks, time jumps): only a participant's own ages count; a removed or changed age
+  // flags the approved blueprint (drift), like a wardrobe look.
+  const ages: Record<string, string> = {};
+  for (const p of participants) {
+    const id = editable.ages?.[p.character_id];
+    const st = id ? u.ages.find((a) => a.id === id && u.follow(a.character_id) === p.character_id) : undefined;
+    if (!st) continue;
+    ages[p.character_id] = st.id;
+    deps.push({ type: "character_age", id: st.id, fingerprint: fp(st.label, st.age, st.description), strength: "soft", label: `${p.name} — ${st.label} (age ${st.age})` });
+  }
+  return { proposal, engine_version, deps, ages };
 }
 
 // jsonb reorders object keys, so compare drift evidence independent of key order.
@@ -182,10 +198,10 @@ const toDriftDTO = (d: Drift): SceneDnaDrift => ({ type: d.ref.type, id: d.ref.i
 function sceneEntry(u: Upstream, scene: Row) {
   const row = u.records.get(scene.id);
   const editable = toEditable(row);
-  const { proposal, engine_version, deps } = assembleScene(u, scene, editable);
+  const { proposal, engine_version, deps, ages } = assembleScene(u, scene, editable);
   const approved = row?.approved_version_id ? u.versions.get(row.approved_version_id) : undefined;
   const drift = approved ? computeDrift(approved.dependencies as DependencyRef[], deps) : [];
-  return { row, editable, proposal, engine_version, deps, approved, drift, state: approved ? descendantState(drift) : ("current" as const) };
+  return { row, editable, proposal, engine_version, deps, ages, approved, drift, state: approved ? descendantState(drift) : ("current" as const) };
 }
 
 function summary(scene: Row) {
@@ -235,6 +251,11 @@ export async function getSceneDnaWorkspace(db: SupabaseClient, projectId: string
   if (!u.version) return { script: null, scenes: [], summary: { scenes: 0, approved: 0, ready: 0, needs_review: 0 } };
   // Cut scenes stay listed only when they carry Scene DNA work (never silently dropped).
   const visible = u.scenes.filter((s) => s.status === "active" || u.records.has(s.id));
+  // Story-time clues from the script's own words (flashbacks, time jumps, "YOUNG AMARA"), so ages can be chosen.
+  const cues = storyTimeCueEngine({
+    scenes: visible.map((s) => ({ id: s.id, number: s.number, heading: String(s.heading ?? ""), action: actionOf(u, s) })),
+    characters: [...u.chars.values()].filter((c) => !c.merged_into).map((c) => ({ id: c.id, name: c.name, age: c.age ?? null })),
+  });
   const scenes = [];
   for (const scene of visible) {
     const e = sceneEntry(u, scene);
@@ -247,6 +268,10 @@ export async function getSceneDnaWorkspace(db: SupabaseClient, projectId: string
       looks: u.looks
         .filter((l) => e.proposal.participants.some((p) => p.character_id === u.follow(l.character_id)))
         .map((l) => ({ id: l.id, character_id: u.follow(l.character_id), name: l.name, description: l.description ?? null })),
+      ages: u.ages
+        .filter((a) => e.proposal.participants.some((p) => p.character_id === u.follow(a.character_id)))
+        .map((a) => ({ id: a.id, character_id: u.follow(a.character_id), label: a.label, age: a.age, description: a.description ?? null })),
+      story_time: cues.scenes.find((c) => c.scene_id === scene.id) ?? { scene_id: scene.id, number: scene.number, cues: [], other_time: false },
       engine_version: e.engine_version,
     });
   }
@@ -282,7 +307,8 @@ export async function approveSceneDna(db: SupabaseClient, projectId: string, sce
     throw new SceneDnaNotReadyError(failing, `Not ready to lock yet: ${failing.map((f) => f.label.toLowerCase()).join("; ")}.`);
   }
   const content: { editable: SceneDnaEditable; proposal: SceneDnaProposal; script_version_id: string } = {
-    editable: e.editable,
+    // Only ages that belong to this scene's characters are frozen with the blueprint.
+    editable: { ...e.editable, ages: e.ages },
     proposal: e.proposal,
     script_version_id: u.version.id,
   };

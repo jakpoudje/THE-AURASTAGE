@@ -148,12 +148,23 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
   const scene = scenes.find((s) => s.id === plan.scene_id)!;
   const shot = (version.shots as Row[]).find((s) => s.id === shotId)!;
   const current = await readProjectSettings(db, projectId);
-  const [dna, scriptVersionId, chars, looks, lines] = await Promise.all([
+  const [dna, scriptVersionId, chars, looks, lines, ageStates] = await Promise.all([
     repo.getDnaVersion(db, version.scene_dna_version_id), repo.getScriptVersionId(db, projectId), repo.listCharacters(db, projectId),
-    repo.listLooks(db, projectId), repo.listLines(db, projectId),
+    repo.listLooks(db, projectId), repo.listLines(db, projectId), repo.listAgeStates(db, projectId),
   ]);
   const editable = ((dna?.content as Row)?.editable ?? {}) as Row;
   const wardrobe = (editable.wardrobe ?? {}) as Record<string, string>;
+  // The age each character is in this scene, as locked in Scene DNA (flashbacks, time jumps; migration 0035).
+  // Ages stay with the character they were made for; after a merge they follow it, as Scene DNA does.
+  const follow = (id: string) => {
+    let c = chars.find((x) => x.id === id);
+    for (let i = 0; i < 10 && c?.merged_into; i++) c = chars.find((x) => x.id === c!.merged_into) ?? c;
+    return (c?.id as string) ?? id;
+  };
+  const ageOf = (cid: string) => {
+    const id = ((editable.ages ?? {}) as Record<string, string>)[cid];
+    return id ? ageStates.find((a) => a.id === id && follow(a.character_id) === cid) ?? null : null;
+  };
   // Locations & Props for this scene, and finished reference images (consistency from the first frame to the last).
   const [worldItems, appearances, worldRefs, charRefs] = await Promise.all([
     repo.listWorldItems(db, projectId), repo.listSceneAppearances(db, scene.id), repo.listWorldRefs(db, projectId), repo.listCharacterRefs(db, projectId),
@@ -170,7 +181,9 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
   const references: Row[] = [];
   for (const cid of (shot.character_ids ?? []) as string[]) {
     const c = chars.find((x) => x.id === cid);
-    const mine = charRefs.filter((r) => r.character_id === cid && r.asset_id);
+    // Only views made at this scene's age (a flashback never borrows the adult face, and vice versa).
+    const st = ageOf(cid);
+    const mine = charRefs.filter((r) => follow(r.character_id) === cid && r.asset_id && (r.age_state_id ?? null) === (st?.id ?? null));
     // Prefer the look chosen for this scene, then a front medium shot.
     const ref = mine.find((r) => r.look_id && r.look_id === wardrobe[cid] && r.angle === "front") ?? mine.find((r) => r.angle === "front" && r.size === "MS") ?? mine.find((r) => r.angle === "front") ?? mine[0];
     if (c && ref) references.push({ kind: "character", object_id: cid, name: c.name, view: `${ref.angle} · ${ref.size}`, asset_id: ref.asset_id });
@@ -202,7 +215,13 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
       duration_seconds: Number(shot.duration_seconds), description: shot.description, composition: shot.composition ?? null,
       lighting: shot.lighting ?? null, character_ids: shot.character_ids ?? [], dialogue_line_ids: shot.dialogue_line_ids ?? [],
     },
-    characters: chars.filter((c) => (shot.character_ids ?? []).includes(c.id)).map((c) => ({ id: c.id, name: c.name, age: c.age ?? null, description: c.description ?? null, wardrobe: lookText(c.id) })),
+    characters: chars.filter((c) => (shot.character_ids ?? []).includes(c.id)).map((c) => {
+      const st = ageOf(c.id);
+      return {
+        id: c.id, name: c.name, age: st ? st.age : c.age ?? null, description: c.description ?? null, wardrobe: lookText(c.id),
+        age_state: st ? { id: st.id, label: st.label, description: st.description ?? null } : null,
+      };
+    }),
     dialogue: lines.filter((l) => (shot.dialogue_line_ids ?? []).includes(l.id)).map((l) => ({ id: l.id, speaker: l.speaker_name, text: l.text, emotion: l.emotion ?? null })),
     location: loc ? { id: loc.id, name: loc.name, description: loc.description ?? "", revision: Number(loc.revision) } : null,
     props: props.map((x) => ({ id: x.id, name: x.name, description: x.description ?? "", category: x.category ?? "prop", revision: Number(x.revision) })),

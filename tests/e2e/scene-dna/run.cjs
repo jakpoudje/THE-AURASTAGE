@@ -123,13 +123,35 @@ async function api(method, path, body) {
     await tab("Performance");
     await page.getByText("This is a silent scene").waitFor();
   });
+  await step("age for this scene: a flashback age is chosen, saved, kept after reload and locked; changing it in Casting flags the scene", async () => {
+    const st = await api("POST", `/api/characters/${tunde.id}/ages`, { label: "Flashback, 1995", age: "12", description: "Skinny, school uniform" });
+    await page.reload();
+    await page.getByRole("button", { name: /INT\. NEWSROOM/ }).click();
+    await tab("Performance");
+    // "TUNDE OKAFOR (35)" is his introduction, not a time clue.
+    if (await page.getByRole("note", { name: "Story time" }).count()) throw new Error("a character introduction was taken for a time clue");
+    await page.getByLabel("Age of Tunde Okafor in this scene").selectOption({ label: "Flashback, 1995 (12)" });
+    await page.getByRole("button", { name: "Save Scene DNA" }).click();
+    await page.getByText("Scene DNA saved.").waitFor();
+    await page.reload();
+    await page.getByRole("button", { name: /INT\. NEWSROOM/ }).click();
+    await tab("Performance");
+    if ((await page.getByLabel("Age of Tunde Okafor in this scene").inputValue()) !== st.id) throw new Error("age not kept after reload");
+    await page.getByRole("button", { name: "Lock again (new version)" }).click();
+    await page.getByText(/locked as version 3/).waitFor();
+    await api("POST", `/api/characters/${tunde.id}/ages`, { id: st.id, label: "Flashback, 1995", age: "13", description: "Skinny, school uniform" });
+    await page.reload();
+    await page.getByText("Tunde Okafor — Flashback, 1995 (age 13) (character age) changed since approval.").waitFor();
+    await page.getByRole("button", { name: "Lock again (new version)" }).click();
+    await page.getByText(/locked as version 4/).waitFor();
+  });
   await step("changing the scene text in the script marks the locked scene stale", async () => {
     const v2 = await api("POST", `/api/projects/${P}/script/versions`, { source_text: V2, base_version_id: v1.id });
     await api("POST", `/api/projects/${P}/script/approve`, { version_id: v2.id });
     await page.reload();
     await page.getByRole("button", { name: /INT\. NEWSROOM/ }).getByText("Stale").waitFor();
     await page.getByRole("button", { name: /INT\. NEWSROOM/ }).click();
-    await page.getByText(/The scene itself changed in the script since you locked version 2/).waitFor();
+    await page.getByText(/The scene itself changed in the script since you locked version 4/).waitFor();
   });
   await page.screenshot({ path: `${OUT}/scene-dna.png`, fullPage: true });
   console.log("ERRORS:", errors);

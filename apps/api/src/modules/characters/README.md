@@ -69,3 +69,14 @@ when it was made from an older identity (never replaced automatically, rule 11).
 the generation worker makes each still through the Provider Gateway (`generateStill`), and the Assets domain registers
 it under Characters, linked to the character, with provenance (provider, model, engine version, identity hash, view).
 Tests: `tests/look.test.ts`, `tests/integration/char_refs_db.sql`, `tests/e2e/casting/run.cjs`.
+
+## Ages (migration 0035)
+A character at other points in the story (flashbacks, time jumps, old age): `character_age_states` (label, age, how they
+look then), owned by Casting. `GET|POST /api/characters/:id/ages` (`{ id?, label, age, description? }`, gated
+`casting:edit`, duplicate name 409, up to 12), `DELETE /api/ages/:id` (its reference views are kept, their age cleared;
+Scene DNA that used it is flagged). The look panel takes `age_state_id` (`GET …/look?age_state_id=`, `POST
+…/look/generate { age_state_id }`): `characterLookEngine` 1.1.0 describes the character at that age and records the
+view's `age_state_id`; views for each age are kept apart from today's. Without an age the prompts and identity hash are
+exactly what 1.0.0 made, so existing views aren't flagged by the upgrade. Scene DNA chooses the age per scene; the prompt
+compiler (1.3.0) then describes the character at that age and only uses reference views made at that age.
+Tests: `engines/character/characterLookEngine/tests`, `tests/integration/character_ages_db.sql`, `tests/e2e/casting/run.cjs`.

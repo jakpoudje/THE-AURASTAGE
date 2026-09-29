@@ -50,9 +50,11 @@ export const getDnaVersion = (db: SupabaseClient, id: string) =>
 export const getScriptVersionId = async (db: SupabaseClient, projectId: string) =>
   ((await one(db.from("scripts").select("approved_version_id").eq("project_id", projectId).maybeSingle()))?.approved_version_id as string | undefined) ?? null;
 export const listCharacters = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("characters").select("id, name, age, description").eq("project_id", projectId));
+  rows(db.from("characters").select("id, name, age, description, merged_into").eq("project_id", projectId));
 export const listLooks = (db: SupabaseClient, projectId: string) =>
   rows(db.from("wardrobe_looks").select("id, character_id, name, description").eq("project_id", projectId));
+export const listAgeStates = (db: SupabaseClient, projectId: string) =>
+  rows(db.from("character_age_states").select("id, character_id, label, age, description").eq("project_id", projectId));
 export const listLines = (db: SupabaseClient, projectId: string) =>
   rows(db.from("dialogue_lines").select("id, speaker_name, text, emotion").eq("project_id", projectId));
 // Read-only views of Locations & Props and the reference images (their own domains write them).
@@ -65,7 +67,7 @@ export const listSceneAppearances = (db: SupabaseClient, sceneId: string) =>
 export const listWorldRefs = (db: SupabaseClient, projectId: string) =>
   rows(db.from("world_reference_images").select("object_type, object_id, view_key, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").order("created_at", { ascending: false }));
 export const listCharacterRefs = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("character_reference_images").select("character_id, look_id, angle, size, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").order("created_at", { ascending: false }));
+  rows(db.from("character_reference_images").select("character_id, look_id, age_state_id, angle, size, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").order("created_at", { ascending: false }));
 export const listPackages = (db: SupabaseClient, projectId: string) =>
   rows(db.from("generation_packages").select("*").eq("project_id", projectId).order("created_at", { ascending: false }));
 export const listTakes = (db: SupabaseClient, projectId: string) =>

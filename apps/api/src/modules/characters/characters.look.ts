@@ -26,28 +26,33 @@ async function many(q: PromiseLike<{ data: unknown; error: any }>) {
   return (data ?? []) as Row[];
 }
 
-async function lookFor(db: SupabaseClient, characterId: string, lookId: string | null) {
+async function lookFor(db: SupabaseClient, characterId: string, lookId: string | null, ageStateId: string | null = null) {
   if (!UUID.test(characterId)) throw new CharacterNotFoundError("Character not found");
   const c = await one(db, "characters", "id, project_id, name, age, gender, nationality, occupation, description, personality, merged_into", "id", characterId);
   if (!c) throw new CharacterNotFoundError("Character not found");
   const looks = await many(db.from("wardrobe_looks").select("id, name, description").eq("character_id", characterId).order("created_at", { ascending: true }));
   const look = lookId ? looks.find((l) => l.id === lookId) ?? null : null;
   if (lookId && !look) throw new CharacterValidationError([], "That wardrobe look isn't this character's");
+  const ages = await many(db.from("character_age_states").select("id, label, age, description").eq("character_id", characterId).order("created_at", { ascending: true }));
+  const ageState = ageStateId ? ages.find((a) => a.id === ageStateId) ?? null : null;
+  if (ageStateId && !ageState) throw new CharacterValidationError([], "That age isn't this character's");
   const style = (await readProjectSettings(db, c.project_id)).settings.style?.look ?? null;
   const engineIn = (views?: [characterLook.LookAngle, characterLook.LookSize][]) => ({
     character: { name: c.name, age: c.age, gender: c.gender, nationality: c.nationality, occupation: c.occupation, description: c.description, personality: c.personality },
     wardrobe: look ? { name: look.name, description: look.description } : null, style: style || null, views,
+    age_state: ageState ? { label: ageState.label, age: ageState.age, description: ageState.description } : null,
   });
-  return { c, looks, look, engineIn };
+  return { c, looks, look, ages, ageState, engineIn };
 }
 
-export async function getCharacterLook(db: SupabaseClient, characterId: string, lookId: string | null, env: Env = process.env) {
-  const { c, looks, look, engineIn } = await lookFor(db, characterId, lookId);
+export async function getCharacterLook(db: SupabaseClient, characterId: string, lookId: string | null, env: Env = process.env, ageStateId: string | null = null) {
+  const { c, looks, look, ages, ageState, engineIn } = await lookFor(db, characterId, lookId, ageStateId);
   const out = characterLook.characterLookEngine(engineIn(ALL_VIEWS));
   const refs = await many(db.from("character_reference_images")
-    .select("id, look_id, angle, size, status, asset_id, error, provider, model, execution, identity_hash, created_at, completed_at")
+    .select("id, look_id, age_state_id, angle, size, status, asset_id, error, provider, model, execution, identity_hash, created_at, completed_at")
     .eq("character_id", characterId).order("created_at", { ascending: false }).limit(300));
-  const mine = refs.filter((r) => (r.look_id ?? null) === (look?.id ?? null));
+  // Views for this outfit at this age (no age = as in the profile).
+  const mine = refs.filter((r) => (r.look_id ?? null) === (look?.id ?? null) && (r.age_state_id ?? null) === (ageState?.id ?? null));
   const views = out.views.map((v) => {
     const hist = mine.filter((r) => `${r.angle}:${r.size}` === v.key);
     const latest = hist[0] ?? null;
@@ -64,6 +69,7 @@ export async function getCharacterLook(db: SupabaseClient, characterId: string, 
   return {
     character: { id: c.id, name: c.name, project_id: c.project_id },
     looks: looks.map((l) => ({ id: l.id, name: l.name })), look_id: look?.id ?? null,
+    age_states: ages.map((a) => ({ id: a.id, label: a.label, age: a.age })), age_state_id: ageState?.id ?? null,
     identity: out.identity, wardrobe: out.wardrobe, identity_hash: out.identity_hash, missing: out.missing, negative: out.negative, engine_version: out.engine_version,
     views, backends: stillBackends(env), backend_statuses: stillBackendStatuses(env),
   };
@@ -71,6 +77,7 @@ export async function getCharacterLook(db: SupabaseClient, characterId: string, 
 
 const GenerateInput = z.object({
   look_id: z.string().uuid().nullable().default(null),
+  age_state_id: z.string().uuid().nullable().default(null),
   views: z.array(z.string().regex(/^(front|three_quarter|profile|back):(CU|MCU|MS|FULL)$/)).min(1).max(16).optional(),
   provider: z.string().max(60).optional(),
 }).strict();
@@ -78,7 +85,7 @@ const GenerateInput = z.object({
 export async function generateCharacterLook(db: SupabaseClient, characterId: string, body: unknown, env: Env = process.env) {
   const p = GenerateInput.safeParse(body ?? {});
   if (!p.success) throw new CharacterValidationError(p.error.issues, p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
-  const { c, look, engineIn } = await lookFor(db, characterId, p.data.look_id);
+  const { c, look, ageState, engineIn } = await lookFor(db, characterId, p.data.look_id, p.data.age_state_id);
   const pairs = p.data.views ? p.data.views.map((k) => k.split(":") as [characterLook.LookAngle, characterLook.LookSize]) : undefined;
   const out = characterLook.characterLookEngine(engineIn(pairs));
   const backends = stillBackends(env);
@@ -90,7 +97,8 @@ export async function generateCharacterLook(db: SupabaseClient, characterId: str
     const { data, error } = await db.rpc("request_character_reference", {
       p_character: c.id, p_look: look?.id ?? null, p_angle: v.angle, p_size: v.size, p_aspect: v.aspect_ratio, p_prompt: v.prompt, p_negative: out.negative,
       p_identity_hash: out.identity_hash, p_provider: b.id, p_model: b.model, p_execution: b.execution, p_seed: Math.floor(Math.random() * 2 ** 31),
-      p_sketch: { title: c.name, subtitle: v.label, angle: v.angle, size: v.size, lines: [out.identity, out.wardrobe].filter(Boolean) }, p_engine_version: out.engine_version,
+      p_age_state: ageState?.id ?? null,
+      p_sketch: { title: c.name, subtitle: ageState ? `${v.label} · ${ageState.label} (${ageState.age})` : v.label, angle: v.angle, size: v.size, lines: [out.identity, out.wardrobe].filter(Boolean) }, p_engine_version: out.engine_version,
     });
     if (error) throw mapDbError(error);
     requested.push({ id: (data as Row).id, key: v.key, status: (data as Row).status, provider: b.id });

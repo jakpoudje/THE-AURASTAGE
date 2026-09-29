@@ -20,16 +20,18 @@ import type {
 import { RolePill } from "./RolePill";
 import { RelationshipsTab } from "./RelationshipsTab";
 import { WardrobeTab } from "./WardrobeTab";
+import { AgesTab } from "./AgesTab";
 import { LookPanel, useReferenceImage } from "./LookPanel";
 import { VoiceDnaTab } from "./VoiceDnaTab";
 import { lookApi } from "../api/lookApi";
 import { can, useProjectAccess } from "@/lib/useProjectAccess";
 
-type Tab = "profile" | "personality" | "look" | "voice" | "relationships" | "wardrobe" | "scenes" | "names";
+type Tab = "profile" | "personality" | "look" | "ages" | "voice" | "relationships" | "wardrobe" | "scenes" | "names";
 const TABS: { key: Tab | string; label: string; soon?: boolean }[] = [
   { key: "profile", label: "Profile" },
   { key: "personality", label: "Personality & Backstory" },
   { key: "look", label: "Look & References" },
+  { key: "ages", label: "Ages" },
   { key: "voice", label: "Voice DNA" },
   { key: "relationships", label: "Relationships" },
   { key: "wardrobe", label: "Wardrobe" },
@@ -226,6 +228,8 @@ export function CharacterProfile({
             onDelete={onDeleteRelationship}
           />
         )}
+
+        {tab === "ages" && <AgesTab key={character.id} character={character} canEdit={canEditLook} />}
 
         {tab === "wardrobe" && (
           <WardrobeTab character={character} looks={looks} busy={busy !== null} onSave={onSaveLook} onDelete={onDeleteLook} />

@@ -103,3 +103,8 @@ export const deleteRelationship = (db: SupabaseClient, id: string) => rpc<null>(
 export const saveLook = (db: SupabaseClient, id: string | null, characterId: string, name: string, description: string | null) =>
   rpc<Record<string, unknown>>(db, "save_wardrobe_look", { p_id: id, p_character_id: characterId, p_name: name, p_description: description });
 export const deleteLook = (db: SupabaseClient, id: string) => rpc<null>(db, "delete_wardrobe_look", { p_id: id });
+export const listAgeStates = (db: SupabaseClient, characterId: string) =>
+  rows(db.from("character_age_states").select("id, project_id, character_id, label, age, description, created_at, updated_at").eq("character_id", characterId).order("created_at", { ascending: true }));
+export const saveAgeState = (db: SupabaseClient, id: string | null, characterId: string, label: string, age: string, description: string | null) =>
+  rpc<Record<string, unknown>>(db, "save_character_age_state", { p_id: id, p_character_id: characterId, p_label: label, p_age: age, p_description: description });
+export const deleteAgeState = (db: SupabaseClient, id: string) => rpc<null>(db, "delete_character_age_state", { p_id: id });

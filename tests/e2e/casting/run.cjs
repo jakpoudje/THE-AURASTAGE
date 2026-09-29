@@ -235,6 +235,38 @@ async function api(method, path, body) {
     const lib = await (await fetch(`${API}/api/projects/${P}/library`)).json();
     if (lib.assets.filter((a) => /Tunde Okafor — .* reference$/.test(a.name)).length !== 8) throw new Error("references not in the Assets Library");
   });
+  await step("Ages: add a flashback age (duplicates refused); reload keeps it; views for that age are made and kept apart from today's", async () => {
+    await page.getByRole("button", { name: "Ages", exact: true }).click();
+    const sec = page.getByRole("region", { name: "Ages" });
+    await sec.getByText("No other ages yet.").waitFor();
+    await sec.getByRole("button", { name: "+ Add age" }).click();
+    await sec.getByLabel("Age name").fill("Flashback, 1995");
+    await sec.getByLabel("Age", { exact: true }).fill("12");
+    await sec.getByLabel("How they look at this age").fill("Skinny, school uniform, no beard");
+    await sec.getByRole("button", { name: "Save age" }).click();
+    await sec.getByText("Skinny, school uniform, no beard").waitFor();
+    await sec.getByRole("button", { name: "+ Add age" }).click();
+    await sec.getByLabel("Age name").fill("FLASHBACK, 1995");
+    await sec.getByLabel("Age", { exact: true }).fill("13");
+    await sec.getByRole("button", { name: "Save age" }).click();
+    await sec.getByText("this character already has an age with that name").waitFor();
+    await sec.getByRole("button", { name: "Cancel" }).click();
+    await page.reload();
+    await page.getByRole("button", { name: "Ages", exact: true }).click();
+    await sec.getByText("Skinny, school uniform, no beard").waitFor();
+    await page.getByRole("button", { name: "Look & References" }).click();
+    const panel = page.getByRole("region", { name: "Look and references" });
+    await panel.getByLabel("Wardrobe for these views").selectOption({ label: "Field outfit" });
+    await panel.getByLabel("Age for these views").selectOption({ label: "Flashback, 1995 (12)" });
+    await panel.getByTestId("look-identity").getByText(/aged 12.*At this point in the story \(Flashback, 1995\): Skinny, school uniform, no beard\./).waitFor();
+    await panel.getByText("0 of 16 made").waitFor();
+    await panel.getByRole("button", { name: "Generate look set (8 views)" }).click();
+    await panel.getByText("8 of 16 made").waitFor({ timeout: 15000 });
+    await panel.screenshot({ path: `${OUT}/look-panel-age.png` });
+    // Today's views are separate and unchanged (still marked for the earlier profile change).
+    await panel.getByLabel("Age for these views").selectOption({ label: "As in the profile" });
+    await panel.getByText("8 of 16 made · 8 need a refresh").waitFor();
+  });
   await step("Voice DNA: the voice comes from the saved profile, says why, and changes when the profile does", async () => {
     await page.getByRole("button", { name: "Voice DNA" }).click();
     const d = page.getByTestId("voice-description");

@@ -59,3 +59,11 @@ AURA-SDNA-002 invalid input · 010 invalid engine input · 403 no access ·
 Phase 7; `commands/GenerateSceneDna.ts` is still an empty stub), reference
 frames (needs Assets ingest), props (no Props authority yet), CharacterState
 per scene (injury/emotional state), version compare view.
+
+## Age per scene (migration 0035)
+`scene_dna.ages` maps each character to one of their Casting ages for this scene (like `wardrobe`); only a participant's
+own ages count and they are frozen with the approved version as `character_age` dependencies, so editing or removing
+that age in Casting flags the scene for review. The workspace returns each scene's `ages` options and `story_time`:
+`storyTimeCueEngine` (1.0.0, deterministic) points at flashbacks, time jumps, dated headings/super-titles and characters
+shown at another age ("YOUNG AMARA", "AMARA (10)" when her profile says 32 — a normal "AMARA (32)" introduction is not a
+clue), with the line as evidence; it never sets an age itself.

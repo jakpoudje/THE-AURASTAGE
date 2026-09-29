@@ -700,6 +700,32 @@ await check("casting look: 8 reference views from the profile (one identity), re
   assert(after.views.filter((v: any) => v.image).every((v: any) => v.image.stale), "a profile change should mark the views");
   return `${made.length} views · identity ${lk.identity_hash} · age ${age}`;
 });
+// ---- Ages (migration 0035): a flashback age with its own reference views, kept apart from today's ----
+await check("casting ages: a flashback age (duplicate name 409); its reference view is made at that age in the worker and kept apart from today's views", async () => {
+  const st = await api("POST", `/api/characters/${amaraId}/ages`, { label: "Flashback, 2004", age: "12", description: "Braided hair, no scar yet" });
+  await api("POST", `/api/characters/${amaraId}/ages`, { label: "FLASHBACK, 2004", age: "13" }, [409]);
+  const list = await api("GET", `/api/characters/${amaraId}/ages`);
+  assert(list.age_states.length === 1 && list.age_states[0].id === st.id, JSON.stringify(list).slice(0, 200));
+  const lk0 = await api("GET", `/api/characters/${amaraId}/look?age_state_id=${st.id}`);
+  assert(/aged 12/.test(lk0.identity) && /At this point in the story \(Flashback, 2004\): Braided hair, no scar yet\./.test(lk0.identity) && lk0.views.every((v: any) => !v.image), lk0.identity);
+  const today = (await api("GET", `/api/characters/${amaraId}/look`)).views.filter((v: any) => v.image).length;
+  const g = await api("POST", `/api/characters/${amaraId}/look/generate`, { age_state_id: st.id, views: ["front:CU"] });
+  assert(g.requested.length === 1, JSON.stringify(g).slice(0, 200));
+  let lk: any;
+  for (let i = 0; i < 40; i++) {
+    lk = await api("GET", `/api/characters/${amaraId}/look?age_state_id=${st.id}`);
+    if (lk.views.find((v: any) => v.key === "front:CU").latest?.status === "succeeded") break;
+    await Bun.sleep(1500);
+  }
+  const v = lk.views.find((x: any) => x.key === "front:CU");
+  assert(v.image && !v.image.stale && lk.views.filter((x: any) => x.image).length === 1, `age view ${v.latest?.status} ${v.latest?.error ?? ""}`);
+  const bytes = new TextDecoder().decode(new Uint8Array(await (await fetch(`${API}/api/assets/${v.image.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer()));
+  assert(bytes.includes("Flashback, 2004"), "the view doesn't show the age");
+  const todayAfter = (await api("GET", `/api/characters/${amaraId}/look`)).views.filter((x: any) => x.image).length;
+  assert(todayAfter === today, `today's views changed ${today} -> ${todayAfter}`);
+  await api("GET", `/api/characters/${amaraId}/look?age_state_id=00000000-0000-4000-8000-000000000000`, undefined, [400]);
+  return `age ${st.age} · 1 view at that age · ${today} views today`;
+});
 // ---- Locations & Props (migration 0028): found in the approved script with evidence; views made in the worker ----
 await check("locations & props: found in the approved script (names are never props); describe, stale edit refused (409); views in the worker land in the Assets Library", async () => {
   const sync = await api("POST", `/api/projects/${projectId}/world/sync`, {});

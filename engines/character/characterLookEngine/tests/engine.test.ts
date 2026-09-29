@@ -24,4 +24,15 @@ describe("characterLookEngine", () => {
   it("takes a custom set of views", () => {
     expect(characterLookEngine({ character: amara, views: [["back", "MS"]] }).views.map((v) => v.key)).toEqual(["back:MS"]);
   });
+  it("regression: without an age state the prompts and hash are exactly what 1.0.0 made (no false 'profile changed')", () => {
+    expect(characterLookEngine({ character: amara, wardrobe: { name: "Rain gear", description: "yellow oilskin jacket" }, style: "Teal" }).identity_hash).toBe("89ae64da4f277973");
+  });
+  it("an age state replaces the profile age and says how they look at that point in the story", () => {
+    const young = { label: "Flashback, 1995", age: "10", description: "Braided hair, no scar yet" };
+    const r = characterLookEngine({ character: amara, age_state: young });
+    expect(r.identity).toBe("Amara Bello — Woman, aged 10, Nigerian. Harbour pilot. Close-cropped hair, a thin scar over the left eyebrow. At this point in the story (Flashback, 1995): Braided hair, no scar yet.");
+    expect(r.identity_hash).not.toBe(characterLookEngine({ character: amara }).identity_hash);
+    expect(characterLookEngine({ character: amara, age_state: { ...young, description: "Shaved head" } }).identity_hash).not.toBe(r.identity_hash);
+    expect(characterLookEngine({ character: amara, age_state: { label: "Later", age: "70", description: null } }).identity).toContain("aged 70, Nigerian. Harbour pilot. Close-cropped hair, a thin scar over the left eyebrow. At this point in the story (Later).");
+  });
 });

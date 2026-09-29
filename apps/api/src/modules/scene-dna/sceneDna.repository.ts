@@ -53,6 +53,8 @@ export const listAppearances = (db: SupabaseClient, projectId: string) =>
   rows(db.from("character_appearances").select("character_id, scene_id, speaking, voice_only, line_count").eq("project_id", projectId));
 export const listLooks = (db: SupabaseClient, projectId: string) =>
   rows(db.from("wardrobe_looks").select("id, character_id, name, description").eq("project_id", projectId).order("name", { ascending: true }));
+export const listAgeStates = (db: SupabaseClient, projectId: string) =>
+  rows(db.from("character_age_states").select("id, character_id, label, age, description").eq("project_id", projectId).order("created_at", { ascending: true }));
 export const listLines = (db: SupabaseClient, projectId: string) =>
   rows(
     db

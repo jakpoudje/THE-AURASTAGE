@@ -14,13 +14,14 @@ import {
 import { z } from "zod";
 import { assertCharacterAccess, assertProjectAccess, assertRowAccess } from "./characters.permissions";
 import * as repo from "./characters.repository";
-import { toAliasDTO, toAppearanceDTO, toCharacterDTO, toLookDTO, toRelationshipDTO } from "./characters.mapper";
+import { toAgeStateDTO, toAliasDTO, toAppearanceDTO, toCharacterDTO, toLookDTO, toRelationshipDTO } from "./characters.mapper";
 import {
   CharacterValidationError,
   ScriptNotApprovedError,
   validateAliasInput,
   validateCreateInput,
   validateLookInput,
+  validateAgeStateInput,
   validateMergeInput,
   validateRelationshipInput,
   validateSyncInput,
@@ -176,5 +177,23 @@ export async function saveLook(db: SupabaseClient, characterId: string, payload:
 export async function deleteLook(db: SupabaseClient, id: string) {
   await assertRowAccess(db, "wardrobe_looks", id);
   await repo.deleteLook(db, id);
+  return { deleted: true };
+}
+
+// Ages (migration 0035): the character at other points in the story. Scene DNA chooses which one each scene uses.
+export async function listAgeStates(db: SupabaseClient, characterId: string) {
+  await assertCharacterAccess(db, characterId);
+  return { age_states: (await repo.listAgeStates(db, characterId)).map(toAgeStateDTO) };
+}
+
+export async function saveAgeState(db: SupabaseClient, characterId: string, payload: unknown) {
+  const input = validateAgeStateInput(payload);
+  await assertCharacterAccess(db, characterId);
+  return toAgeStateDTO(await repo.saveAgeState(db, input.id ?? null, characterId, input.label, input.age, input.description || null));
+}
+
+export async function deleteAgeState(db: SupabaseClient, id: string) {
+  await assertRowAccess(db, "character_age_states", id);
+  await repo.deleteAgeState(db, id);
   return { deleted: true };
 }

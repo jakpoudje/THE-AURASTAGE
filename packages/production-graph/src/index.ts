@@ -11,6 +11,7 @@ export type DependencyType =
   | "character" // Casting identity/profile
   | "dialogue_line" // Dialogue Intelligence line (words + annotations + approval)
   | "wardrobe_look" // Casting WardrobeLook
+  | "character_age" // Casting character age state (flashbacks, time jumps)
   | "project_technical"; // Project Settings technical/provider policy
 
 /** How strongly a descendant depends on this upstream object. */
@@ -47,6 +48,7 @@ const TYPE_NOUN: Record<DependencyType, string> = {
   character: "character",
   dialogue_line: "dialogue line",
   wardrobe_look: "wardrobe look",
+  character_age: "character age",
   project_technical: "technical settings",
 };
 
