@@ -771,6 +771,27 @@ await check("studio mixer: a channel strip (HPF, EQ, compressor, send, automatio
   assert(back.readiness.some((p: any) => /measure|Loudness/i.test(p.label) && !p.ok), "the old measurement should be stale after mixing changes");
   return "strip + routing kept; 400/409 refused";
 });
+// ---- Tracks added by hand (migration 0031) ----
+await check("audio tracks: add your own track (any department), duplicate name 409, move it, a clip on it blocks removal (409), removed when empty", async () => {
+  const sc = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1);
+  const sid = sc.session.id;
+  const t = await api("POST", `/api/audio-sessions/${sid}/tracks`, { name: "Smoke radio", family: "FX" });
+  assert(t.added_by_hand === true && t.family === "FX", JSON.stringify(t).slice(0, 200));
+  await api("POST", `/api/audio-sessions/${sid}/tracks`, { name: "smoke RADIO", family: "BG" }, [409]);
+  await api("POST", `/api/audio-sessions/${sid}/tracks`, { name: "x", family: "KAZOO" }, [400]);
+  await api("POST", `/api/audio-tracks/${t.id}/move`, { direction: -1 });
+  const order = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1).tracks.map((x: any) => x.id);
+  assert(order.indexOf(t.id) === order.length - 2, `not moved up: ${order.indexOf(t.id)} of ${order.length}`);
+  const c = await api("POST", `/api/audio-sessions/${sid}/clips`, { track_id: t.id, label: "Radio news", start_seconds: 0.5, duration_seconds: 1 });
+  await api("DELETE", `/api/audio-tracks/${t.id}`, undefined, [409]);
+  const spotted = sc.tracks.find((x: any) => !x.added_by_hand);
+  await api("DELETE", `/api/audio-tracks/${spotted.id}`, undefined, [400]);
+  await api("DELETE", `/api/audio-clips/${c.id}`);
+  await api("DELETE", `/api/audio-tracks/${t.id}`);
+  const after = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1).tracks;
+  assert(!after.some((x: any) => x.id === t.id), "track not removed");
+  return `added, moved, guarded, removed (${after.length} tracks left)`;
+});
 // ---- Phase 13-1: Ask AuraStage (plans in the generation worker; test planner until a Claude key is set) ----
 async function planned(tok: string, id: string) {
   for (let i = 0; i < 60; i++) {
