@@ -67,7 +67,8 @@ export const PlannedCallSchema = z.object({
 export const PlanSchema = z.object({
   summary: z.string().max(600),
   operation: OperationSchema,
-  calls: z.array(PlannedCallSchema).max(12),
+  /** Up to 40 changes, so a whole scene (every line + its Scene DNA) can be annotated in one pass. */
+  calls: z.array(PlannedCallSchema).max(40),
   /** Parts of the request no tool can do yet — shown, never silently dropped. */
   not_possible: z.array(z.string().max(300)).max(10),
   /** Questions for the user when the request is ambiguous. */

@@ -29,6 +29,13 @@ providers — from configured keys, never guessed).
 (look + the look worn in a scene; a created look is kept on undo), `modifyDialogue` (performance annotations; words
 come from the approved script), `updateSceneDNA`, `modifyShot`.
 
+## One pass over a scene (task 36)
+In Dialogue Intelligence and Scene DNA the panel offers "Annotate scene in one pass": one request that proposes every
+spoken line's intention, subtext, emotion and intensity (modifyDialogue per line) and the scene's DNA (updateSceneDNA)
+as a single suggestion, reviewed and applied (or undone) together. The context gives a focus scene its action text from
+the approved script, all its lines and shots and the characters who speak in it first (up to 60 items); a plan may hold
+up to 40 calls. Empty fields are filled; what a writer already wrote is kept unless the request asks to change it.
+
 ## Permissions
 Asking needs view access; each change is gated again when applied, as the signed-in user. Proposals are visible to
 their author and to studio admins (RLS).

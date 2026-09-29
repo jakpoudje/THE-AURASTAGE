@@ -60,6 +60,27 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
     await story().waitFor();
     if (await story().getByText("Tense and brooding").count()) throw new Error("tone still shown after undo");
   });
+  await step("dialogue: annotate a whole scene in one pass — every line and its Scene DNA in one suggestion; apply; reload: kept", async () => {
+    const v = await api("POST", `/api/projects/${P}/script/versions`, { source_text: "INT. SAFE HOUSE - NIGHT\n\nRain hammers the window. Footsteps in the corridor.\n\nAMARA\nGet out of my house!\n\nTUNDE\nWhere were you last night?\n\nAMARA\nI have to tell the truth.\n", base_version_id: null });
+    await api("POST", `/api/projects/${P}/script/approve`, { version_id: v.id });
+    await api("POST", `/api/projects/${P}/characters/sync`, {});
+    await api("POST", `/api/projects/${P}/dialogue/sync`, {});
+    await page.goto(`${BASE}/projects/${P}/dialogue`);
+    await openPanel();
+    const pass = panel().getByRole("group", { name: "One pass for a scene" });
+    await pass.getByLabel("Scene").fill("1");
+    await pass.getByRole("button", { name: "Annotate scene in one pass" }).click();
+    await panel().getByTestId("proposal-status").getByText("Suggested").waitFor();
+    if ((await panel().getByTestId("change").count()) !== 4) throw new Error(`expected 3 lines + Scene DNA, got ${await panel().getByTestId("change").count()}`);
+    await panel().getByTestId("change").filter({ hasText: "Scene 1" }).getByRole("cell", { name: "camera energy" }).waitFor();
+    await panel().getByRole("button", { name: "Apply" }).click();
+    await panel().getByTestId("proposal-status").getByText("Applied").waitFor();
+    await page.reload();
+    const d = await api("GET", `/api/projects/${P}/dialogue`);
+    const emo = d.lines.filter((l) => l.status === "active").map((l) => l.emotion);
+    if (emo.join() !== "anger,anticipation,determination") throw new Error("emotions: " + emo.join());
+    await page.getByText("Get out of my house!").first().waitFor();
+  });
   await step("a request the test planner can't do says so plainly; nothing to apply", async () => {
     await openPanel();
     await ask("Write me a poem about the sea");

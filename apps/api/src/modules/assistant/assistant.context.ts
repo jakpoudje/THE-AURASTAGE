@@ -16,7 +16,7 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
   const P = req.project_id;
   const [projectRows, scenes, chars, looks, dna] = await Promise.all([
     rows(db.from("projects").select("id, title, type, genre, subgenre, tone, setting, time_period, logline, target_runtime_minutes, updated_at").eq("id", P)),
-    rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, updated_at").eq("project_id", P).eq("status", "active").order("number", { ascending: true }).limit(200)),
+    rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, element_start, element_end, source_version_id, updated_at").eq("project_id", P).eq("status", "active").order("number", { ascending: true }).limit(200)),
     rows(db.from("characters").select("id, name, role, status, age, gender, occupation, description, merged_into, updated_at").eq("project_id", P).is("merged_into", null).limit(100)),
     rows(db.from("wardrobe_looks").select("id, character_id, name, description, updated_at").eq("project_id", P).limit(300)),
     rows(db.from("scene_dna").select("id, scene_id, status, mood, weather, atmosphere, lighting_intent, sound_intent, story_time, camera_energy, wardrobe, updated_at").eq("project_id", P)),
@@ -30,6 +30,7 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
   if (!focusScene && num) focusScene = scenes.find((s) => String(s.number) === num);
   let shots: Row[] = [];
   let lines: Row[] = [];
+  let action = "";
   if (req.object?.type === "shot") {
     const s = await rows(db.from("shots").select("scene_id").eq("id", req.object.id));
     focusScene = scenes.find((x) => x.id === s[0]?.scene_id) ?? focusScene;
@@ -39,9 +40,15 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     focusScene = scenes.find((x) => x.id === l[0]?.scene_id) ?? focusScene;
   }
   if (focusScene) {
+    // The scene's action as written in the script (read-only), so the whole scene can be understood in one pass.
+    if (focusScene.source_version_id) {
+      const v = await rows(db.from("script_versions").select("elements").eq("id", focusScene.source_version_id));
+      action = ((v[0]?.elements ?? []) as Row[]).filter((e) => e.index >= focusScene!.element_start && e.index <= focusScene!.element_end && e.type === "action")
+        .map((e) => String(e.text)).join("\n").slice(0, 3000);
+    }
     [shots, lines] = await Promise.all([
       rows(db.from("shots").select("id, scene_id, ordinal, purpose, size, angle, movement, description, character_ids, updated_at").eq("scene_id", focusScene.id).order("ordinal", { ascending: true }).limit(60)),
-      rows(db.from("dialogue_lines").select("id, scene_id, ordinal, speaker_name, character_id, text, intention, subtext, emotion, status, updated_at").eq("scene_id", focusScene.id).eq("status", "active").order("ordinal", { ascending: true }).limit(80)),
+      rows(db.from("dialogue_lines").select("id, scene_id, ordinal, speaker_name, character_id, text, parenthetical, intention, subtext, emotion, intensity, status, updated_at").eq("scene_id", focusScene.id).eq("status", "active").order("ordinal", { ascending: true }).limit(80)),
     ]);
   }
 
@@ -53,13 +60,14 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     const d = dna.find((x) => x.scene_id === s.id);
     // A scene's version is its Scene DNA's (what the tools change), falling back to the scene row.
     items.push(item("scene", { ...s, updated_at: d?.updated_at ?? s.updated_at }, `Scene ${s.number}`, { number: s.number, heading: s.heading, time_of_day: s.time_of_day,
+      ...(s === focusScene && action ? { action } : {}),
       dna: d ? { mood: d.mood, weather: d.weather, atmosphere: d.atmosphere, lighting_intent: d.lighting_intent, sound_intent: d.sound_intent, story_time: d.story_time, camera_energy: d.camera_energy, status: d.status } : null }));
   }
   for (const c of chars) {
     items.push(item("character", c, c.name, { name: c.name, role: c.role, age: c.age, gender: c.gender, occupation: c.occupation, description: c.description,
       looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })) }));
   }
-  for (const l of lines) items.push(item("dialogue_line", l, `${l.speaker_name} line ${l.ordinal}`, { speaker: l.speaker_name, character_id: l.character_id, text: l.text, intention: l.intention, subtext: l.subtext, emotion: l.emotion }));
+  for (const l of lines) items.push(item("dialogue_line", l, `${l.speaker_name} line ${l.ordinal}`, { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity }));
   for (const s of shots) items.push(item("shot", s, `Shot ${s.ordinal}`, { ordinal: s.ordinal, purpose: s.purpose, size: s.size, angle: s.angle, movement: s.movement, description: s.description }));
 
   return trimContext({

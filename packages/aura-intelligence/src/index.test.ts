@@ -74,14 +74,26 @@ describe("plan validation", () => {
 describe("context budget", () => {
   it("keeps the focus object and mentioned objects first and trims oversized data", () => {
     const item = (id: string, label: string, size = 10) => ({ ref: { type: "character" as const, id, version: null, label }, data: { text: "x".repeat(size) } });
-    const ids = Array.from({ length: 50 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+    const ids = Array.from({ length: 70 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
     const bundle = { project: { id: P, title: "t", genre: null, tone: null }, module: "casting" as const,
       focus: { type: "character" as const, id: ids[49], version: null, label: "Focus" },
-      items: [...ids.slice(0, 48).map((id, i) => item(id, `Extra ${i}`)), item(ids[48], "Amara Bello", 9000), item(ids[49], "Focus")] };
+      items: [...ids.slice(0, 48).map((id, i) => item(id, `Extra ${i}`)), item(ids[48], "Amara Bello", 9000), item(ids[49], "Focus"), ...ids.slice(50).map((id, i) => item(id, `More ${i}`))] };
     const t = trimContext(bundle, ["Amara"]);
-    expect(t.items).toHaveLength(40);
+    expect(t.items).toHaveLength(60);
     expect(t.items[0].ref.id).toBe(ids[49]);
     expect(t.items[1].ref.label).toBe("Amara Bello");
     expect(t.items[1].data).toMatchObject({ truncated: true });
+  });
+  it("with a focus scene, keeps every spoken line and shot and the characters who speak ahead of other characters", () => {
+    const id = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+    const ch = (i: number) => ({ ref: { type: "character" as const, id: id(i), version: null, label: `Extra ${i}` }, data: {} });
+    const line = (i: number, who: string) => ({ ref: { type: "dialogue_line" as const, id: id(500 + i), version: null, label: `line ${i}` }, data: { character_id: who, text: "…" } });
+    const bundle = { project: { id: P, title: "t", genre: null, tone: null }, module: "dialogue" as const,
+      focus: { type: "scene" as const, id: S, version: null, label: "Scene 1" },
+      items: [{ ref: { type: "scene" as const, id: S, version: null, label: "Scene 1" }, data: {} }, ...Array.from({ length: 50 }, (_, i) => ch(i)), ...Array.from({ length: 30 }, (_, i) => line(i, id(49)))] };
+    const t = trimContext(bundle, []);
+    expect(t.items[0].ref.id).toBe(S);
+    expect(t.items.filter((x) => x.ref.type === "dialogue_line")).toHaveLength(30);
+    expect(t.items.find((x) => x.ref.type === "character")!.ref.id).toBe(id(49));
   });
 });

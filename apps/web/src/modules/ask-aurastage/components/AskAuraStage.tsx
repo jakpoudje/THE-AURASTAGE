@@ -60,11 +60,15 @@ export function AskAuraStage({ projectId, module, onClose }: { projectId: string
     }
   }
 
-  const ask = () => run(async () => {
-    const p = await assistantApi.ask(projectId, { module, text });
+  const ask = (request = text) => run(async () => {
+    const p = await assistantApi.ask(projectId, { module, text: request });
     setText("");
     await open(p.id);
   });
+  // One pass over a whole scene: every spoken line's performance and the scene's DNA, as one suggestion to review.
+  const [passScene, setPassScene] = useState("1");
+  const onePass = module === "dialogue" || module === "scene_dna";
+  const annotateScene = () => ask(`Annotate scene ${passScene} in one pass: every line's intention, subtext, emotion and intensity, and the scene's Scene DNA (purpose, stakes, mood, atmosphere, lighting, sound and camera energy). Fill what is empty; keep what is already written.`);
   const act = (fn: (id: string) => Promise<Proposal>) => current && run(async () => {
     await fn(current.id);
     await open(current.id);
@@ -91,6 +95,18 @@ export function AskAuraStage({ projectId, module, onClose }: { projectId: string
             Ask
           </button>
         </form>
+        {onePass && (
+          <div className="rounded-md border border-aura-border bg-black/20 p-3" aria-label="One pass for a scene" role="group">
+            <p className="mb-2 text-xs text-white/60">Develop a whole scene at once — every line&apos;s performance and its Scene DNA — as one suggestion you review.</p>
+            <div className="flex items-center gap-2">
+              <label htmlFor="pass-scene" className="text-xs text-white/60">Scene</label>
+              <input id="pass-scene" type="number" min={1} value={passScene} onChange={(e) => setPassScene(e.target.value)} className="w-16 rounded-md border border-aura-border bg-black/30 px-2 py-1" />
+              <button type="button" disabled={busy || !(Number(passScene) >= 1)} onClick={annotateScene} className="rounded-md border border-aura-gold/60 px-3 py-1 text-aura-gold disabled:opacity-40">
+                Annotate scene in one pass
+              </button>
+            </div>
+          </div>
+        )}
         {error && <p role="alert" className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-300">{error}</p>}
 
         {p && (

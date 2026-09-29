@@ -1,6 +1,6 @@
 // apps/api/src/providers/reasoning/test/testReasoningAdapter.ts
 // The labelled TestProvider for reasoning (directive §17). It does NOT understand language: it recognises a fixed set
-// of production phrasings (time of day, weather, mood, age, wardrobe, subtle dialogue, camera, story fields) and turns
+// of production phrasings (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields) and turns
 // them into real tool calls against the canonical ids in the context, so the whole Ask AuraStage flow can be tested
 // end to end without a paid model. Everything it returns is marked test_output and labelled in the UI.
 import { ProviderError } from "../../types";
@@ -24,6 +24,25 @@ const WEATHER_ADJ_RE = /\b(rainy|raining|stormy|foggy|misty|snowy|snowing|windy)
 const MOODS = ["threatening", "menacing", "tense", "cold", "colder", "claustrophobic", "dark", "darker", "warm", "warmer", "romantic", "eerie", "hopeful", "melancholic", "nervous", "intimate", "chaotic", "calm", "oppressive", "desperate"];
 const WARDROBE = /\b(?:give|put|dress)\s+([A-Z][a-z]+)\s+(?:a |an |in |into )?([^.,;]*?\b(?:dress|wardrobe|jacket|coat|suit|outfit|uniform|shirt|clothes|gown|blazer|hoodie))\b/;
 
+
+/** A deterministic reading of one line (development only — a real model reads the scene): punctuation and key words. */
+export function readLine(text: string, paren = ""): { emotion: string; intensity: number; intention: string; why: string } {
+  const t = `${paren} ${text}`;
+  const rules: [RegExp, string, number, string][] = [
+    [/\b(get out|how dare|liar|shut up|enough|damn|hate)\b/i, "anger", 8, "Confront them"],
+    [/\b(afraid|scared|help|please|don'?t hurt|run)\b/i, "fear", 7, "Plead for safety"],
+    [/\b(sorry|miss (you|him|her)|gone|lost|cry|forgive)\b/i, "sadness", 5, "Reach for comfort"],
+    [/\b(love|darling|beautiful|my dear)\b/i, "love", 5, "Draw them closer"],
+    [/\b(truth|have to|must|will not|won'?t|never|promise|always)\b/i, "determination", 6, "Hold their ground"],
+    [/\b(whispers?|quietly|careful|watch)\b/i, "tension", 6, "Keep it hidden"],
+    [/\b(ha|laughs?|great|wonderful|finally)\b/i, "joy", 5, "Share the moment"],
+  ];
+  for (const [re, emotion, intensity, intention] of rules) if (re.test(t)) return { emotion, intensity: /!/.test(text) ? Math.min(10, intensity + 1) : intensity, intention, why: `"${t.match(re)![0].trim()}"` };
+  if (/\?\s*$/.test(text)) return { emotion: "anticipation", intensity: 4, intention: "Get an answer", why: "a question" };
+  if (/!/.test(text)) return { emotion: "surprise", intensity: 6, intention: "Make them react", why: "an exclamation" };
+  return { emotion: "neutral", intensity: 3, intention: "Keep the conversation going", why: "no strong signal in the words" };
+}
+
 function plan(snap: Snapshot) {
   const text = snap.request.text;
   const items = snap.context.items;
@@ -41,6 +60,42 @@ function plan(snap: Snapshot) {
   const scene = (focus?.type === "scene" ? byType("scene").find((i) => i.ref.id === focus.id) : undefined)
     ?? (sceneNum ? byType("scene").find((i) => String(i.data.number) === sceneNum) : undefined)
     ?? (byType("scene").length === 1 ? byType("scene")[0] : undefined);
+
+  // ---- One pass over a whole scene: every spoken line's performance + the scene's DNA (only empty fields) ----
+  const whole = /\b(annotate|one pass|in one go|every line|all (?:the |of the )?lines|develop (?:the |this )?(?:whole )?scene)\b/i.test(text);
+  if (whole) {
+    if (!scene) questions.push("Which scene? Open it in Dialogue Intelligence or Scene DNA and ask again.");
+    else {
+      const lines = byType("dialogue_line");
+      let n = 0;
+      for (const l of lines) {
+        const read = readLine(String(l.data.text ?? ""), String(l.data.parenthetical ?? ""));
+        const changes: Record<string, unknown> = {};
+        if (!l.data.emotion) changes.emotion = read.emotion;
+        if (l.data.intensity === null || l.data.intensity === undefined) changes.intensity = read.intensity;
+        if (!l.data.intention) changes.intention = read.intention;
+        if (Object.keys(changes).length && n < 38) {
+          add("modifyDialogue", { line_id: l.ref.id, changes }, `${l.ref.label}: ${read.emotion}, ${read.intensity}/10 — ${read.why}`);
+          n++;
+        }
+      }
+      const dna = (scene.data.dna ?? {}) as Record<string, any>;
+      const reads = lines.map((l) => readLine(String(l.data.text ?? ""), String(l.data.parenthetical ?? "")));
+      const d: Record<string, unknown> = {};
+      const moodOf: Record<string, string> = { tension: "tense", fear: "uneasy", sadness: "melancholic", love: "intimate", anger: "volatile", determination: "resolute", anticipation: "expectant", surprise: "unsettled", joy: "warm" };
+      const moods = [...new Set(reads.map((r) => moodOf[r.emotion]).filter(Boolean))].slice(0, 3);
+      if (!(dna.mood ?? []).length && moods.length) d.mood = moods;
+      const act = String(scene.data.action ?? "");
+      const sounds = [...act.matchAll(/\b(rain|thunder|wind|traffic|sirens?|footsteps|door|water|waves|crowd|phone|keyboard|engine|music|silence)\b/gi)].map((m) => m[1].toLowerCase());
+      if (!dna.sound_intent && sounds.length) d.sound_intent = `Built from the action: ${[...new Set(sounds)].slice(0, 4).join(", ")}${moods.length ? `, under a ${moods[0]} mood` : ""}.`;
+      const avg = reads.length ? reads.reduce((a, r) => a + r.intensity, 0) / reads.length : 4;
+      if (!dna.camera_energy) d.camera_energy = avg >= 7 ? "dynamic" : avg >= 5 ? "measured" : "calm";
+      if (!dna.atmosphere && act) d.atmosphere = act.split(/(?<=[.!?])\s/)[0].slice(0, 200);
+      if (Object.keys(d).length) add("updateSceneDNA", { scene_id: scene.ref.id, changes: d }, `Scene DNA for ${scene.ref.label}: ${Object.keys(d).join(", ")}`);
+      done.push(`annotate ${n} line(s) of ${scene.ref.label}${Object.keys(d).length ? ` and fill its Scene DNA (${Object.keys(d).join(", ")})` : ""}`);
+      if (!n && !Object.keys(d).length) not_possible.push(`Every line and the Scene DNA of ${scene.ref.label} are already filled in — ask for a specific change instead.`);
+    }
+  }
 
   // ---- Scene DNA: time, weather, mood ----
   const changes: Record<string, unknown> = {};
@@ -91,7 +146,7 @@ function plan(snap: Snapshot) {
   }
 
   // ---- Dialogue performance (subtext) ----
-  if (/\b(subtle|less obvious|shouldn'?t admit|not admit|without saying|hint|indirect|subtext)\b/i.test(text)) {
+  if (!whole && /\b(subtle|less obvious|shouldn'?t admit|not admit|without saying|hint|indirect|subtext)\b/i.test(text)) {
     const who = (text.match(/\b([A-Z][a-z]+)\b/g) ?? []).map((n) => named("character", n)).find(Boolean);
     const lines = byType("dialogue_line").filter((l) => !who || l.data.character_id === who.ref.id);
     if (who && lines.length) {
@@ -132,7 +187,7 @@ function plan(snap: Snapshot) {
     }
   }
 
-  if (!calls.length && !questions.length) not_possible.push("The development test planner only recognises common production requests (time of day, weather, mood, age, wardrobe, subtle dialogue, camera, story fields). Connect Claude for full understanding.");
+  if (!calls.length && !questions.length) not_possible.push("The development test planner only recognises common production requests (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields). Connect Claude for full understanding.");
   return {
     summary: calls.length ? `I'd ${done.join("; ")}.` : "I couldn't turn that into a change with the test planner.",
     operation: (calls[0] ? { updateSceneDNA: "MODIFY_SCENE", updateCharacter: "MODIFY_CHARACTER", changeWardrobe: "CHANGE_WARDROBE", modifyDialogue: "MODIFY_DIALOGUE", modifyShot: "MODIFY_SHOT", updateStory: "UPDATE_STORY" }[calls[0].tool] : "UNSUPPORTED") ?? "UNSUPPORTED",

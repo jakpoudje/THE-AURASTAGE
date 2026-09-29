@@ -17,7 +17,13 @@ Rules:
 - If part of the request can't be done with the available tools, say so in "not_possible".
 - If the request is ambiguous (which character? which scene?), ask in "questions" instead of guessing.
 - Each call's "input_json" must be a JSON object matching that tool's input schema exactly.
-- "summary" is one or two plain sentences a non-technical filmmaker understands.`;
+- "summary" is one or two plain sentences a non-technical filmmaker understands.
+- Asked to annotate or develop a whole scene in one pass: one modifyDialogue call per spoken line (intention, subtext,
+  emotion, intensity — read from the scene's action, the line itself and the lines around it) and one updateSceneDNA call
+  (purpose, stakes, mood, atmosphere, lighting_intent, sound_intent, camera_energy). Fill fields that are empty; change
+  a field already filled only when the request asks for it. Up to 40 calls.
+- The world is global: read names, places, languages, cultures and history as the script presents them, and never infer
+  appearance, accent or culture from a name alone.`;
 
 export function buildPlannerPrompt(req: AssistantRequest, intent: Intent, ctx: ContextBundle, tools: ToolDefinition[]) {
   const toolText = tools

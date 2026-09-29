@@ -1124,7 +1124,11 @@ http.createServer((req, res) => {
     const testPlanner = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/reasoning/test/testReasoningAdapter.js")).testReasoningAdapter;
     const STORY = ["title", "logline", "genre", "subgenre", "tone", "setting", "time_period", "target_runtime_minutes"];
     const aiTools = { updateStory: { module: "script", impact: ["Scriptwriter story setup", "Dashboard"], target: () => ({ label: project.title, get: () => project, set: (c) => (project = { ...project, ...c, updated_at: now() }) }) },
-      updateCharacter: { module: "casting", impact: ["Scene DNA (locked scenes with this character are flagged for review)", "Visual Generation prompts"], target: (i) => { const c = chars.find((x) => x.id === i.character_id); return c && { label: c.name, get: () => c, set: (ch) => Object.assign(c, ch) }; } } };
+      updateCharacter: { module: "casting", impact: ["Scene DNA (locked scenes with this character are flagged for review)", "Visual Generation prompts"], target: (i) => { const c = chars.find((x) => x.id === i.character_id); return c && { label: c.name, get: () => c, set: (ch) => Object.assign(c, ch) }; } },
+      modifyDialogue: { module: "dialogue", impact: ["Scene DNA (the scene's dialogue evidence)", "Audio Studio voice direction"], target: (i) => { const l = dlines.find((x) => x.id === i.line_id); return l && { label: `${l.speaker_name}: "${l.text.slice(0, 50)}"`, get: () => l, set: (ch) => Object.assign(l, ch, { approval: "draft", updated_at: now() }) }; } },
+      updateSceneDNA: { module: "scene_dna", impact: ["Storyboard & Shots (plans from the locked version are flagged)", "Visual Generation prompts", "Audio Studio sound intent"], target: (i) => { const sc = scenes.find((x) => x.id === i.scene_id); if (!sc) return null;
+        const rec = () => { let r = sdna.find((x) => x.scene_id === sc.id); if (!r) { r = { id: crypto.randomUUID(), project_id: P, scene_id: sc.id, purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, ages: {}, notes: null, status: "draft", review_state: "current", approved_version_id: null, drift: [] }; sdna.push(r); } return r; };
+        return { label: `Scene ${sc.number}`, get: () => sdna.find((x) => x.scene_id === sc.id) || {}, set: (ch) => Object.assign(rec(), Object.fromEntries(Object.entries(ch).map(([k, v]) => [k, v ?? (k === "mood" ? [] : null)])), { status: "draft", updated_at: now() }) }; } } };
     const aiPreview = (x) => {
       const acc = teamAccess().modules;
       const calls = (x.plan?.calls ?? []).map((c, index) => {
@@ -1140,8 +1144,16 @@ http.createServer((req, res) => {
       const intent = aiLib.classifyIntent({ module: b.module, text: b.text });
       const items = [{ ref: { type: "project", id: P, version: project.updated_at, label: project.title }, data: Object.fromEntries(STORY.map((k) => [k, project[k] ?? null])) },
         ...chars.map((c) => ({ ref: { type: "character", id: c.id, version: c.updated_at || null, label: c.name }, data: { name: c.name, age: c.age ?? null } }))];
+      // The scene the request is about ("scene N"): its action, Scene DNA and spoken lines, as the real context builder reads them.
+      const num = (b.text.match(/\bscene\s+(\d+)\b/i) || [])[1]; const fs = num && scenes.find((x) => String(x.number) === num && x.status === "active");
+      if (fs) {
+        const v = approved(); const d = sdna.find((x) => x.scene_id === fs.id) || {};
+        items.push({ ref: { type: "scene", id: fs.id, version: d.updated_at || null, label: `Scene ${fs.number}` }, data: { number: fs.number, heading: fs.heading, action: v ? v.elements.filter((e) => e.index >= fs.element_start && e.index <= fs.element_end && e.type === "action").map((e) => e.text).join("\n") : "",
+          dna: { mood: d.mood || [], atmosphere: d.atmosphere ?? null, sound_intent: d.sound_intent ?? null, camera_energy: d.camera_energy ?? null } } });
+        for (const l of dlines.filter((x) => x.scene_id === fs.id && x.status === "active")) items.push({ ref: { type: "dialogue_line", id: l.id, version: l.updated_at || null, label: `${l.speaker_name} line ${l.ordinal}` }, data: { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity } });
+      }
       const x = { id: crypto.randomUUID(), module: b.module, request: b.text.trim(), mode: "suggest", intent, status: "queued", provider: null, model: null, test_output: false, plan: null, results: null, error: null, created_at: now(), polls: 0,
-        snapshot: { request: { text: b.text, module: b.module, object: null }, context: { items, focus: null }, tools: Object.keys(aiTools) } };
+        snapshot: { request: { text: b.text, module: b.module, object: null }, context: { items, focus: fs ? { type: "scene", id: fs.id } : null }, tools: Object.keys(aiTools) } };
       AI.list.unshift(x);
       return send(200, aiView(x));
     }
