@@ -100,7 +100,7 @@ async function api(method, path, body) {
     if (!(await page.getByLabel("Description").inputValue()).includes("from the script")) throw new Error("not kept after reload");
     await page.getByRole("button", { name: "Ask AuraStage" }).click();
     await ask.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Describe the location "Tunde's Flat"/ }).click();
-    await ask.getByRole("button", { name: "Undo" }).click();
+    await ask.getByRole("button", { name: "Undo", exact: true }).click();
     await page.waitForFunction(() => document.querySelector('textarea[aria-label="Description"]')?.value === "");
     await ask.getByRole("button", { name: "Close" }).click();
     await list("Locations").getByRole("button", { name: /Lagos Harbour/ }).click();

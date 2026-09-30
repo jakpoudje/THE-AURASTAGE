@@ -54,7 +54,7 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
   await step("undo from Recent requests after a reload; the previous value is back", async () => {
     await openPanel();
     await panel().getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Change the tone to Tense and brooding.*Applied · test/ }).click();
-    await panel().getByRole("button", { name: "Undo" }).click();
+    await panel().getByRole("button", { name: "Undo", exact: true }).click();
     await panel().getByTestId("proposal-status").getByText("Undone").waitFor();
     await page.reload();
     await story().waitFor();

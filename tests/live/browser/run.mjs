@@ -162,7 +162,7 @@ await check("locations & props: Describe with AI — Ask AuraStage suggests, app
   if ((await page.getByLabel("Description").inputValue()) !== after) throw new Error("AI description lost after reload");
   await page.getByRole("button", { name: "Ask AuraStage" }).click();
   await ask.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Describe the location "Lagos Harbour"/ }).first().click();
-  await ask.getByRole("button", { name: "Undo" }).click();
+  await ask.getByRole("button", { name: "Undo", exact: true }).click();
   await page.waitForFunction((b) => document.querySelector('textarea[aria-label="Description"]')?.value === b, before, { timeout: 15000 });
   await ask.getByRole("button", { name: "Close" }).click();
   return after.slice(0, 100);
@@ -452,7 +452,7 @@ await check("ask AuraStage: suggest a tone change, see before → after, apply; 
   await story.getByText("Tense and brooding").waitFor();
   await page.getByRole("button", { name: "Ask AuraStage" }).click();
   await panel.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Change the tone to Tense and brooding/ }).first().click();
-  await panel.getByRole("button", { name: "Undo" }).click();
+  await panel.getByRole("button", { name: "Undo", exact: true }).click();
   await panel.getByTestId("proposal-status").getByText("Undone").waitFor();
   await page.reload();
   await story.getByText("Inherited").waitFor();
