@@ -244,7 +244,7 @@ let shotId = "";
 await check("storyboard: one click plans every locked scene (coverage style); unlocked ones are skipped; re-plan asks first (409)", async () => {
   await api("POST", `/api/projects/${projectId}/storyboard/generate-all`, { style: "wild" }, [400]);
   const all = await api("POST", `/api/projects/${projectId}/storyboard/generate-all`, { style: "intimate" });
-  assert(all.planned.length === 1 && all.planned[0].scene_number === 1 && all.skipped.some((x: any) => x.scene_number === 2 && /not locked/.test(x.reason)), JSON.stringify(all));
+  assert(all.planned.length === 1 && all.planned[0].scene_number === 1 && all.skipped.some((x: any) => x.scene_number === 2 && /isn.t locked/.test(x.reason)), JSON.stringify(all));
   const again = await api("POST", `/api/projects/${projectId}/storyboard/generate-all`, {});
   assert(again.planned.length === 0 && again.skipped.some((x: any) => x.scene_number === 1 && /kept as it is/.test(x.reason)), "an existing plan must never be replaced by plan-all");
   const first = (await api("GET", `/api/projects/${projectId}/storyboard`)).scenes[0];
