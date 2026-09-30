@@ -83,6 +83,7 @@ export function useCasting(projectId: string) {
     addAlias: (id: string, alias: string) => run("alias", async () => (await castingApi.addAlias(id, alias), `Added "${alias}" as another name.`)),
     merge: (sourceId: string, targetId: string) =>
       run("merge", async () => (await castingApi.merge(projectId, sourceId, targetId), "Merged. You can undo this from Names & Merges.")),
+    markDistinct: (a: string, b: string, names: string) => run("merge", async () => (await castingApi.markDistinct(projectId, a, b), `Kept ${names} as different people. AuraStage won't suggest merging them again.`)),
     unmerge: (id: string) => run("unmerge", async () => (await castingApi.unmerge(id), "Merge undone and scenes re-checked against the script.")),
     create: async (name: string, role: CharacterRole) => {
       let createdId: string | null = null;

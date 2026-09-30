@@ -42,6 +42,7 @@ export async function getApprovedScript(db: SupabaseClient, projectId: string) {
 
 export const listCharacters = (db: SupabaseClient, projectId: string) =>
   rows<Record<string, unknown>>(db.from("characters").select("*").eq("project_id", projectId).order("created_at", { ascending: true }));
+export const markDistinct = (db: SupabaseClient, a: string, b: string) => rpc(db, "mark_characters_distinct", { p_a: a, p_b: b });
 export const listAliases = (db: SupabaseClient, projectId: string) =>
   rows<Record<string, unknown>>(db.from("character_aliases").select("id, character_id, alias, normalized, source").eq("project_id", projectId));
 export const listAppearances = (db: SupabaseClient, projectId: string) =>

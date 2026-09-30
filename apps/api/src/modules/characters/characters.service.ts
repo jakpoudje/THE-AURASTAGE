@@ -10,6 +10,7 @@ import {
   characterIdentityResolutionEngine,
   sceneBoundaryEngine,
   storyAccentEngine,
+  characterDuplicateEngine,
   type Resolution,
 } from "@aurastage/engines";
 import { z } from "zod";
@@ -24,6 +25,7 @@ import {
   validateLookInput,
   validateAgeStateInput,
   validateMergeInput,
+  validateDistinctInput,
   validateRelationshipInput,
   validateSyncInput,
   validateUpdateInput,
@@ -108,7 +110,25 @@ export async function getCastingWorkspace(db: SupabaseClient, projectId: string)
     },
     pending,
     accent_suggestions,
+    // Characters that look like the same person (owner report: "characters named twice") — merge or "not the same".
+    duplicates: characterDuplicateEngine({
+      characters: chars.filter((c) => !c.merged_into).map((c) => ({
+        id: c.id as string, name: c.name as string,
+        aliases: aliases.filter((a) => a.character_id === c.id && a.source !== "name").map((a) => a.alias as string),
+        scene_count: new Set(apps.filter((a) => a.character_id === c.id).map((a) => a.scene_id)).size,
+        approved: c.status === "approved",
+        distinct_from: ((c.distinct_from ?? []) as string[]),
+      })),
+    }).pairs,
   };
+}
+
+/** A person says two characters are different people: the duplicate suggestion for them never comes back. */
+export async function markCharactersDistinct(db: SupabaseClient, projectId: string, payload: unknown) {
+  const { a_id, b_id } = validateDistinctInput(payload);
+  await assertProjectAccess(db, projectId);
+  await repo.markDistinct(db, a_id, b_id);
+  return { ok: true };
 }
 
 export async function syncFromScript(db: SupabaseClient, projectId: string, payload: unknown) {

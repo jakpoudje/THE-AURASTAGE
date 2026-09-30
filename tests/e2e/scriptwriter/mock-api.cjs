@@ -224,7 +224,16 @@ http.createServer((req, res) => {
         pending: r ? r.rs.filter((y) => y.decision === "confirm").map((y) => y.candidate) : [],
         // Mirrors characters.service: accent suggestions from the story (storyAccentEngine), never from a name.
         accent_suggestions: Object.fromEntries(chars.map((c) => [c.id, eng.storyAccentEngine({ character: { nationality: c.nationality ?? null, description: c.description ?? null, backstory: c.backstory ?? null },
-          scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => (scenes.find((x) => x.id === a.scene_id) || {}).location).filter(Boolean), project: { setting: project.setting ?? null, logline: project.logline ?? null } })])) });
+          scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => (scenes.find((x) => x.id === a.scene_id) || {}).location).filter(Boolean), project: { setting: project.setting ?? null, logline: project.logline ?? null } })])),
+        // Mirrors characters.service: characters named twice (characterDuplicateEngine).
+        duplicates: eng.characterDuplicateEngine({ characters: chars.filter((c) => !c.merged_into).map((c) => ({ id: c.id, name: c.name, aliases: aliases.filter((a) => a.character_id === c.id && a.source !== "name").map((a) => a.alias),
+          scene_count: new Set(apps.filter((a) => a.character_id === c.id).map((a) => a.scene_id)).size, approved: c.status === "approved", distinct_from: c.distinct_from || [] })) }).pairs });
+    }
+    if (u === `/api/projects/${P}/characters/distinct`) {
+      const a = chars.find((c) => c.id === b.a_id), c2 = chars.find((c) => c.id === b.b_id);
+      if (!a || !c2 || a === c2) return send(400, { error: { code: "AURA-CHR-002", message: "Choose two different characters" } });
+      a.distinct_from = [...new Set([...(a.distinct_from || []), c2.id])]; c2.distinct_from = [...new Set([...(c2.distinct_from || []), a.id])];
+      return send(200, { ok: true });
     }
     if (u === `/api/projects/${P}/characters/sync`) return approved() ? send(200, doSync(b.confirm || [])) : send(412, { error: { code: "AURA-CHR-412", message: "Approve the script in Scriptwriter first — characters are built from the approved script." } });
     if (u === `/api/projects/${P}/characters/merge`) {

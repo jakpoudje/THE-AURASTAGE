@@ -19,4 +19,6 @@ export interface CastingWorkspace {
   pending: CharacterCandidate[];
   /** How each character might speak, suggested from the story (never from a name), by character id. */
   accent_suggestions?: Record<string, StoryAccentOutput>;
+  /** Characters that look like the same person, with why and which record to keep. */
+  duplicates?: { keep_id: string; merge_id: string; keep_name: string; merge_name: string; reason: string; confidence: "high" | "medium" }[];
 }

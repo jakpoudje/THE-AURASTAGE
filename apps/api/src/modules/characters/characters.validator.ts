@@ -12,7 +12,7 @@ import {
   SyncCharactersInputSchema,
   UpdateCharacterInputSchema,
 } from "@aurastage/contracts";
-import type { z } from "zod";
+import { z } from "zod";
 
 export class CharacterValidationError extends Error {
   code = "AURA-CHR-002";
@@ -41,6 +41,8 @@ function parse<T extends z.ZodTypeAny>(schema: T, payload: unknown): z.infer<T> 
 
 export const validateSyncInput = (p: unknown) => parse(SyncCharactersInputSchema, p);
 export const validateMergeInput = (p: unknown) => parse(MergeCharactersInputSchema, p);
+export const validateDistinctInput = (p: unknown) =>
+  parse(z.object({ a_id: z.string().uuid(), b_id: z.string().uuid() }).strict().refine((v) => v.a_id !== v.b_id, "Choose two different characters"), p);
 export const validateAliasInput = (p: unknown) => parse(AddAliasInputSchema, p);
 export function validateUpdateInput(p: unknown) {
   const data = parse(UpdateCharacterInputSchema, p);

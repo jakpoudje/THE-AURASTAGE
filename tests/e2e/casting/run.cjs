@@ -171,6 +171,27 @@ async function api(method, path, body) {
     await page.getByRole("button", { name: "Add", exact: true }).click();
     await page.getByText("a character with that name already exists").waitFor();
   });
+  await step("characters named twice are pointed out: \"Not the same\" is remembered after a reload; \"Merge them\" merges", async () => {
+    await page.goto(`${BASE}/projects/${P}/casting`);
+    const bar = () => page.getByRole("region", { name: "Possible duplicates" });
+    const ramos = () => bar().getByRole("listitem").filter({ hasText: "Det. Ramos" });
+    await ramos().getByText(/same name with a title or script note/).waitFor();
+    await ramos().getByRole("button", { name: "Not the same" }).click();
+    await page.getByText(/won't suggest merging them again/).waitFor();
+    await page.reload();
+    await page.getByText(/^Characters \(\d+\)$/).waitFor();
+    if (await ramos().count()) throw new Error("a pair marked 'not the same' came back after reload");
+    await page.getByRole("button", { name: "+ Add Character" }).click();
+    await page.getByPlaceholder("Character name").fill("Adeyemi");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByText("Added Adeyemi.").waitFor();
+    const ade = bar().getByRole("listitem").filter({ hasText: "Chief Adeyemi" });
+    await ade.getByRole("button", { name: "Merge them" }).click();
+    await page.getByText(/Merged\. You can undo/).waitFor();
+    await page.reload();
+    await page.getByText(/^Characters \(\d+\)$/).waitFor();
+    if (await bar().count()) throw new Error("the duplicates bar should be gone once every pair is answered");
+  });
   await step("relationships: add, see shared scenes, update, remove", async () => {
     await page.goto(`${BASE}/projects/${P}/casting`);
     await page.getByRole("button", { name: /Tunde Okafor/ }).click();

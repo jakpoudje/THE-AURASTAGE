@@ -137,6 +137,21 @@ describe("Casting routes", () => {
     expect(items.filter((i) => i.decision === "create").map((i) => i.name)).toEqual(["Amara Bello"]);
   });
 
+  it("points out characters named twice (owner report 2026-09-30) and remembers a \"not the same\" answer through the gated function", async () => {
+    const AMARA = "66666666-6666-4666-8666-666666666666", AMARA2 = "66666666-6666-4666-8666-666666666667";
+    rows.characters = [character(), character({ id: AMARA, name: "Amara Bello" }), character({ id: AMARA2, name: "Amara" })];
+    const fake = fakeDb(rows);
+    const app = await appWith(fake);
+    const ws = (await app.inject({ method: "GET", url: `/api/projects/${P}/characters` })).json();
+    expect(ws.duplicates).toEqual([expect.objectContaining({ keep_id: AMARA, merge_id: AMARA2, keep_name: "Amara Bello", merge_name: "Amara" })]);
+    expect((await app.inject({ method: "POST", url: `/api/projects/${P}/characters/distinct`, payload: { a_id: AMARA, b_id: AMARA } })).statusCode).toBe(400);
+    const r = await app.inject({ method: "POST", url: `/api/projects/${P}/characters/distinct`, payload: { a_id: AMARA, b_id: AMARA2 } });
+    expect(r.statusCode).toBe(200);
+    expect(fake.calls.find((c) => c.fn === "mark_characters_distinct")?.args).toEqual({ p_a: AMARA, p_b: AMARA2 });
+    rows.characters[2].distinct_from = [AMARA];
+    expect((await (await appWith(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/characters` })).json().duplicates).toEqual([]);
+  });
+
   it("reports sync state honestly: never / current / stale", async () => {
     let app = await appWith(fakeDb(rows));
     const first = await app.inject({ method: "GET", url: `/api/projects/${P}/characters` });

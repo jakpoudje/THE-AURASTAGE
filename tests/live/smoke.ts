@@ -163,6 +163,18 @@ await check("casting: add character by hand; duplicate refused", async () => {
   assert(c.role === "supporting", "role not saved");
   await api("POST", `/api/projects/${projectId}/characters`, { name: "tunde okafor" }, [409]);
 });
+await check("casting: a character named twice is pointed out; \"not the same\" is remembered (migration 0042); merging still works", async () => {
+  const dup = await api("POST", `/api/projects/${projectId}/characters`, { name: "Adeyemi", role: "minor" }, [201]);
+  const ws = await api("GET", `/api/projects/${projectId}/characters`);
+  const pair = (ws.duplicates ?? []).find((p: any) => p.merge_id === dup.id || p.keep_id === dup.id);
+  assert(pair && [pair.keep_name, pair.merge_name].includes("Chief Adeyemi"), "no duplicate suggested: " + JSON.stringify(ws.duplicates));
+  await api("POST", `/api/projects/${projectId}/characters/distinct`, { a_id: pair.keep_id, b_id: pair.merge_id });
+  const after = await api("GET", `/api/projects/${projectId}/characters`);
+  assert(!(after.duplicates ?? []).some((p: any) => p.merge_id === dup.id || p.keep_id === dup.id), "the pair came back after 'not the same'");
+  const chief = after.characters.find((c: any) => c.name === "Chief Adeyemi");
+  await api("POST", `/api/projects/${projectId}/characters/merge`, { source_id: dup.id, target_id: chief.id });
+  return pair.reason;
+});
 await check("casting: relationship + wardrobe look", async () => {
   const ws = await api("GET", `/api/projects/${projectId}/characters`);
   amaraId = ws.characters.find((c: any) => c.name === "Amara Bello")?.id;

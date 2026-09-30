@@ -20,6 +20,7 @@ import { ConsistencyChecklist } from "./components/ConsistencyChecklist";
 import { PendingCandidates } from "./components/PendingCandidates";
 import { SyncBanner } from "./components/SyncBanner";
 import { CastLooksBar } from "./components/CastLooksBar";
+import { DuplicatesBar } from "./components/DuplicatesBar";
 
 export default function CastingCharactersPage() {
   const { id } = useParams<{ id: string }>();
@@ -84,6 +85,14 @@ export default function CastingCharactersPage() {
             {c.error ?? c.notice}
           </div>
         )}
+
+        <DuplicatesBar
+          pairs={c.ws.duplicates ?? []}
+          busy={c.busy !== null}
+          canEdit
+          onMerge={(mergeId, keepId) => c.merge(mergeId, keepId)}
+          onDistinct={(a, b, names) => c.markDistinct(a, b, names)}
+        />
 
         {active.length > 0 && <CastLooksBar projectId={id} firstCharacterId={active[0].id} count={active.length} />}
 

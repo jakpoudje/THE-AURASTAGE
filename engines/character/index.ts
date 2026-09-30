@@ -12,3 +12,6 @@ export type { Appearance } from "./characterAppearanceEngine";
 export * as storyAccent from "./storyAccentEngine";
 export { storyAccentEngine } from "./storyAccentEngine";
 export type { StoryAccentOutput, AccentSuggestion } from "./storyAccentEngine";
+export * as characterDuplicate from "./characterDuplicateEngine";
+export { characterDuplicateEngine } from "./characterDuplicateEngine";
+export type { DuplicatePair, CharacterDuplicateOutput } from "./characterDuplicateEngine";

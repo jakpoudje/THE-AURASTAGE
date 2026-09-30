@@ -92,3 +92,10 @@ they are from, then where their scenes are set, then the project setting — eac
 is never evidence. Voice DNA (`voiceCastingEngine` 1.1.0) speaks with the chosen accent where the built-in voice can
 and passes it to paid voice providers. The Profile tab lists fields still empty and offers "Develop the rest with AI"
 (an Ask AuraStage suggestion, reviewed before anything changes).
+
+## Characters named twice (migration 0042)
+`GET /api/projects/:id/characters` returns `duplicates` from `characterDuplicateEngine` (active characters, their
+non-name aliases, scene counts, approval, `distinct_from`). Casting shows them as "Same person?" with **Merge them**
+(the existing `merge_characters`, undoable from Names & Merges) and **Not the same**:
+`POST /api/projects/:id/characters/distinct {a_id, b_id}` → `mark_characters_distinct` (gate `casting:edit`, audit
+`CharactersMarkedDistinct`) adds each id to the other's `characters.distinct_from`, so the pair is never suggested again.
