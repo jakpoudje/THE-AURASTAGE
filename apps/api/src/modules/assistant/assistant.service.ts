@@ -2,7 +2,7 @@
 // preview (field-level before → after, permission, staleness, impact) → user applies → tools run through each domain's
 // own service → results with the before values → undo. Nothing here writes production tables directly (rule 4).
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AssistantRequestSchema, PLANNER_VERSION, PlanSchema, buildPlannerPrompt, classifyIntent, validatePlan, type ContextBundle } from "@aurastage/aura-intelligence";
+import { AssistantRequestSchema, PLANNER_VERSION, PlanSchema, buildPlannerPrompt, classifyIntent, plannerToolSchemas, validatePlan, type ContextBundle } from "@aurastage/aura-intelligence";
 import { providerStatuses, reasoningStatuses } from "../../providers";
 import { buildContext, currentVersion } from "./assistant.context";
 import { toolImpl, toolRegistry, type Snapshot, type ToolCtx, type ToolImpl } from "./tools";
@@ -52,6 +52,8 @@ export async function ask(db: SupabaseClient, projectId: string, body: unknown) 
     request: { text: req.text, module: req.module, object: req.object, mode: req.mode },
     intent, context, tools: tools.map((t) => t.name),
     prompt: buildPlannerPrompt(req, intent, context, tools),
+    // The same limits as JSON, so the worker can send a plan that breaks one back to the model once (planner 1.1.0).
+    tool_schemas: plannerToolSchemas(tools),
   };
   const row = await repo.request(db, { project: projectId, module: req.module, object: req.object, text: req.text, mode: req.mode, intent, snapshot, engineVersion: PLANNER_VERSION });
   return toDTO(row);

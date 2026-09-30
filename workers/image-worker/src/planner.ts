@@ -1,7 +1,7 @@
 // Ask AuraStage planning jobs (migration 0025). The API froze the request, intent, context and prompt into the
 // proposal; this worker only asks the reasoning backend for a Plan, validated against PlanSchema, and records it with
 // the provider, model and whether it is labelled TEST OUTPUT (rule 12). Applying is the user's decision, in the API.
-import { PLANNER_SYSTEM, PlanSchema, type Plan } from "@aurastage/aura-intelligence";
+import { PLANNER_SYSTEM, PlanSchema, planProblems, repairPrompt, type Plan } from "@aurastage/aura-intelligence";
 
 export interface PlanClaim { id: string; module: string; request: string; mode: string; intent: unknown; snapshot: { prompt?: string } & Record<string, unknown> }
 interface Reasoner {
@@ -28,7 +28,19 @@ export async function planOnce(d: PlannerDeps): Promise<boolean> {
     return true;
   }
   try {
-    const res = await r.complete({ system: PLANNER_SYSTEM, prompt: String(job.snapshot.prompt ?? job.request), schema: PlanSchema, effort: "medium", task: { kind: "plan", snapshot: job.snapshot } }, d.env);
+    const prompt = String(job.snapshot.prompt ?? job.request);
+    const ask = (p: string) => r.complete({ system: PLANNER_SYSTEM, prompt: p, schema: PlanSchema, effort: "medium", task: { kind: "plan", snapshot: job.snapshot } }, d.env);
+    let res = await ask(prompt);
+    // A call that breaks a tool's limits (e.g. an accent over 120 characters) goes back to the model once, with the
+    // exact problems, instead of reaching the person as an error. The API still validates whatever comes back.
+    const schemas = job.snapshot.tool_schemas as Record<string, unknown> | undefined;
+    const problems = schemas ? planProblems(res.data, schemas) : [];
+    if (problems.length) {
+      d.log("plan.repair", { id: job.id, problems: problems.slice(0, 10) });
+      const fixed = await ask(repairPrompt(prompt, res.data, problems));
+      const left = planProblems(fixed.data, schemas!);
+      if (left.length <= problems.length) res = { ...fixed, usage: { input_tokens: res.usage.input_tokens + fixed.usage.input_tokens, output_tokens: res.usage.output_tokens + fixed.usage.output_tokens } };
+    }
     await d.complete(job.id, res.data, res.provider ?? r.id, res.model, res.test_output, res.provider_request_id);
     d.log("plan.completed", { id: job.id, provider: res.provider ?? r.id, model: res.model, test_output: res.test_output, calls: res.data.calls.length, tokens: res.usage.input_tokens + res.usage.output_tokens });
   } catch (e) {

@@ -129,6 +129,10 @@ describe("Ask AuraStage", () => {
     expect(args.p_intent.operation).toBe("MODIFY_SCENE");
     expect(args.p_snapshot.context.focus).toMatchObject({ type: "scene", id: S2, version: "2026-09-02T00:00:00+00:00" });
     expect(args.p_snapshot.tools).toContain("updateSceneDNA");
+    // Regression (owner report 2026-09-30: "changes.accent: at most 120 characters"): the frozen tool schemas carry the
+    // real limits, so the model sees them and the worker can send a too-long value back to be shortened.
+    expect(args.p_snapshot.tool_schemas.updateCharacter.properties.changes.properties.accent).toMatchObject({ type: "string", maxLength: 120 });
+    expect(args.p_snapshot.prompt).toMatch(/"accent":\{"type":"string","maxLength":120/);
     expect(args.p_snapshot.prompt).toMatch(/Request: Make scene 2 night and rainy/);
     // Places and props come last (the request isn't about them), within the budget.
     expect(r.context_refs.map((x: Row) => `${x.type}:${x.id}`)).toEqual([`scene:${S2}`, `project:${P}`, `character:${AMARA}`, `audio_track:${DIALOGUE}`, `audio_track:${MUSIC}`, `settings:${P}`, `location:${HARBOUR}`]);
