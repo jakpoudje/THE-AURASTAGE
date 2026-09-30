@@ -47,8 +47,12 @@ export const RenderManifestSchema = z.object({
   /** Files this render must produce (QC checks the package against this list). */
   files: z.array(z.string()),
   sources: z.object({ take_ids: z.array(z.string()), audio_session_version_ids: z.array(z.string()), asset_ids: z.array(z.string()), dialogue_line_ids: z.array(z.string()),
-    automation_revision: z.string().nullable().default(null) }),
+    automation_revision: z.string().nullable().default(null),
+    /** Scenes whose Scene DNA on-screen text is burned in (manifest ≥ 1.5.0). */
+    scene_captions: z.array(z.string()).optional() }),
   engine_versions: z.record(z.string()),
+  /** On-screen text burned into video deliverables: from Scene DNA, over the start of each scene (manifest ≥ 1.5.0). */
+  overlays: z.array(z.object({ record_in: z.number().int(), duration: z.number().int(), text: z.string(), position: z.enum(["lower_third", "top", "center"]), scene_id: z.string() })).default([]),
   /** Main theme under the title card and the credit roll (manifest ≥ 1.4.0); the worker synthesises it. */
   title_music: z.object({ description: z.string(), mood: z.array(z.string()), seed: z.number().int() }).nullable().default(null),
 });

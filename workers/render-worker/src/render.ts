@@ -108,6 +108,8 @@ export async function renderDeliverable(claim: RenderClaim, d: RenderDeps): Prom
         writeFileSync(tf, m.options.watermark);
         filters.push(`drawtext=fontfile='${fpath(font)}':textfile='${fpath(tf)}':fontsize=h/12:fontcolor=white@0.28:x=(w-tw)/2:y=(h-th)/2`);
       }
+      // On-screen text from Scene DNA (manifest ≥ 1.5.0): fades in and out over the start of its scene.
+      filters.push(...overlayFilters(m, dir, font));
       if (m.options.burn_timecode) filters.push(`drawtext=fontfile='${fpath(mono)}':timecode='00\\:00\\:00\\:00':rate=${m.fps}:fontsize=h/24:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=6:x=(w-tw)/2:y=h-th-24`);
       const audioIn = needsSound ? ["-i", wav] : ["-f", "lavfi", "-t", secs.toFixed(3), "-i", `anullsrc=r=${SAMPLE_RATE}:cl=stereo`];
       await ffmpeg(
@@ -155,4 +157,16 @@ export async function renderDeliverable(claim: RenderClaim, d: RenderDeps): Prom
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** drawtext filters for the manifest's on-screen text (one text file each, so no text is ever parsed as a filter). */
+export function overlayFilters(m: { fps: number; overlays?: { record_in: number; duration: number; text: string; position: "lower_third" | "top" | "center" }[] }, dir: string, font: string): string[] {
+  return (m.overlays ?? []).map((o, n) => {
+    const tf = join(dir, `overlay_${n}.txt`);
+    writeFileSync(tf, o.text);
+    const a = o.record_in / m.fps, b = (o.record_in + o.duration) / m.fps, f = Math.min(0.5, (b - a) / 4);
+    const pos = o.position === "center" ? "x=(w-tw)/2:y=(h-th)/2" : o.position === "top" ? "x=w*0.06:y=h*0.08" : "x=w*0.06:y=h*0.78";
+    const alpha = `if(lt(t\\,${(a + f).toFixed(3)})\\,(t-${a.toFixed(3)})/${f.toFixed(3)}\\,if(gt(t\\,${(b - f).toFixed(3)})\\,(${b.toFixed(3)}-t)/${f.toFixed(3)}\\,1))`;
+    return `drawtext=fontfile='${fpath(font)}':textfile='${fpath(tf)}':fontsize=h/20:fontcolor=white:box=1:boxcolor=black@0.45:boxborderw=14:${pos}:enable='between(t\\,${a.toFixed(3)}\\,${b.toFixed(3)})':alpha='${alpha}'`;
+  });
 }

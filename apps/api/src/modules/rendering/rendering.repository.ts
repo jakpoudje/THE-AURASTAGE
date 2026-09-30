@@ -50,6 +50,9 @@ export const listLines = (db: SupabaseClient, ids: string[]) => rows(db.from("di
 /** The cast for the end credits (read-only; Casting owns characters): leads first, merged duplicates left out. */
 export const listCast = (db: SupabaseClient, p: string) =>
   rows(db.from("characters").select("name, role, kind").eq("project_id", p).is("merged_into", null).order("name", { ascending: true }));
+/** On-screen text per scene (read-only; Scene DNA owns it, migration 0040). */
+export const listCaptions = (db: SupabaseClient, p: string) =>
+  rows(db.from("scene_dna").select("scene_id, on_screen_text, on_screen_position").eq("project_id", p).not("on_screen_text", "is", null));
 export const listRenders =(db: SupabaseClient, p: string) =>
   rows(db.from("renders").select("id, org_id, project_id, picture_lock_id, lock_number, profile_id, profile_version, options, manifest_sha256, status, progress, stage, error, outputs, qc, qc_passed, review_state, review_reason, created_at, started_at, completed_at, cancel_requested").eq("project_id", p).order("created_at", { ascending: false }));
 

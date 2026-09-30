@@ -88,7 +88,7 @@ export function SceneEditor({
   }, [dirty, form, sceneId, onDirtyChange]);
 
   const set = <K extends keyof SceneDnaEditable>(k: K, v: SceneDnaEditable[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const text = (k: "purpose" | "stakes" | "story_time" | "weather" | "atmosphere" | "lighting_intent" | "sound_intent" | "notes") => ({
+  const text = (k: "purpose" | "stakes" | "story_time" | "weather" | "atmosphere" | "lighting_intent" | "sound_intent" | "notes" | "on_screen_text") => ({
     value: form[k] ?? "",
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set(k, e.target.value === "" ? null : e.target.value),
   });
@@ -340,9 +340,20 @@ export function SceneEditor({
         )}
 
         {tab === "Notes" && (
-          <Field label="Notes & references" hint="Anything the storyboard, camera, art or sound teams should know.">
-            <textarea rows={8} className={input} {...text("notes")} />
-          </Field>
+          <div className="space-y-4">
+            <Field label="On-screen text" hint="Shown over the first seconds of this scene in the finished film, e.g. “LAGOS — 1995” or “Three years later”. Leave empty for none.">
+              <div className="flex gap-2">
+                <input aria-label="On-screen text" maxLength={200} className={input} {...text("on_screen_text")} placeholder="e.g. LAGOS — 1995" />
+                <select aria-label="Where the text sits" value={form.on_screen_position} onChange={(e) => set("on_screen_position", e.target.value as SceneDnaEditable["on_screen_position"])}
+                  className="rounded-md border border-aura-border bg-black px-2 text-sm">
+                  <option value="lower_third">Lower third</option><option value="top">Top</option><option value="center">Centre</option>
+                </select>
+              </div>
+            </Field>
+            <Field label="Notes & references" hint="Anything the storyboard, camera, art or sound teams should know.">
+              <textarea rows={8} className={input} {...text("notes")} />
+            </Field>
+          </div>
         )}
       </div>
 

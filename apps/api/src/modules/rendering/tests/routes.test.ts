@@ -28,6 +28,7 @@ function fakeDb(rows: Record<string, Row[]>, rpcImpl: (fn: string, a: Row) => { 
       select: () => q, order: () => q, is: (k: string, v: unknown) => (f.push((r) => (r[k] ?? null) === v), q),
       eq: (k: string, v: unknown) => (f.push((r) => r[k] === v), q),
       in: (k: string, v: unknown[]) => (f.push((r) => v.includes(r[k])), q),
+      not: (k: string, _op: string, _v: unknown) => (f.push((r) => r[k] != null), q),
       maybeSingle: async () => ({ data: res()[0] ?? null, error: null }), then: (ok: any) => ok({ data: res(), error: null }),
     };
     return q;
@@ -178,5 +179,17 @@ describe("Export & Deliver routes", () => {
     await a.inject({ method: "POST", url: `/api/projects/${P}/delivery/renders`, payload: { profile_id: "audio_package" } });
     const audio = fake.calls.filter((c) => c.fn === "create_render").at(-1)!.args.p_manifest;
     expect(audio.duration_frames).toBe(96);
+  });
+  it("regression-proofing (task 43): Scene DNA on-screen text goes into the master's manifest over its scene, recorded as a source", async () => {
+    locked();
+    rows.scene_dna = [{ project_id: P, scene_id: S1, on_screen_text: "  LAGOS — 1995  ", on_screen_position: "top" }, { project_id: P, scene_id: "other", on_screen_text: null, on_screen_position: "lower_third" }];
+    const fake = fakeDb(rows, () => ({ data: { id: R1 } }));
+    const a = await app(fake);
+    await a.inject({ method: "POST", url: `/api/projects/${P}/delivery/renders`, payload: { profile_id: "streaming_master" } });
+    const m = fake.calls.find((c) => c.fn === "create_render")!.args.p_manifest;
+    expect(m.overlays).toEqual([{ record_in: 0, duration: 96, text: "LAGOS — 1995", position: "top", scene_id: S1 }]);
+    expect(m.sources.scene_captions).toEqual([S1]);
+    await a.inject({ method: "POST", url: `/api/projects/${P}/delivery/renders`, payload: { profile_id: "audio_package" } });
+    expect(fake.calls.filter((c) => c.fn === "create_render").at(-1)!.args.p_manifest.overlays).toEqual([]);
   });
 });

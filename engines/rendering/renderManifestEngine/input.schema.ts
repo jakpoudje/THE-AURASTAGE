@@ -44,6 +44,8 @@ export const RenderManifestInputSchema = z.object({
     end_credits: z.object({ frames: z.number().int().positive(), svg: z.string().max(2_000_000), image_height: z.number().int().positive() }).nullable(),
     engine_version: z.string(),
   }).nullable().default(null),
+  /** On-screen text per scene from Scene DNA (e.g. "LAGOS — 1995"), shown over the start of the scene's picture (manifest ≥ 1.5.0). */
+  captions: z.record(z.object({ text: z.string().min(1).max(200), position: z.enum(["lower_third", "top", "center"]).default("lower_third") })).default({}),
   /** The built-in main theme under the titles (proceduralAudioEngine "theme" score), when Project Settings asks for it. */
   title_music: z.object({ description: z.string().max(300), mood: z.array(z.string().max(40)).max(8), seed: z.number().int().min(0) }).nullable().default(null),
 });

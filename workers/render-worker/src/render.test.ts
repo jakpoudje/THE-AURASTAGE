@@ -151,6 +151,17 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
     expect(probe(r.store)).toBeLessThan(-80); // silent title card without the theme
     expect(probe(r2.store)).toBeGreaterThan(-40); // the theme plays under it
   }, 240000);
+  it("on-screen text from Scene DNA is burned in over the start of its scene, then gone (manifest 1.5.0); QC passes", async () => {
+    const captions = { [U(90)]: { text: "LAGOS — 1995", position: "lower_third" } };
+    const r = await render("streaming_master", { captions });
+    expect(failing(r.qc).filter((f) => !/^(loudness|true_peak)/.test(f))).toEqual([]);
+    const plain = await render("streaming_master");
+    // Brightest pixel in the lower-left third (where the text sits), from a frame at `at` seconds.
+    const peak = (store: string, at: number) => Math.max(...execFileSync("ffmpeg", ["-v", "error", "-ss", String(at), "-i", join(store, "streaming_1080p24.mp4"), "-frames:v", "1",
+      "-vf", "crop=900:200:60:820,scale=180:40", "-f", "rawvideo", "-pix_fmt", "gray", "-"]));
+    expect(peak(r.store, 0.5)).toBeGreaterThan(peak(plain.store, 0.5) + 40); // the white text is on screen mid-scene-start
+    expect(Math.abs(peak(r.store, 1.75) - peak(plain.store, 1.75))).toBeLessThan(6); // …and gone after its stretch
+  }, 240000);
   it("subtitles and EDL", async () => {
     const s = await render("subtitles");
     expect(s.qc.passed).toBe(true);

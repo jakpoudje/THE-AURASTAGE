@@ -493,7 +493,7 @@ http.createServer((req, res) => {
     // ---- Scene DNA (mirrors apps/api/src/modules/scene-dna + migration 0011 semantics) ----
     const pg = require(require("path").resolve(__dirname, "../../../packages/production-graph/dist/index.js"));
     const follow = (id) => { let c = chars.find((x) => x.id === id); while (c && c.merged_into) c = chars.find((x) => x.id === c.merged_into); return c ? c.id : id; };
-    const EDIT = { purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, ages: {}, notes: null };
+    const EDIT = { purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, ages: {}, notes: null, on_screen_text: null, on_screen_position: "lower_third" };
     const sdnaEntry = (scene) => {
       const v = approved(); const rec = sdna.find((r) => r.scene_id === scene.id);
       const editable = rec ? Object.fromEntries(Object.keys(EDIT).map((k) => [k, rec[k]])) : { ...EDIT };
@@ -544,7 +544,9 @@ http.createServer((req, res) => {
       if (!r.success) return send(400, { error: { code: "AURA-SDNA-002", message: `${r.error.issues[0].path[0]} isn't valid` } });
       let rec = sdna.find((x) => x.scene_id === m[1]);
       if (!rec) { rec = { id: crypto.randomUUID(), project_id: P, scene_id: m[1], ...EDIT, status: "draft", review_state: "current", approved_version_id: null, drift: [] }; sdna.push(rec); }
-      Object.assign(rec, r.data, { status: "draft", updated_at: now() });
+      // On-screen text alone keeps a locked scene locked (migration 0040).
+      const textOnly = Object.keys(r.data).every((k) => k === "on_screen_text" || k === "on_screen_position");
+      Object.assign(rec, r.data, { status: textOnly ? rec.status : "draft", updated_at: now() });
       return send(200, { ...rec, approved_version_number: null });
     }
     if ((m = u.match(/^\/api\/projects\/[^/]+\/scene-dna\/([^/]+)\/approve$/))) {

@@ -26,6 +26,9 @@ export const SceneDnaEditableSchema = z.object({
   /** character_id -> character_age_state_id: the character's age in this scene (flashbacks, time jumps; migration 0035). */
   ages: z.record(z.string().uuid(), z.string().uuid()).default({}),
   notes: z.string().max(4000).nullable().default(null),
+  /** On-screen text burned into video deliverables over the start of the scene, e.g. "LAGOS — 1995" (migration 0040). */
+  on_screen_text: z.string().trim().max(200).nullable().default(null),
+  on_screen_position: z.enum(["lower_third", "top", "center"]).default("lower_third"),
 });
 export type SceneDnaEditable = z.infer<typeof SceneDnaEditableSchema>;
 

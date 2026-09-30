@@ -13,6 +13,9 @@ import { validateRenderManifestInput } from "./validator";
 import { ENGINE_VERSION, MANIFEST_SCHEMA } from "./version";
 import type { PictureSegment, RenderManifest, RenderManifestOutput } from "./output.schema";
 
+/** How long on-screen text stays up at the start of its scene (seconds). */
+export const CAPTION_SECONDS = 4;
+
 export function renderManifestEngine(raw: unknown): RenderManifestOutput {
   const i = validateRenderManifestInput(raw);
   const missing: string[] = [];
@@ -81,6 +84,20 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
   }
   const roll = titled ? i.titles!.end_credits : null;
   if (roll) picture.push({ kind: "credits", record_in: offset + cutEnd, duration: roll.frames, source_in: 0, take_id: null, storage_key: null, media_type: "image/svg+xml", capability: null, grade: null, label: "End credits", svg: roll.svg, image_height: roll.image_height });
+  // On-screen text (video deliverables): over the first CAPTION_SECONDS of each scene's first stretch of picture in
+  // the cut (or the whole stretch when shorter), shifted with the opening card like everything else.
+  const overlays: RenderManifest["overlays"] = [];
+  if (p0.video) {
+    const seen = new Set<string>();
+    for (let k = 0; k < v1.length; k++) {
+      const c = v1[k], cap = c.scene_id ? i.captions[c.scene_id] : undefined;
+      if (!c.scene_id || !cap || seen.has(c.scene_id)) continue;
+      seen.add(c.scene_id);
+      let end = c.record_in + c.duration;
+      for (let n = k + 1; n < v1.length && v1[n].scene_id === c.scene_id && v1[n].record_in <= end; n++) end = Math.max(end, v1[n].record_in + v1[n].duration);
+      overlays.push({ record_in: c.record_in + offset, duration: Math.min(end - c.record_in, CAPTION_SECONDS * i.fps), text: cap.text, position: cap.position, scene_id: c.scene_id });
+    }
+  }
   const automation = offset ? { A1: i.automation.A1.map((pt) => ({ ...pt, frame: pt.frame + offset })) } : i.automation;
   const totalFrames = offset + cutEnd + (roll?.frames ?? 0);
 
@@ -123,8 +140,10 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
       asset_ids: Object.keys(assets),
       dialogue_line_ids: [...new Set(subtitles.cues.map((c) => c.line_id))],
       automation_revision: i.automation.A1.length ? i.automation_revision : null,
+      ...(overlays.length ? { scene_captions: overlays.map((o) => o.scene_id) } : {}),
     },
     title_music: titled ? i.title_music : null,
+    overlays,
     engine_versions: { manifest: ENGINE_VERSION, subtitles: SUB_V, audio_mix: MIX_V, profile: p.version, ...(titled ? { titles: i.titles!.engine_version } : {}) },
   };
   return { manifest: missing.length ? null : manifest, missing, engine_version: ENGINE_VERSION };

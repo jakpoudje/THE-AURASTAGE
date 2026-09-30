@@ -82,6 +82,19 @@ async function api(method, path, body) {
     await page.getByLabel("Remove tense").waitFor();
     await readiness().getByText("No look chosen: Amara Bello").waitFor();
   });
+  await step("on-screen text (task 43): write \"LAGOS — 1995\" at the top of the frame, save; reload: kept", async () => {
+    await tab("Notes");
+    await page.getByLabel("On-screen text").fill("LAGOS — 1995");
+    await page.getByLabel("Where the text sits").selectOption("top");
+    await page.getByRole("button", { name: "Save Scene DNA" }).click();
+    await page.getByText("Scene DNA saved.").waitFor();
+    await page.reload();
+    await page.getByText("Production Blueprint").waitFor();
+    await tab("Notes");
+    if ((await page.getByLabel("On-screen text").inputValue()) !== "LAGOS — 1995") throw new Error("on-screen text lost");
+    if ((await page.getByLabel("Where the text sits").inputValue()) !== "top") throw new Error("position lost");
+    await tab("Scene Overview");
+  });
   await step("unsaved typing is kept on this device and can be discarded", async () => {
     await tab("Notes");
     await page.getByLabel("Notes & references").fill("Handheld feel");

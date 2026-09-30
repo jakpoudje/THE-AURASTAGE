@@ -641,8 +641,14 @@ await check("settings → delivery: required deliverables tracked; credits writt
 await check("titles & credits: with them on, a review copy opens on the title card and ends on the credit roll; real ffmpeg render passes QC", async () => {
   const st = await api("GET", `/api/projects/${projectId}/settings`);
   await api("PUT", `/api/projects/${projectId}/settings`, { base_revision: st.revision, settings: { ...st.settings, titles: { ...st.settings.titles, opening_title: true, opening_seconds: 3, end_credits: true, credits_speed: "fast", music: "theme" } } });
+  // On-screen text from Scene DNA (task 43): a caption on the locked scene keeps it locked and is burned into the render.
+  const dna0 = (await api("GET", `/api/projects/${projectId}/scene-dna`)).scenes.find((x: any) => x.scene.id === s1);
+  await api("PATCH", `/api/projects/${projectId}/scene-dna/${s1}`, { on_screen_text: "LAGOS — LIVE CHECK", on_screen_position: "lower_third" });
+  const dna1 = (await api("GET", `/api/projects/${projectId}/scene-dna`)).scenes.find((x: any) => x.scene.id === s1);
+  assert(dna1.record?.status === dna0.record?.status && dna1.record?.on_screen_text === "LAGOS — LIVE CHECK", `caption changed the lock: ${dna0.record?.status} → ${dna1.record?.status}`);
   const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "review_copy" });
   const m = (await api("GET", `/api/renders/${r.render_id}/manifest`)).manifest;
+  assert(m.overlays?.length === 1 && m.overlays[0].text === "LAGOS — LIVE CHECK" && m.overlays[0].record_in === 72 && m.sources.scene_captions?.[0] === s1, `overlays ${JSON.stringify(m.overlays)}`);
   const kinds = m.picture.map((s: any) => s.kind);
   assert(kinds[0] === "title" && kinds.at(-1) === "credits" && m.picture[0].duration === 72, kinds.join(","));
   assert(m.title_music && /Main theme/.test(m.title_music.description), "the theme should play under the titles");
@@ -654,7 +660,7 @@ await check("titles & credits: with them on, a review copy opens on the title ca
     await Bun.sleep(3000);
   }
   assert(x.status === "succeeded" && x.qc_passed === true, `${x.status} ${x.error ?? ""} ${(x.qc?.checks ?? []).filter((c: any) => c.blocking && !c.ok).map((c: any) => c.evidence).join("; ")}`);
-  return `${(m.duration_frames / m.fps).toFixed(1)}s incl. 3s title + ${(m.picture.at(-1).duration / m.fps).toFixed(1)}s credits`;
+  return `${(m.duration_frames / m.fps).toFixed(1)}s incl. 3s title + ${(m.picture.at(-1).duration / m.fps).toFixed(1)}s credits; caption "${m.overlays[0].text}" ${(m.overlays[0].duration / m.fps).toFixed(1)}s; scene still ${dna1.record?.status}`;
 });
 await check("storyboard: a Casting change flows through Scene DNA and flags the shots", async () => {
   await api("PATCH", `/api/characters/${tundeId}`, { description: "Back on the story" });

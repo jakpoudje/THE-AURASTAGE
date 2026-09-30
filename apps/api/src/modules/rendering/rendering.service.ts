@@ -44,8 +44,8 @@ async function loadLock(db: SupabaseClient, projectId: string) {
   const [takes, mixes, sessions] = await Promise.all([repo.listTakes(db, takeIds), repo.listMixVersions(db, mixIds), repo.listSessions(db, projectId)]);
   const assetIds = [...new Set(mixes.flatMap((m) => ((m.clips as Row[]) ?? []).map((c) => c.asset_id).filter((x): x is string => !!x)))];
   const lineIds = [...new Set(mixes.flatMap((m) => ((m.clips as Row[]) ?? []).map((c) => c.source?.dialogue_line_id).filter((x): x is string => typeof x === "string")))];
-  const [assets, lines, cast] = await Promise.all([repo.listAssets(db, assetIds), repo.listLines(db, lineIds), repo.listCast(db, projectId)]);
-  return { timeline, lock, version, clips, takes, mixes, sessions, assets, lines, cast };
+  const [assets, lines, cast, captions] = await Promise.all([repo.listAssets(db, assetIds), repo.listLines(db, lineIds), repo.listCast(db, projectId), repo.listCaptions(db, projectId)]);
+  return { timeline, lock, version, clips, takes, mixes, sessions, assets, lines, cast, captions };
 }
 type Locked = Awaited<ReturnType<typeof loadLock>>;
 
@@ -80,6 +80,9 @@ function manifestInput(project: { id: string; title: string; genre?: string | nu
   return {
     project: { id: project.id, title: project.title, credits: creditsOf(settings) },
     titles: titlesFor(project, L, settings, profile, L.version?.fps ?? TIMELINE_FPS),
+    // On-screen text from Scene DNA ("LAGOS — 1995"), over the start of each scene in video deliverables.
+    captions: Object.fromEntries((L.captions ?? []).filter((c) => String(c.on_screen_text ?? "").trim())
+      .map((c) => [c.scene_id, { text: String(c.on_screen_text).trim().slice(0, 200), position: c.on_screen_position ?? "lower_third" }])),
     // The film's own main theme (same tune every render: seeded by the project) in the story's genre and tone.
     title_music: settings.titles.music === "theme"
       ? { description: `Main theme for the titles and credits of ${project.title}`.slice(0, 300),

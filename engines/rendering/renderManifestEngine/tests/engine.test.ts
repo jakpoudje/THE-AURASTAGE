@@ -76,3 +76,26 @@ describe("renderManifestEngine 1.4.0: titles and credits", () => {
     expect(renderManifestEngine(input()).manifest!.picture.map((s) => s.kind)).toEqual(["take", "black", "take"]);
   });
 });
+
+describe("renderManifestEngine 1.5.0: on-screen text from Scene DNA", () => {
+  const captions = { [U(90)]: { text: "LAGOS — 1995", position: "lower_third" } };
+  it("puts the scene's text over the start of its first stretch of picture (at most 4 s), recorded in the sources", () => {
+    const { manifest } = renderManifestEngine(input("streaming_master", { captions }));
+    // The scene's first stretch is 48 frames (2 s), shorter than 4 s, so the text stays for the whole stretch.
+    expect(manifest!.overlays).toEqual([{ record_in: 0, duration: 48, text: "LAGOS — 1995", position: "lower_third", scene_id: U(90) }]);
+    expect(manifest!.sources.scene_captions).toEqual([U(90)]);
+    expect(manifest!.engine_versions.manifest).toBe("1.5.0");
+  });
+  it("moves with the opening title card; caps at 4 s on a long stretch; only video deliverables; no captions = no overlays", () => {
+    const titles = { opening: { frames: 120, svg: "<svg>T</svg>" }, end_credits: null, engine_version: "1.0.0" };
+    const long = input("streaming_master", { captions, titles });
+    long.clips[0] = { ...long.clips[0], duration: 200 } as never;
+    long.clips[1] = { ...long.clips[1], record_in: 200 } as never;
+    long.clips[2] = { ...long.clips[2], duration: 224 } as never;
+    const m = renderManifestEngine(long).manifest!;
+    expect(m.overlays[0]).toMatchObject({ record_in: 120, duration: 96 });
+    expect(renderManifestEngine(input("audio_package", { captions })).manifest!.overlays).toEqual([]);
+    expect(renderManifestEngine(input()).manifest!.overlays).toEqual([]);
+    expect(renderManifestEngine(input()).manifest!.sources.scene_captions).toBeUndefined();
+  });
+});
