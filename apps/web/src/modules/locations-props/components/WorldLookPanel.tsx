@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReferenceImage } from "@/modules/casting-characters/components/LookPanel";
+import { CostNote } from "@/components/CostNote";
 import { worldApi, type WorldKind, type WorldLook, type WorldView } from "../api/worldApi";
 
 const LOC_VIEWS = [["establishing", "Establishing"], ["wide", "Wide"], ["medium", "Medium"], ["detail", "Detail"]] as const;
@@ -91,6 +92,10 @@ export function WorldLookPanel({ kind, id, canEdit, onMade }: { kind: WorldKind;
         <button onClick={() => generate(data.views.map((v) => v.key))} disabled={!canEdit || busy} className="rounded-md border border-aura-border px-3 py-2 disabled:opacity-40">All {data.views.length} views</button>
         <span className="text-white/50" data-testid="world-summary">{made} of {data.views.length} made{stale ? ` · ${stale} need a refresh` : ""}</span>
       </div>
+      {(() => {
+        const b = data.backends.find((x) => x.id === provider);
+        return <CostNote label={`Estimated cost for the reference set (${recommended} views)`} items={[{ provider: b?.id ?? "aurastage-sketch", model: b?.model ?? null, count: recommended }]} />;
+      })()}
       {notice && <p role="status" className="text-xs text-emerald-300">{notice}</p>}
       {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
 

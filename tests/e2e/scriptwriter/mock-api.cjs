@@ -1221,6 +1221,8 @@ http.createServer((req, res) => {
       return { calls, issues: [], impact: [...new Set(calls.flatMap((c) => c.impact))], can_apply: x.status === "proposed" && calls.length > 0 && calls.every((c) => c.allowed && !c.problem) };
     };
     const aiView = (x) => ({ ...x, snapshot: undefined, preview: x.status === "proposed" ? aiPreview(x) : null });
+    // Mirrors assistant.service estimate: the built-in test planner is free.
+    if (u === `/api/projects/${P}/assistant/estimate` && req.method === "POST") return send(200, { provider: "aurastage-test", model: null, input_chars: 4000 + (b.text || "").length, output_chars: 3000 });
     if (u === `/api/projects/${P}/assistant` && req.method === "POST") {
       if (!b.text || b.text.trim().length < 3) return send(400, { error: { code: "AURA-AI-400", message: "Tell AuraStage what you'd like to change" } });
       const intent = aiLib.classifyIntent({ module: b.module, text: b.text });

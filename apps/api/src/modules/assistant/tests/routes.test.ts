@@ -355,4 +355,22 @@ describe("Ask AuraStage", () => {
     const { toolRegistry } = await import("../tools");
     expect(toolRegistry.get("updateAssetDetails")!.input.safeParse({ asset_id: ASSET, changes: { archived: true } }).success).toBe(false);
   });
+
+  it("prices a request before it is sent (owner: every stage tells the cost): the exact prompt, nothing queued", async () => {
+    const fake = fakeDb();
+    const a = await app(fake);
+    const free = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant/estimate`, payload: { module: "casting", text: "Make Amara older" } })).json();
+    expect(free.input_chars).toBeGreaterThan(1000);
+    expect(fake.calls.some((c) => c.fn === "request_ai_proposal")).toBe(false);
+    const keep = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    try {
+      const paid = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant/estimate`, payload: { module: "casting", text: "Make Amara older" } })).json();
+      expect(paid).toMatchObject({ provider: "anthropic", model: "claude-opus-5-5" });
+      expect(paid.estimate.lines[0].min).toBeGreaterThan(0);
+      expect(paid.estimate.lines[0].basis).toMatch(/\$4\/\$20 per million/);
+    } finally {
+      if (keep === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = keep;
+    }
+  });
 });

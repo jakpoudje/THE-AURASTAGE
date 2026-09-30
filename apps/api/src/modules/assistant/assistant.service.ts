@@ -2,8 +2,9 @@
 // preview (field-level before → after, permission, staleness, impact) → user applies → tools run through each domain's
 // own service → results with the before values → undo. Nothing here writes production tables directly (rule 4).
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AssistantRequestSchema, PLANNER_VERSION, PlanSchema, buildPlannerPrompt, classifyIntent, plannerToolSchemas, validatePlan, type ContextBundle } from "@aurastage/aura-intelligence";
-import { providerStatuses, reasoningStatuses } from "../../providers";
+import { AssistantRequestSchema, PLANNER_SYSTEM, PLANNER_VERSION, PlanSchema, buildPlannerPrompt, classifyIntent, plannerToolSchemas, validatePlan, type ContextBundle } from "@aurastage/aura-intelligence";
+import { providerStatuses, reasoningModel, reasoningStatuses } from "../../providers";
+import { costEstimateEngine } from "@aurastage/engines";
 import { buildContext, currentVersion } from "./assistant.context";
 import { toolImpl, toolRegistry, type Snapshot, type ToolCtx, type ToolImpl } from "./tools";
 import * as repo from "./assistant.repository";
@@ -57,6 +58,32 @@ export async function ask(db: SupabaseClient, projectId: string, body: unknown) 
   };
   const row = await repo.request(db, { project: projectId, module: req.module, object: req.object, text: req.text, mode: req.mode, intent, snapshot, engineVersion: PLANNER_VERSION });
   return toDTO(row);
+}
+
+/**
+ * What a request would cost before it is sent (owner request 2026-09-30): builds exactly the prompt the planner would
+ * get — the same context and tools as ask() — without queueing anything, and prices it with costEstimateEngine.
+ */
+export async function estimate(db: SupabaseClient, projectId: string, body: unknown, env: Env = process.env) {
+  if (!UUID.test(projectId)) throw notFound("Project not found");
+  let req;
+  try {
+    req = AssistantRequestSchema.parse({ ...(body as object), project_id: projectId });
+  } catch (e) {
+    if ((e as Error)?.name === "ZodError") throw new AssistantError(400, "AURA-AI-400", (e as { issues: { message: string }[] }).issues[0]?.message ?? "Invalid request");
+    throw e;
+  }
+  const intent = classifyIntent(req);
+  const context = await buildContext(db, req, intent);
+  const prompt = buildPlannerPrompt(req, intent, context, toolRegistry.list());
+  const planner = capabilities(env).planner;
+  const provider = planner?.id ?? "aurastage-test";
+  const model = planner && "model" in planner ? (planner.model as string | null) : null;
+  // The reply is the plan: about 600 characters per change it proposes; a whole-scene or whole-cast pass is larger.
+  const items = context.items.filter((i) => ["character", "dialogue_line"].includes(i.ref.type)).length;
+  const output_chars = /\b(every|whole|all|in one pass)\b/i.test(req.text) ? Math.max(3000, items * 700) : 3000;
+  const input_chars = PLANNER_SYSTEM.length + prompt.length;
+  return { provider, model, input_chars, output_chars, estimate: costEstimateEngine({ items: [{ provider, model, input_chars, output_chars }] }) };
 }
 
 export async function list(db: SupabaseClient, projectId: string) {
@@ -198,7 +225,7 @@ export function capabilities(env: Env = process.env) {
   const real = reasoning.find((r) => r.execution !== "test" && r.state === "configured");
   return {
     reasoning,
-    planner: real ? { id: real.id, name: real.name, test_output: false } : testProviderAllowed(env) ? { id: "aurastage-test", name: "AuraStage test planner", test_output: true } : null,
+    planner: real ? { id: real.id, name: real.name, model: reasoningModel(real.id, env), test_output: false } : testProviderAllowed(env) ? { id: "aurastage-test", name: "AuraStage test planner", test_output: true } : null,
     tools: toolRegistry.list().map((t) => ({ name: t.name, module: t.module, action: t.action, description: t.description, impact: t.impact })),
     media: providerStatuses(env).map((p) => ({ id: p.id, name: p.name, capabilities: p.capabilities, state: p.state })),
   };

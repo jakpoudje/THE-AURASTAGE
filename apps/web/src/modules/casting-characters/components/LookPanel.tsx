@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/apiClient";
+import { CostNote } from "@/components/CostNote";
 import { lookApi, type CharacterLookView, type LookView } from "../api/lookApi";
 
 const ANGLES = [["front", "Front"], ["three_quarter", "¾ view"], ["profile", "Profile"], ["back", "Back"]] as const;
@@ -135,6 +136,10 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
         <button onClick={() => generate(data.views.map((v) => v.key))} disabled={!canEdit || busy} className="rounded-md border border-aura-border px-3 py-2 disabled:opacity-40">All 16 views</button>
         <span className="text-white/50" data-testid="look-summary">{made} of 16 made{stale ? ` · ${stale} need a refresh` : ""}</span>
       </div>
+      {(() => {
+        const b = data.backends.find((x) => x.id === provider);
+        return <CostNote label="Estimated cost for the look set (8 views; each extra view is one more image)" items={[{ provider: b?.id ?? "aurastage-sketch", model: b?.model ?? null, count: 8 }]} />;
+      })()}
       {notice && <p role="status" className="text-xs text-emerald-300">{notice}</p>}
       {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
 

@@ -50,3 +50,6 @@ character, scene, shot or technical truth.
   approved, Casting's characters are the names every later stage uses.
 - What is done and what is left is tracked in one place: `BUILD_PLAN.md` (section 8).
 
+- Provider prices live in one place: `engines/generation/costEstimateEngine/prices.ts` (each with its published source and
+  `PRICES_AS_OF`). Every "Estimated cost" on every page is computed from it by `costEstimateEngine`; a model without a
+  confirmed price shows "price not confirmed" with the provider's price page, never a guessed number.

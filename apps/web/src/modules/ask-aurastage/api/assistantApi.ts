@@ -18,6 +18,9 @@ export interface Proposal {
 }
 
 export const assistantApi = {
+  /** What asking would cost, from the exact prompt (nothing is sent to the AI). */
+  estimate: (projectId: string, body: { module: AssistantModule; text: string }) =>
+    apiPost<{ provider: string; model: string | null; input_chars: number; output_chars: number }>(`/api/projects/${projectId}/assistant/estimate`, body),
   ask: (projectId: string, body: { module: AssistantModule; text: string }) => apiPost<Proposal>(`/api/projects/${projectId}/assistant`, body),
   list: (projectId: string) => apiGet<{ proposals: Proposal[] }>(`/api/projects/${projectId}/assistant`),
   get: (id: string) => apiGet<Proposal>(`/api/assistant/proposals/${id}`),

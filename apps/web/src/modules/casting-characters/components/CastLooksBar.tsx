@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { ApiError } from "@/lib/apiClient";
 import { can, useProjectAccess } from "@/lib/useProjectAccess";
 import { lookApi, type CharacterLookView } from "../api/lookApi";
+import { CostNote } from "@/components/CostNote";
 
 export function CastLooksBar({ projectId, firstCharacterId, count }: { projectId: string; firstCharacterId: string; count: number }) {
   const access = useProjectAccess(projectId);
@@ -61,6 +62,10 @@ export function CastLooksBar({ projectId, firstCharacterId, count }: { projectId
           {busy ? "Starting…" : "Generate all character looks"}
         </button>
       </div>
+      {(() => {
+        const b = backends.find((x) => x.id === provider);
+        return <CostNote label={`Estimated cost if every view is made (${count} × 8 views; views already made are skipped)`} items={[{ provider: b?.id ?? "aurastage-sketch", model: b?.model ?? null, count: count * 8 }]} />;
+      })()}
       {(error || notice) && <p role={error ? "alert" : "status"} className={`mt-2 text-xs ${error ? "text-red-300" : "text-emerald-300"}`}>{error ?? notice}</p>}
     </div>
   );

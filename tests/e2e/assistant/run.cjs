@@ -32,6 +32,8 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
   await step("ask from any workspace; the suggestion shows before → after, labelled as test output, and changes nothing yet", async () => {
     await page.goto(`${BASE}/projects/${P}/scriptwriter`);
     await openPanel();
+    await panel().getByLabel("What would you like to change?").fill("Change the tone to Tense and brooding");
+    await panel().getByTestId("cost-note").getByText("Free").waitFor(); // the cost of asking, before anything is sent
     await ask("Change the tone to Tense and brooding");
     await panel().getByTestId("proposal-status").getByText("Suggested").waitFor();
     await panel().getByTestId("test-output").getByText("DEVELOPMENT / TEST OUTPUT").waitFor();

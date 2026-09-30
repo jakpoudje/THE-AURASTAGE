@@ -151,6 +151,10 @@ await check("locations & props: Describe with AI — Ask AuraStage suggests, app
   const before = await page.getByLabel("Description").inputValue();
   await page.getByRole("button", { name: "Describe with AI" }).click();
   const ask = page.getByRole("complementary", { name: "Ask AuraStage" });
+  // With a paid AI connected the request waits, with its cost shown, until Ask is pressed (owner: cost before spending).
+  await ask.getByTestId("cost-note").waitFor({ timeout: 30000 });
+  const cost = await ask.getByTestId("cost-total").textContent();
+  if (await ask.getByText("Check the cost below, then press Ask.").count()) await ask.getByRole("button", { name: "Ask", exact: true }).click();
   await ask.getByRole("button", { name: /^Apply/ }).waitFor({ timeout: 120000 });
   await ask.getByRole("button", { name: /^Apply/ }).click();
   await ask.getByText("Applied", { exact: true }).first().waitFor({ timeout: 60000 });
@@ -165,7 +169,7 @@ await check("locations & props: Describe with AI — Ask AuraStage suggests, app
   await ask.getByRole("button", { name: "Undo", exact: true }).click();
   await page.waitForFunction((b) => document.querySelector('textarea[aria-label="Description"]')?.value === b, before, { timeout: 15000 });
   await ask.getByRole("button", { name: "Close" }).click();
-  return after.slice(0, 100);
+  return `cost shown before asking: ${cost} · ${after.slice(0, 80)}`;
 });
 await check("dialogue: bring in + approve scene, reload: still approved", async () => {
   await page.goto(projectUrl + "/dialogue");
@@ -468,6 +472,8 @@ await check("ask AuraStage: suggest a tone change, see before → after, apply; 
   const story = page.getByRole("region", { name: "Story & Creative Summary" });
   await page.getByRole("button", { name: "Ask AuraStage" }).click();
   await panel.getByLabel("What would you like to change?").fill("Change the tone to Tense and brooding");
+  // The cost of asking is shown before anything is sent (owner request 2026-09-30).
+  await panel.getByTestId("cost-note").waitFor({ timeout: 20000 });
   await panel.getByRole("button", { name: "Ask", exact: true }).click();
   // Planned by the generation worker; allow for its poll interval.
   await panel.getByTestId("proposal-status").getByText("Suggested").waitFor({ timeout: 90000 });

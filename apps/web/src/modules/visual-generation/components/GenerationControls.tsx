@@ -5,6 +5,7 @@
 import { useState } from "react";
 import type { AspectRatio, ProviderStatus, RequestTakeInput } from "@aurastage/contracts";
 import type { VisualShot } from "../types";
+import { CostNote } from "@/components/CostNote";
 
 const RATIOS: AspectRatio[] = ["16:9", "2.39:1", "4:3", "1:1", "9:16"];
 
@@ -154,6 +155,9 @@ export function GenerationControls({
             ))}
           </select>
         </label>
+      )}
+      {provider && model && (
+        <CostNote items={[{ provider: provider.id, model: model.id, count: variations, seconds: capability === "video" ? duration : undefined }]} />
       )}
       <button
         onClick={() =>

@@ -80,6 +80,17 @@ async function api(method, path, body) {
     await page.getByText("Runway isn't connected yet — its API key hasn't been added.").waitFor();
     await page.getByLabel("Provider", { exact: true }).selectOption("aurastage-sketch");
   });
+  await step("the cost is shown before generating: the built-in sketch is free; a paid model shows its published price (owner request 2026-09-30)", async () => {
+    const total = () => page.getByTestId("cost-total").first().textContent();
+    if ((await total()) !== "Free") throw new Error("sketch should be free, got " + (await total()));
+    await page.getByRole("radio", { name: "Video" }).click();
+    await page.getByLabel("Provider", { exact: true }).selectOption("runway");
+    await page.getByLabel("Duration").selectOption("10");
+    await page.waitForFunction(() => document.querySelector('[data-testid="cost-total"]')?.textContent === "$0.50");
+    await page.getByRole("radio", { name: "Image" }).click();
+    await page.getByLabel("Provider", { exact: true }).selectOption("aurastage-sketch");
+    await page.waitForFunction(() => document.querySelector('[data-testid="cost-total"]')?.textContent === "Free");
+  });
   await step("generate two sketch takes; they finish in the background and appear", async () => {
     await page.getByLabel("Variations").selectOption("2");
     await page.getByRole("button", { name: "Generate 2 takes" }).click();

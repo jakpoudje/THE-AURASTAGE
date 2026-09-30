@@ -27,6 +27,7 @@ const route =
 
 export async function registerAssistantRoutes(app: FastifyInstance) {
   app.get("/api/assistant/capabilities", async () => svc.capabilities());
+  app.post("/api/projects/:id/assistant/estimate", route(({ id, body, db }) => svc.estimate(db, id, body)));
   app.post("/api/projects/:id/assistant", route(({ id, body, db }) => svc.ask(db, id, body)));
   app.get("/api/projects/:id/assistant", route(({ id, db }) => svc.list(db, id)));
   app.get("/api/assistant/proposals/:id", route(({ id, db }) => svc.getProposal(db, id)));

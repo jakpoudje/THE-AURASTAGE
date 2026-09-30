@@ -21,7 +21,7 @@ export interface WorldView {
 export interface WorldLook {
   item: { id: string; kind: WorldKind; name: string; project_id: string };
   identity: string; identity_hash: string; missing: string[]; views: WorldView[];
-  backends: { id: string; name: string; execution: "native" | "external" }[];
+  backends: { id: string; name: string; model?: string; execution: "native" | "external" }[];
   backend_statuses: { id: string; name: string; state: "configured" | "not_configured" }[];
 }
 export interface WorldPatch { revision?: number; name?: string; description?: string; category?: "prop" | "vehicle"; status?: "detected" | "confirmed"; archived?: boolean; int_ext?: ("INT" | "EXT")[] }

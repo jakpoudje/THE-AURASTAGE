@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/apiClient";
 import { announceAssistantChange } from "../askBus";
+import { CostNote, estimateCost } from "@/components/CostNote";
 import { assistantApi, type AssistantModule, type Proposal } from "../api/assistantApi";
 
 const FIELD = (k: string) => k.replace(/_/g, " ");
@@ -30,6 +31,13 @@ export function AskAuraStage({ projectId, module, request, onClose }: { projectI
   const [recent, setRecent] = useState<Proposal[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What asking will cost (owner request 2026-09-30): priced from the exact prompt, refreshed as the request is typed.
+  const [cost, setCost] = useState<{ provider: string; model: string | null; input_chars: number; output_chars: number } | null>(null);
+  useEffect(() => {
+    if (text.trim().length < 3) return setCost(null);
+    const t = setTimeout(() => assistantApi.estimate(projectId, { module, text }).then(setCost).catch(() => setCost(null)), 500);
+    return () => clearTimeout(t);
+  }, [projectId, module, text]);
   const poll = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadRecent = useCallback(() => assistantApi.list(projectId).then((r) => setRecent(r.proposals)).catch(() => null), [projectId]);
@@ -68,10 +76,22 @@ export function AskAuraStage({ projectId, module, request, onClose }: { projectI
   });
   // One pass over a whole scene: every spoken line's performance and the scene's DNA, as one suggestion to review.
   const [passScene, setPassScene] = useState("1");
-  // A page asked on the user's behalf (e.g. "Develop this character's profile"): ask it once.
+  // A page asked on the user's behalf (e.g. "Develop this character's profile"). With a paid AI connected the request is
+  // filled in with its cost and waits for "Ask" (owner: the cost is shown before anything is spent); the free built-in
+  // planner asks straight away.
   const asked = useRef<number | null>(null);
+  const [waiting, setWaiting] = useState(false);
   useEffect(() => {
-    if (request && asked.current !== request.n) { asked.current = request.n; ask(request.text); }
+    if (!request || asked.current === request.n) return;
+    asked.current = request.n;
+    setText(request.text);
+    assistantApi.estimate(projectId, { module, text: request.text })
+      .then((c) => {
+        const free = estimateCost([{ provider: c.provider, model: c.model, input_chars: c.input_chars, output_chars: c.output_chars }]).free;
+        if (free) ask(request.text);
+        else setWaiting(true);
+      })
+      .catch(() => ask(request.text));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request?.n]);
   const onePass = module === "dialogue" || module === "scene_dna";
@@ -102,6 +122,8 @@ export function AskAuraStage({ projectId, module, request, onClose }: { projectI
           <button type="submit" disabled={busy || text.trim().length < 3} className="rounded-md bg-aura-gold px-4 py-2 font-medium text-black disabled:opacity-40">
             Ask
           </button>
+          {waiting && !current && <p className="text-xs text-aura-gold">Check the cost below, then press Ask.</p>}
+          {cost && <CostNote label="Cost of asking" items={[{ provider: cost.provider, model: cost.model, input_chars: cost.input_chars, output_chars: cost.output_chars }]} />}
         </form>
         {onePass && (
           <div className="rounded-md border border-aura-border bg-black/20 p-3" aria-label="One pass for a scene" role="group">

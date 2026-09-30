@@ -4,6 +4,8 @@
 // the continuity check in Edit & Refine. Every step runs in the background (Claude, or the labelled test writer), shows
 // its checks, and changes nothing until the writer accepts it: story fields are applied one by one, scripts and reworked
 // scenes open as a NEW draft version that the writer reviews and approves as usual.
+import { CostNote } from "@/components/CostNote";
+import { useAiWriter } from "@/lib/useAiWriter";
 import { useEffect, useMemo, useState } from "react";
 import { writingApi, type ContinuityFinding, type OutlineScene, type RewriteMode, type StoryBeat, type StoryCharacter, type StoryDraft, type WritingCheck, type WritingResult } from "../api/writingApi";
 import type { useWriting } from "../hooks/useWriting";
@@ -174,6 +176,7 @@ export function StoryDevelopmentPanel({ w, canEdit, project, onApplied }: { w: W
         )}
         <textarea aria-label="What should the story do?" rows={2} value={req} onChange={(e) => setReq(e.target.value)} placeholder="Optional: e.g. make the antagonist sympathetic; end on a twist" className={`${input} mt-3`} />
         <div className="mt-2 flex flex-wrap gap-2">
+          <WriterCost label="Cost of developing the story" input_chars={8000} output_chars={14000} basis="a full story proposal" />
           <button onClick={() => w.request("develop_story", { request: req })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
             className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">{o ? "Develop again" : "Develop the story"}</button>
           <button onClick={() => setEditing(current?.output ? { ...(current.output as StoryDraft) } : blankStory(project))} disabled={!canEdit || w.busy}
@@ -267,6 +270,7 @@ export function OutlinePanel({ w, canEdit }: { w: W; canEdit: boolean }) {
       <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
         <p className="text-sm text-white/60">A scene-by-scene outline {dev ? `from your current story (${names(dev).slice(0, 4).join(", ") || "no named characters yet"})` : "from your Project Setup"}, sized to the target runtime. Edit anything — your edits are saved as your own version and the script is written from it. You can also build it scene by scene yourself: add scenes with “+ Scene”.</p>
         <textarea aria-label="Outline request" rows={2} value={req} onChange={(e) => setReq(e.target.value)} placeholder="Optional: e.g. open on the harbour; keep it under 25 scenes" className={`${input} mt-3`} />
+        <WriterCost label="Cost of building the outline" input_chars={16000} output_chars={30000} basis="a feature-length outline" />
         <button onClick={() => w.request("outline", { request: req, parent_id: dev?.id ?? null })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
           className="mt-2 rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">{done ? "Build a new outline" : "Build the scene outline"}</button>
       </div>
@@ -337,6 +341,7 @@ export function GenerateScriptPanel({ w, canEdit, currentVersionId, onOpened }: 
           <p className="text-sm text-white/60">Writes the full screenplay from your outline ({outline.output.scenes.length} scenes), scene by scene in the background — you can leave this page. The result opens as a new draft version for you to review and approve.</p>
         ) : <p className="text-sm text-amber-300">Build a scene outline first (Outline & Structure) — the script is written from it.</p>}
         <textarea aria-label="Script request" rows={2} value={req} onChange={(e) => setReq(e.target.value)} placeholder="Optional: e.g. lean dialogue; Nigerian Pidgin where natural" className={`${input} mt-3`} />
+        {outline && <WriterCost label={`Cost of writing ${outline.output.scenes.length} scenes`} input_chars={outline.output.scenes.length * 12000} output_chars={outline.output.scenes.length * 3500} basis="each scene is written with the story, outline and the scene before it" />}
         <button onClick={() => w.request("write_script", { request: req, parent_id: outline!.id })} disabled={!canEdit || !outline || w.busy || running}
           className="mt-2 rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">Write the full script</button>
       </div>
@@ -427,5 +432,17 @@ export function ScriptToolsPanel({ w, projectId, canEdit, sceneNumbers, currentV
         )}
       </div>
     </section>
+  );
+}
+
+/** The cost of an AuraScript step with the connected AI writer (owner request 2026-09-30: every stage shows the cost). */
+function WriterCost({ label, input_chars, output_chars, basis }: { label: string; input_chars: number; output_chars: number; basis: string }) {
+  const writer = useAiWriter();
+  if (!writer) return null;
+  return (
+    <div className="w-full">
+      <CostNote label={label} items={[{ provider: writer.provider, model: writer.model, input_chars, output_chars }]} />
+      {writer.provider !== "aurastage-test" && <p className="mt-1 text-[11px] text-white/35">Estimated for {basis}; long scripts vary.</p>}
+    </div>
   );
 }
