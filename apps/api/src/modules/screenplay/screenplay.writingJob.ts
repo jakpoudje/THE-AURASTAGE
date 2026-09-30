@@ -40,9 +40,17 @@ export async function runWritingJob(job: WritingJob, d: WritingDeps): Promise<Wr
   const stage = (text: string, extra: Row = {}) => d.progress(job.id, { stage: text, ...extra }, null).catch(() => undefined);
   if (job.kind === "develop_story") {
     const req = storyDevelopment.storyDevelopmentRequest(job.input.brief);
-    const kept = ((job.input.brief?.characters ?? []) as Row[]).map((c) => c.name);
+    const kept = storyDevelopment.decidedPeople(job.input.brief).map((c) => c.name);
     await stage(kept.length ? `Developing the story around ${kept.slice(0, 3).join(", ")}${kept.length > 3 ? "…" : ""}` : "Developing the story from your brief");
-    const out = await ask<Row>(req, "develop_story", job.input, "medium");
+    let out = await ask<Row>(req, "develop_story", job.input, "medium");
+    // A decided character left out (e.g. someone named in the logline) is asked for once more, by name, before the
+    // writer sees the story; if they're still missing, the check says so plainly.
+    const missing = storyDevelopment.missingPeople(job.input.brief, out as never);
+    if (missing.length) {
+      await stage(`Bringing back ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? "…" : ""} — named in your brief`);
+      const again = { ...req, prompt: `${req.prompt}\n\nYour previous answer left out these decided characters: ${missing.join(", ")}. Write the story again with every decided character in "characters", names exactly as given.` };
+      out = await ask<Row>(again, "develop_story", job.input, "medium");
+    }
     return done(out, storyDevelopment.checkStoryDevelopment(job.input.brief, out as never));
   }
   if (job.kind === "outline") {

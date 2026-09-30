@@ -20,7 +20,7 @@ describe("storyDevelopmentEngine", () => {
     expect(r.system).toMatch(/names? that genuinely belongs to the story's world/);
     expect(r.prompt).toMatch(/Logline: \(not decided\)/);
     expect(r.prompt).toMatch(/The writer's request: Make the villain sympathetic/);
-    expect(r.engine_version).toBe("1.1.0");
+    expect(r.engine_version).toBe("1.2.0");
   });
   it("accepts a well-formed proposal and passes its checks", () => {
     const parsed = StoryDevelopmentOutputSchema.parse(out);
@@ -41,7 +41,7 @@ describe("storyDevelopmentEngine", () => {
   it("regression (owner, 2026-09-29): names already decided are passed in, must be kept, and a rename is flagged", () => {
     const decided = { ...brief, characters: [{ name: "Adaeze Okafor", role: "protagonist", source: "story" as const }, { name: "Tunde Bakare", source: "casting" as const }] };
     const r = storyDevelopmentRequest(decided);
-    expect(r.prompt).toMatch(/Characters already decided \(keep these exact names\):\n- Adaeze Okafor \(protagonist\)\n- Tunde Bakare/);
+    expect(r.prompt).toMatch(/Characters already decided \(keep these exact names; every one must be in "characters"\):\n- Adaeze Okafor \(protagonist\)\n- Tunde Bakare/);
     expect(r.system).toMatch(/keep each one's\nname exactly/);
     let c = checkStoryDevelopment(decided, StoryDevelopmentOutputSchema.parse(out)).find((x) => x.id === "keeps_names")!;
     expect(c).toMatchObject({ ok: true, evidence: "Kept: Adaeze Okafor, Tunde Bakare" });
@@ -50,5 +50,29 @@ describe("storyDevelopmentEngine", () => {
     expect(c).toMatchObject({ ok: false, evidence: "Missing or renamed: Tunde Bakare" });
     c = checkStoryDevelopment({ ...decided, request: "give everyone new names" }, renamed).find((x) => x.id === "keeps_names")!;
     expect(c.ok).toBe(true);
+  });
+});
+
+describe("storyDevelopmentEngine 1.2.0: names written in the logline (owner, 2026-09-30)", () => {
+  const logline = "When Justice Idongesit Bassey rules on a disputed election in Abuja, a young hacker, Preye Amakiri, finds the Independent National Electoral Commission server was cloned in Port Harcourt.";
+  it("reads the people in the logline — not the organisations or places — and asks the writer to keep them", () => {
+    const b = { title: "The Abuja Covenant", logline };
+    const r = storyDevelopmentRequest(b);
+    expect(r.prompt).toMatch(/- Justice Idongesit Bassey — named in the logline\n- Preye Amakiri — named in the logline/);
+    expect(r.prompt).not.toMatch(/Electoral Commission —|Port Harcourt —/);
+    expect(r.engine_version).toBe("1.2.0");
+  });
+  it("a title or a dropped title is still the same person; a missing one is flagged", () => {
+    const b = { title: "The Abuja Covenant", logline };
+    const withBoth = StoryDevelopmentOutputSchema.parse({ ...out, characters: [{ ...out.characters[0], name: "Idongesit Bassey" }, { ...out.characters[1], name: "Preye Amakiri" }] });
+    expect(checkStoryDevelopment(b, withBoth).find((x) => x.id === "keeps_names")).toMatchObject({ ok: true });
+    const dropped = StoryDevelopmentOutputSchema.parse({ ...out, characters: [{ ...out.characters[0], name: "Idongesit Bassey" }, out.characters[1]] });
+    expect(checkStoryDevelopment(b, dropped).find((x) => x.id === "keeps_names")).toMatchObject({ ok: false, evidence: "Missing or renamed: Preye Amakiri" });
+  });
+  it("a surname alone is not the same person", async () => {
+    const { samePerson, namedPeople } = await import("../index");
+    expect(samePerson("Bassey", "Idongesit Bassey")).toBe(false);
+    expect(samePerson("Dr. Adaeze Okafor", "Adaeze Okafor")).toBe(true);
+    expect(namedPeople("After the storm, Chief Emeka Obi meets Ngozi Eze at Lagos State House.")).toEqual(["Chief Emeka Obi", "Ngozi Eze"]);
   });
 });

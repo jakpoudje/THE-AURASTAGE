@@ -57,4 +57,23 @@ describe("AuraScript job runner (with the labelled test writer)", () => {
     await expect(runWritingJob({ id: "d", kind: "develop_story", input: { brief } }, { ...deps(), reasoner: () => hard as never })).rejects.toThrow(/API key/);
     expect(calls).toBe(1);
   });
+  it("regression (owner, 2026-09-30): people named in the logline are kept — a story that drops one is asked for again, by name", async () => {
+    const named = { ...brief, logline: "When Justice Idongesit Bassey rules on a stolen election, a young hacker, Preye Amakiri, finds the proof." };
+    const prompts: string[] = [];
+    let calls = 0;
+    const writer = { ...testReasoningAdapter, complete: async (req: any, env: any) => {
+      prompts.push(req.prompt);
+      const r = await testReasoningAdapter.complete(req, env);
+      const base = (r.data as any).characters[0];
+      const keep = ++calls === 1 ? [{ ...base, name: "Idongesit Bassey" }] : [{ ...base, name: "Justice Idongesit Bassey" }, { ...base, role: "supporting", name: "Preye Amakiri" }];
+      return { ...r, data: { ...(r.data as any), characters: keep } };
+    } };
+    const progress: any[] = [];
+    const r = await runWritingJob({ id: "d", kind: "develop_story", input: { brief: named } }, { ...deps(progress), reasoner: () => writer as never });
+    expect(prompts[0]).toMatch(/- Preye Amakiri — named in the logline/);
+    expect(calls).toBe(2);
+    expect(prompts[1]).toMatch(/left out these decided characters: Preye Amakiri/);
+    expect(progress.some((p) => /Bringing back Preye Amakiri/.test(p.stage))).toBe(true);
+    expect(r.checks.find((c: any) => c.id === "keeps_names")).toMatchObject({ ok: true });
+  });
 });

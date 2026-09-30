@@ -18,7 +18,7 @@ export const StoryBriefSchema = z.object({
    */
   characters: z.array(z.object({
     name: z.string().min(1).max(80), role: z.string().max(40).nullable().default(null), description: z.string().max(800).nullable().default(null),
-    source: z.enum(["casting", "story", "writer"]).default("story"),
+    source: z.enum(["casting", "story", "writer", "logline"]).default("story"),
   })).max(40).default([]),
   /** Anything extra the writer asked for ("make the antagonist sympathetic"). */
   request: z.string().max(2000).default(""),

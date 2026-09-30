@@ -69,7 +69,7 @@ writer (TEST OUTPUT) only arranges the brief, so the flow can be tested for free
 **One current story** (owner, 2026-09-29: character names must match on every page): the newest story the writer
 applied to Project Setup or wrote/edited themselves (`POST /script/writing/story`, migration 0033), else the newest
 finished development. Outline, script and scene rewrites use it; `develop_story` receives its characters (and
-Casting's) as names already decided, which Claude must keep (storyDevelopment 1.1.0 `keeps_names` check) unless the
+Casting's) — and, from storyDevelopment 1.2.0, people named in the logline (and named twice in the synopsis) — as names already decided, which the writer must keep (`keeps_names` check; a title like "Justice" does not make a different person; a missing one is asked for again once, by name) unless the
 writer asks for new names. `apply-story` with no fields makes a proposal current without touching Project Setup.
 Script jobs write 3 batches at a time and report the real current step in `progress.stage`; story and outline use a
 lighter reasoning effort. An empty Claude credit balance is reported plainly (not retried).

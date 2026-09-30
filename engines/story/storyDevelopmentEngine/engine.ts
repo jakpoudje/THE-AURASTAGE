@@ -2,6 +2,8 @@
 // Provider Gateway; this engine supplies the prompt and checks the answer deterministically before it is shown.
 import { StoryBriefSchema, type StoryBrief } from "./input.schema";
 import { StoryDevelopmentOutputSchema, type StoryDevelopmentOutput } from "./output.schema";
+import { decidedPeople } from "./decided";
+import { samePerson } from "./names";
 import { buildStoryDevelopmentPrompt, STORY_DEVELOPMENT_SYSTEM } from "./prompt";
 import { ENGINE_VERSION } from "./version";
 
@@ -30,15 +32,22 @@ export function checkStoryDevelopment(briefIn: StoryBrief, out: StoryDevelopment
     { id: "fits_runtime", ok: !runtime || (lastMinute <= runtime && lastMinute >= runtime * 0.6), label: "Beats fit the target runtime",
       evidence: runtime ? `Last beat at minute ${lastMinute} of ${runtime}` : "No runtime set" },
     (() => {
-      const renaming = /\b(rename|new names?|different names?|change (the )?names?)\b/i.test(brief.request);
-      const have = new Set(out.characters.map((c) => c.name.trim().toLowerCase()));
-      const lost = brief.characters.filter((c) => !have.has(c.name.trim().toLowerCase())).map((c) => c.name);
+      const decided = decidedPeople(brief);
+      const lost = missingPeople(brief, out);
+      const renaming = isRenaming(brief.request);
       return { id: "keeps_names", ok: renaming || lost.length === 0, label: "Keeps the characters already decided",
-        evidence: !brief.characters.length ? "No characters decided yet" : lost.length ? `${renaming ? "Renamed on request" : "Missing or renamed"}: ${lost.join(", ")}` : `Kept: ${brief.characters.map((c) => c.name).join(", ")}` };
+        evidence: !decided.length ? "No characters decided yet" : lost.length ? `${renaming ? "Renamed on request" : "Missing or renamed"}: ${lost.join(", ")}` : `Kept: ${decided.map((c) => c.name).join(", ")}` };
     })(),
     { id: "keeps_title", ok: !brief.title || out.title_options.some((t) => t.toLowerCase() === brief.title.toLowerCase()) || /title/i.test(brief.request), label: "Keeps the working title as an option",
       evidence: out.title_options.join(" · ") },
   ];
+}
+
+const isRenaming = (request: string) => /\b(rename|new names?|different names?|change (the )?names?)\b/i.test(request);
+/** Decided people the proposal left out (a title or a dropped middle name still counts as the same person). */
+export function missingPeople(brief: StoryBrief, out: StoryDevelopmentOutput): string[] {
+  if (isRenaming(StoryBriefSchema.parse(brief).request)) return [];
+  return decidedPeople(brief).filter((c) => !out.characters.some((o) => samePerson(o.name, c.name))).map((c) => c.name);
 }
 
 export const storyDevelopmentEngine = { request: storyDevelopmentRequest, check: checkStoryDevelopment, version: ENGINE_VERSION };
