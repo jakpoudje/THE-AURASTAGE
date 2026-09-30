@@ -145,6 +145,28 @@ await check("locations & props: find them in the script, describe one, make its 
   await page.getByRole("list", { name: "Props" }).getByRole("button", { name: /Laptop/ }).waitFor();
   return "harbour: 3 views; props include Laptop";
 });
+await check("locations & props: Describe with AI — Ask AuraStage suggests, apply shows it at once; reload: kept; undo: back", async () => {
+  await page.goto(projectUrl + "/world");
+  await page.getByRole("list", { name: "Locations" }).getByRole("button", { name: /Lagos Harbour/ }).click();
+  const before = await page.getByLabel("Description").inputValue();
+  await page.getByRole("button", { name: "Describe with AI" }).click();
+  const ask = page.getByRole("complementary", { name: "Ask AuraStage" });
+  await ask.getByRole("button", { name: /^Apply/ }).waitFor({ timeout: 120000 });
+  await ask.getByRole("button", { name: /^Apply/ }).click();
+  await ask.getByText("Applied", { exact: true }).first().waitFor({ timeout: 60000 });
+  // The page re-reads by itself: the new description shows without a reload.
+  await page.waitForFunction((b) => { const t = document.querySelector('textarea[aria-label="Description"]'); return t && t.value !== b && t.value.length > 0; }, before, { timeout: 15000 });
+  const after = await page.getByLabel("Description").inputValue();
+  await page.reload();
+  await page.getByRole("list", { name: "Locations" }).getByRole("button", { name: /Lagos Harbour/ }).click();
+  if ((await page.getByLabel("Description").inputValue()) !== after) throw new Error("AI description lost after reload");
+  await page.getByRole("button", { name: "Ask AuraStage" }).click();
+  await ask.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Describe the location "Lagos Harbour"/ }).first().click();
+  await ask.getByRole("button", { name: "Undo" }).click();
+  await page.waitForFunction((b) => document.querySelector('textarea[aria-label="Description"]')?.value === b, before, { timeout: 15000 });
+  await ask.getByRole("button", { name: "Close" }).click();
+  return after.slice(0, 100);
+});
 await check("dialogue: bring in + approve scene, reload: still approved", async () => {
   await page.goto(projectUrl + "/dialogue");
   await page.getByRole("button", { name: "Bring in dialogue" }).click();
