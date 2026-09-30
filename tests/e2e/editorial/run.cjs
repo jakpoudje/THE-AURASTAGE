@@ -160,6 +160,20 @@ async function approveTakeFor(shotId) {
     await v1Clips().first().click();
     if ((await page.getByLabel("Transition in").inputValue()) !== "fade_from_black" || (await page.getByLabel("Transition length in frames").inputValue()) !== "6") throw new Error("transition lost after reload");
   });
+  await step("Ask AuraStage changes a transition through Editorial (before → after), apply; reload: kept", async () => {
+    const panel = () => page.getByRole("complementary", { name: "Ask AuraStage" });
+    await page.getByRole("button", { name: "Ask AuraStage" }).click();
+    await panel().getByLabel("What would you like to change?").fill("Dissolve into the first clip over 4 frames");
+    await panel().getByRole("button", { name: "Ask", exact: true }).click();
+    await panel().getByTestId("proposal-status").getByText("Suggested").waitFor();
+    await panel().getByText(/give Clip 1: .* a dissolve and fade to black \(4 frames\)/).waitFor();
+    await panel().getByRole("button", { name: "Apply" }).click();
+    await panel().getByTestId("proposal-status").getByText("Applied").waitFor();
+    await panel().getByRole("button", { name: "Close" }).click();
+    await reload();
+    await v1Clips().first().click();
+    if ((await page.getByLabel("Transition in").inputValue()) !== "dissolve" || (await page.getByLabel("Transition length in frames").inputValue()) !== "4") throw new Error("the AI transition wasn't kept after reload");
+  });
   await step("save a named version; kept after reload", async () => {
     await page.getByLabel("Version name").fill("Director's cut");
     await page.getByRole("button", { name: "Save version" }).click();

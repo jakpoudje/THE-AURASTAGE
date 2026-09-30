@@ -67,6 +67,24 @@ function check(clips: EngineClip[]) {
   return clips;
 }
 
+/**
+ * After any edit a clip may be shorter than its transition (a trim, a blade, a ripple). The transition then shrinks to
+ * fit, or becomes a cut when the clip is too short for one — it never blocks the edit (regression, live 2026-09-30:
+ * "has a transition that doesn't fit it" refused an unrelated edit after a fade was set on a clip that was later trimmed).
+ */
+function fitTransitions<T extends { track: string; duration: number; transition?: { in: string; out: string; frames: number } }>(clips: T[]): T[] {
+  for (const c of clips) {
+    const t = c.transition;
+    if (!t) continue;
+    if (c.track !== "V1") { c.transition = { in: "cut", out: "cut", frames: t.frames }; continue; }
+    const sides = (t.in !== "cut" ? 1 : 0) + (t.out !== "cut" ? 1 : 0);
+    if (!sides || sides * t.frames <= c.duration) continue;
+    const frames = Math.floor(c.duration / sides);
+    c.transition = frames >= 2 ? { ...t, frames } : { in: "cut", out: "cut", frames: t.frames };
+  }
+  return clips;
+}
+
 export function editDecisionEngine(raw: unknown): EditDecisionOutput {
   const { clips: input, operation: op, new_clip, replacements } = validateEditDecisionInput(raw);
   let clips: EngineClip[] = input.map((c) => ({ ...c }));
@@ -212,5 +230,5 @@ export function editDecisionEngine(raw: unknown): EditDecisionOutput {
       break;
     }
   }
-  return { clips: sortClips(check(clips)), summary, engine_version: ENGINE_VERSION };
+  return { clips: sortClips(check(fitTransitions(clips))), summary, engine_version: ENGINE_VERSION };
 }

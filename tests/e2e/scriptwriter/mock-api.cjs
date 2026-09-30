@@ -1178,13 +1178,19 @@ http.createServer((req, res) => {
       adjustAudioTrack: { module: "audio", impact: ["Audio Studio (the scene's mix needs a fresh loudness measurement before approval)", "Editorial & Export (the approved mix they use is flagged for review)"],
         target: (i) => { const t = atracks.find((x) => x.id === i.track_id); return t && { label: `${t.name} track`, get: () => t, set: (ch) => Object.assign(t, ch) }; } },
       updateLocationOrProp: { module: "scene_dna", impact: ["Locations & Props (reference views made from the old description are marked for a refresh)", "Scene DNA and Visual Generation prompts that use this place or prop"],
-        target: (i) => { const W0 = globalThis.__world || { location: [], prop: [] }; const r = (W0[i.kind] || []).find((x) => x.id === i.id); return r && { label: r.name, get: () => r, set: (ch) => Object.assign(r, ch, { revision: r.revision + 1, updated_at: now() }) }; } } };
+        target: (i) => { const W0 = globalThis.__world || { location: [], prop: [] }; const r = (W0[i.kind] || []).find((x) => x.id === i.id); return r && { label: r.name, get: () => r, set: (ch) => Object.assign(r, ch, { revision: r.revision + 1, updated_at: now() }) }; } },
+      setClipTransition: { module: "editorial", impact: ["Editorial & Timeline (a new edit; a locked picture refuses it until the lock is broken)", "Export & Deliver (renders made from the next Picture Lock)"],
+        target: (i) => { const c = tclips.find((x) => x.id === i.clip_id); return c && { label: c.label, get: () => ({ transition: c.transition || { in: "cut", out: "cut", frames: 12 } }), set: (ch) => { c.transition = ch.transition; timeline.revision = crypto.randomUUID(); } }; } },
+      updateAssetDetails: { module: "assets", impact: ["Assets Library (the file's details; its versions and where it is used are unchanged)"],
+        target: (i) => { const a = assets.find((x) => x.id === i.asset_id); return a && { label: a.name, get: () => a, set: (ch) => Object.assign(a, ch, { updated_at: now() }) }; } } };
+    // A tool's changed fields ({changes} for most tools; setClipTransition changes the clip's transition).
+    const chg = (input) => input.changes ?? { transition: input.transition };
     const aiPreview = (x) => {
       const acc = teamAccess().modules;
       const calls = (x.plan?.calls ?? []).map((c, index) => {
         const input = JSON.parse(c.input_json), t = aiTools[c.tool], tg = t && t.target(input);
-        const before = tg ? Object.fromEntries(Object.keys(input.changes).map((k) => [k, tg.get()[k] ?? null])) : null;
-        return { index, tool: c.tool, reason: c.reason, module: t?.module, action: "edit", allowed: !!t && acc[t.module].includes("edit"), impact: t?.impact ?? [], object: { type: "x", id: "x", label: tg?.label ?? "" }, before, after: input.changes, stale: false, problem: tg ? null : "Not supported offline" };
+        const before = tg ? Object.fromEntries(Object.keys(chg(input)).map((k) => [k, tg.get()[k] ?? null])) : null;
+        return { index, tool: c.tool, reason: c.reason, module: t?.module, action: "edit", allowed: !!t && (acc[t.module] || []).includes("edit"), impact: t?.impact ?? [], object: { type: "x", id: "x", label: tg?.label ?? "" }, before, after: chg(input), stale: false, problem: tg ? null : "Not supported offline" };
       });
       return { calls, issues: [], impact: [...new Set(calls.flatMap((c) => c.impact))], can_apply: x.status === "proposed" && calls.length > 0 && calls.every((c) => c.allowed && !c.problem) };
     };
@@ -1212,6 +1218,12 @@ http.createServer((req, res) => {
         for (const r of W0.location.filter((x) => !x.archived_at)) items.push({ ref: { type: "location", id: r.id, version: r.updated_at || null, label: r.name }, data: { name: r.name, description: r.description, int_ext: r.int_ext || [], times_of_day: r.times_of_day || [], areas: r.areas || [] } });
         for (const r of W0.prop.filter((x) => !x.archived_at)) items.push({ ref: { type: "prop", id: r.id, version: r.updated_at || null, label: r.name }, data: { name: r.name, description: r.description, category: r.category || "prop" } });
       }
+      // The cut's picture clips and the Assets Library, when the request is about them (as assistant.context does).
+      if (b.module === "editorial" || /\b(transitions?|fades?|dissolves?|cross-?fade|the cut|timeline|clips?)\b/i.test(b.text))
+        tclips.filter((c) => c.track === "V1").sort((a, c) => a.record_in - c.record_in).forEach((c, i) => items.push({ ref: { type: "timeline_clip", id: c.id, version: null, label: `Clip ${i + 1}: ${c.label}` },
+          data: { position: i + 1, label: c.label, kind: c.kind, starts_at_frame: c.record_in, frames: c.duration, transition: c.transition || { in: "cut", out: "cut", frames: 12 } } }));
+      if (b.module === "assets" || /\b(assets?|library|tags?|tagged|files?)\b/i.test(b.text))
+        for (const a of assets.filter((x) => !x.archived_at)) items.push({ ref: { type: "asset", id: a.id, version: null, label: a.name }, data: { name: a.name, type: a.type, category: a.category ?? null, description: a.description ?? "", tags: a.tags ?? [] } });
       const x = { id: crypto.randomUUID(), module: b.module, request: b.text.trim(), mode: "suggest", intent, status: "queued", provider: null, model: null, test_output: false, plan: null, results: null, error: null, created_at: now(), polls: 0,
         snapshot: { request: { text: b.text, module: b.module, object: null }, context: { items, focus: fs ? { type: "scene", id: fs.id } : null }, tools: Object.keys(aiTools) } };
       AI.list.unshift(x);
@@ -1234,7 +1246,7 @@ http.createServer((req, res) => {
       if (m[2] === "apply") {
         if (x.status !== "proposed") return send(409, { error: { code: "AURA-AI-409", message: `This request is ${x.status}; only a proposal can be applied.` } });
         const p = aiPreview(x); if (!p.can_apply) return send(403, { error: { code: "AURA-AI-403", message: "Your role can't edit in this workspace." } });
-        const results = x.plan.calls.map((c, i) => { const input = JSON.parse(c.input_json), tg = aiTools[c.tool].target(input); tg.set(input.changes); return { tool: c.tool, input, object: { label: tg.label }, before: p.calls[i].before, applied: input.changes }; });
+        const results = x.plan.calls.map((c, i) => { const input = JSON.parse(c.input_json), tg = aiTools[c.tool].target(input); tg.set(chg(input)); return { tool: c.tool, input, object: { label: tg.label }, before: p.calls[i].before, applied: chg(input) }; });
         Object.assign(x, { status: "applied", results: { results, impact: p.impact } });
         return send(200, aiView(x));
       }

@@ -45,10 +45,23 @@ vi.mock("../../settings/settings.service", () => ({
 vi.mock("../../audio/audio.service", () => ({
   updateTrack: async (_db: unknown, id: string, patch: Row) => Object.assign(tables.audio_tracks.find((t) => t.id === id)!, patch),
 }));
+vi.mock("../../editorial/editorial.service", () => ({
+  editTimeline: async (_db: unknown, _p: string, body: Row) => {
+    const tl = tables.timelines[0];
+    if (body.base_revision !== tl.revision) throw Object.assign(new Error("The timeline changed — reload and try again."), { code: "AURA-EDT-409" });
+    Object.assign(tables.timeline_clips.find((c) => c.id === body.operation.clip_id)!, { transition: body.operation.transition });
+    tl.revision = `rev${++tick}`;
+    return { summary: "ok" };
+  },
+}));
+vi.mock("../../assets/assets.service", () => ({
+  editAsset: async (_db: unknown, id: string, changes: Row) => Object.assign(tables.assets.find((a) => a.id === id)!, changes, { updated_at: bump() }),
+}));
+const CLIP1 = "77777777-7777-4777-8777-777777777771", CLIP2 = "77777777-7777-4777-8777-777777777772", ASSET = "88888888-8888-4888-8888-888888888881";
 const HARBOUR = "55555555-5555-4555-8555-555555555555";
 const MUSIC = "66666666-6666-4666-8666-666666666661", DIALOGUE = "66666666-6666-4666-8666-666666666662";
 
-function fakeDb(access: Record<string, string[]> = { scene_dna: ["view", "edit"], casting: ["view", "edit"], settings: ["view", "edit"], audio: ["view", "edit"] }) {
+function fakeDb(access: Record<string, string[]> = { scene_dna: ["view", "edit"], casting: ["view", "edit"], settings: ["view", "edit"], audio: ["view", "edit"], editorial: ["view", "edit"], assets: ["view", "edit"] }) {
   const calls: { fn: string; args: Row }[] = [];
   const from = (t: string) => {
     const f: [string, unknown][] = [];
@@ -111,6 +124,12 @@ beforeEach(() => {
     audio_sessions: [{ id: "as2", scene_id: S2, project_id: P }],
     audio_tracks: [{ id: DIALOGUE, session_id: "as2", ordinal: 1, name: "Dialogue", family: "DX", gain_db: 0, pan: 0, mute: false, solo: false },
       { id: MUSIC, session_id: "as2", ordinal: 2, name: "Music", family: "MX", gain_db: -4, pan: 0, mute: false, solo: false }],
+    timelines: [{ id: "tl1", project_id: P, revision: "rev0" }],
+    timeline_clips: [
+      { id: CLIP1, timeline_id: "tl1", track: "V1", kind: "take", label: "Sc 1 · Shot 1", record_in: 0, duration: 48, scene_id: S1, transition: { in: "cut", out: "cut", frames: 12 } },
+      { id: CLIP2, timeline_id: "tl1", track: "V1", kind: "take", label: "Sc 2 · Shot 1", record_in: 48, duration: 72, scene_id: S2, transition: { in: "cut", out: "cut", frames: 12 } },
+    ],
+    assets: [{ id: ASSET, project_id: P, name: "harbour-night.wav", type: "audio", category: "sound", description: null, tags: ["harbour"], archived_at: null, updated_at: "2026-09-05T00:00:00+00:00" }],
   };
 });
 
@@ -215,7 +234,7 @@ describe("Ask AuraStage", () => {
     expect(capabilities({}).planner).toEqual({ id: "aurastage-test", name: "AuraStage test planner", test_output: true });
     expect(capabilities({ ANTHROPIC_API_KEY: "k" }).planner).toMatchObject({ id: "anthropic", test_output: false });
     expect(capabilities({ AURA_TEST_PROVIDER: "off" }).planner).toBeNull();
-    expect(capabilities({}).tools.map((t) => t.name)).toEqual(["updateStory", "updateCharacter", "changeWardrobe", "modifyDialogue", "updateSceneDNA", "modifyShot", "updateLocationOrProp", "updateSettings", "adjustAudioTrack"]);
+    expect(capabilities({}).tools.map((t) => t.name)).toEqual(["updateStory", "updateCharacter", "changeWardrobe", "modifyDialogue", "updateSceneDNA", "modifyShot", "updateLocationOrProp", "updateSettings", "adjustAudioTrack", "setClipTransition", "updateAssetDetails"]);
   });
 
   it("describes a location through Locations & Props (owner: AI helps on every page), with its revision; undo puts it back", async () => {
@@ -299,5 +318,41 @@ describe("Ask AuraStage", () => {
     expect(p.preview).toMatchObject({ can_apply: false, calls: [{ tool: "adjustAudioTrack", allowed: false, after: { mute: true } }] });
     expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/apply` })).statusCode).toBe(403);
     expect(tables.audio_tracks[1].mute).toBe(false);
+  });
+
+  it("fades the first clip of the cut up from black through Editorial (against the timeline's revision); undo restores the cut", async () => {
+    const a = await app(fakeDb());
+    const q = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "editorial", text: "Fade up from black on the first clip over 1 second" } })).json();
+    expect(q.context_refs.filter((r: Row) => r.type === "timeline_clip").map((r: Row) => r.label)).toEqual(["Clip 1: Sc 1 · Shot 1", "Clip 2: Sc 2 · Shot 1"]);
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview.calls[0]).toMatchObject({ tool: "setClipTransition", allowed: true, stale: false, before: { transition: { in: "cut" } }, after: { transition: { in: "fade_from_black", out: "cut", frames: 24 } } });
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/apply` })).json().status).toBe("applied");
+    expect(tables.timeline_clips[0].transition).toEqual({ in: "fade_from_black", out: "cut", frames: 24 });
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/undo` })).json().status).toBe("undone");
+    expect(tables.timeline_clips[0].transition).toEqual({ in: "cut", out: "cut", frames: 12 });
+  });
+
+  it("an edit made to the cut after the request makes the suggestion stale (never applied over it)", async () => {
+    const a = await app(fakeDb());
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "editorial", text: "Fade to black at the end of the last clip" } });
+    await plan();
+    tables.timelines[0].revision = "someone-else";
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview).toMatchObject({ can_apply: false, calls: [{ tool: "setClipTransition", stale: true, after: { transition: { out: "fade_to_black" } } }] });
+  });
+
+  it("tags and renames a file in the Assets Library; undo restores it; archiving is never offered", async () => {
+    const a = await app(fakeDb());
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "assets", text: 'Tag the file "harbour-night.wav" with night, ambience' } });
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview.calls[0]).toMatchObject({ tool: "updateAssetDetails", allowed: true, before: { tags: ["harbour"] }, after: { tags: ["harbour", "night", "ambience"] } });
+    await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/apply` });
+    expect(tables.assets[0].tags).toEqual(["harbour", "night", "ambience"]);
+    await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/undo` });
+    expect(tables.assets[0].tags).toEqual(["harbour"]);
+    const { toolRegistry } = await import("../tools");
+    expect(toolRegistry.get("updateAssetDetails")!.input.safeParse({ asset_id: ASSET, changes: { archived: true } }).success).toBe(false);
   });
 });

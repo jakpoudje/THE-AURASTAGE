@@ -11,6 +11,7 @@ import type { AutomationPoint, EditOperation, PictureImpact, Project } from "@au
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ApiError, apiGet } from "@/lib/apiClient";
 import { editorialApi } from "../api/editorialApi";
+import { useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 import type { EditorialWorkspace } from "../types";
 
 type Busy = null | "assemble" | "edit" | "version" | "restore" | "lock" | "export" | "automation";
@@ -32,6 +33,8 @@ export function useEditorial(projectId: string) {
     if (alive.current) setWs(w);
     return w;
   }, [projectId]);
+  // An Ask AuraStage change to the cut (a transition) re-reads the timeline.
+  useAssistantChanges(() => void reload().catch(() => undefined));
 
   useEffect(() => {
     alive.current = true;

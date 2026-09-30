@@ -84,6 +84,20 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
   for (const l of places) items.push(item("location", l, l.name, { name: l.name, description: l.description, int_ext: l.int_ext, times_of_day: l.times_of_day, areas: l.areas, status: l.status }));
   for (const pr of props) items.push(item("prop", pr, pr.name, { name: pr.name, description: pr.description, category: pr.category, status: pr.status }));
   for (const t of tracks) items.push(item("audio_track", t, `${t.name} track`, { name: t.name, family: t.family, gain_db: Number(t.gain_db), pan: Number(t.pan), mute: t.mute, solo: t.solo }));
+  // The cut (Editorial, read-only here): picture clips with their transitions, versioned by the timeline's revision.
+  const rel = relevantTypes(req);
+  if (rel.includes("timeline_clip")) {
+    const tl = (await rows(db.from("timelines").select("id, revision").eq("project_id", P).limit(1)))[0];
+    const clips = tl ? await rows(db.from("timeline_clips").select("id, label, track, kind, record_in, duration, scene_id, transition").eq("timeline_id", tl.id).eq("track", "V1").order("record_in", { ascending: true }).limit(80)) : [];
+    const sceneNo = new Map(scenes.map((s) => [s.id, s.number]));
+    clips.forEach((c, i) => items.push(item("timeline_clip", { id: c.id, updated_at: tl.revision }, `Clip ${i + 1}: ${c.label}`, {
+      position: i + 1, label: c.label, kind: c.kind, scene: sceneNo.get(c.scene_id) ?? null, starts_at_frame: c.record_in, frames: c.duration, transition: c.transition })));
+  }
+  // The Assets Library (read-only here): a file's details, never its bytes.
+  if (rel.includes("asset")) {
+    const assets = await rows(db.from("assets").select("id, name, type, category, description, tags, updated_at").eq("project_id", P).is("archived_at", null).order("updated_at", { ascending: false }).limit(60));
+    for (const a of assets) items.push(item("asset", a, a.name, { name: a.name, type: a.type, category: a.category, description: a.description, tags: a.tags }));
+  }
   for (const s of shots) items.push(item("shot", s, `Shot ${s.ordinal}`, { ordinal: s.ordinal, purpose: s.purpose, size: s.size, angle: s.angle, movement: s.movement, description: s.description }));
 
   return trimContext({
@@ -91,13 +105,15 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     module: req.module,
     focus: focusScene ? { type: "scene", id: focusScene.id, version: dna.find((x) => x.scene_id === focusScene!.id)?.updated_at ?? focusScene.updated_at ?? null, label: `Scene ${focusScene.number}` } : req.object,
     items,
-  }, intent.mentions, relevantTypes(req));
+  }, intent.mentions, rel);
 }
 
 /** Object types the request is about (places and props; project settings), which then rank above the rest of the cast. */
 function relevantTypes(req: AssistantRequest): ContextItem["ref"]["type"][] {
   const out: ContextItem["ref"]["type"][] = [];
   if (req.object?.type === "location" || req.object?.type === "prop" || /\b(locations?|places?|props?|vehicles?|set dressing|the set)\b/i.test(req.text)) out.push("location", "prop");
+  if (req.module === "editorial" || req.object?.type === "timeline" || /\b(transitions?|fades?|fade (in|out|up|to black|from black)|dissolves?|cross-?fade|the cut|timeline|clips?)\b/i.test(req.text)) out.push("timeline_clip");
+  if (req.module === "assets" || req.object?.type === "asset" || /\b(assets?|library|tags?|tagged|files?|upload(ed|s)?)\b/i.test(req.text)) out.push("asset");
   if (req.module === "settings" || /\b(settings?|aspect ratio|loudness|visual style|palette|deliverables?|credits|director|producer|company|copyright|title card|opening title|theme music|composer)\b/i.test(req.text)) out.push("settings");
   return out;
 }
@@ -113,6 +129,12 @@ export async function currentVersion(db: SupabaseClient, projectId: string, t: {
     case "location": return one("locations", "id", t.id);
     case "prop": return one("props", "id", t.id);
     case "settings": return (await readProjectSettings(db, projectId)).updated_at;
+    case "asset": return one("assets", "id", t.id);
+    case "timeline_clip": {
+      // A clip is versioned by its timeline's revision (every edit re-saves the cut).
+      const c = (await rows(db.from("timeline_clips").select("timeline_id").eq("id", t.id).limit(1)))[0];
+      return c ? (await rows(db.from("timelines").select("revision").eq("id", c.timeline_id).limit(1)))[0]?.revision ?? null : null;
+    }
     case "scene": return (await one("scene_dna", "scene_id", t.id)) ?? one("scenes", "id", t.id);
     default: return null;
   }

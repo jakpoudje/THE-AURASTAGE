@@ -101,6 +101,19 @@ You came.
     await page.getByLabel("Search assets").fill("");
     await card().waitFor();
   });
+  await step("Ask AuraStage tags the file through the Assets Library (before → after), apply; the page refreshes; reload: kept", async () => {
+    const panel = () => page.getByRole("complementary", { name: "Ask AuraStage" });
+    await page.getByRole("button", { name: "Ask AuraStage" }).click();
+    await panel().getByLabel("What would you like to change?").fill('Tag the file "Harbour at dawn" with dawn');
+    await panel().getByRole("button", { name: "Ask", exact: true }).click();
+    await panel().getByTestId("proposal-status").getByText("Suggested").waitFor();
+    await panel().getByText(/update “Harbour at dawn” in the Assets Library \(tags\)/).waitFor();
+    await panel().getByRole("button", { name: "Apply" }).click();
+    await panel().getByTestId("proposal-status").getByText("Applied").waitFor();
+    await panel().getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    if ((await detail().getByLabel("Tags").inputValue()) !== "exterior, harbour, dawn") throw new Error("AI tags not kept: " + (await detail().getByLabel("Tags").inputValue()));
+  });
   await step("Add to Scene and link a character; Usage shows them; reload: kept; scene filter finds it", async () => {
     await detail().getByRole("tab", { name: "Usage" }).click();
     await detail().getByText("Not used anywhere yet.").waitFor();

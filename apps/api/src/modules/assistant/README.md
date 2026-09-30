@@ -34,11 +34,19 @@ views made from the old description are flagged, never replaced).
 `updateSettings` (Project Settings: format, visual style, deliverables, credit names, titles & credits — never the
 spending section; through the settings module's save with the current revision, so each change is a new settings
 version), `adjustAudioTrack` (a scene's track level, pan, mute, solo through Audio Studio; the mix then needs a fresh
-measurement before approval).
+measurement before approval), `setClipTransition` (a picture clip's dissolve / fade from black / fade to black
+through Editorial's own edit against the timeline revision; a locked picture refuses it as it does by hand; the clip's
+version is the timeline revision, so any other edit to the cut makes the suggestion stale), `updateAssetDetails` (a
+file's name, category, description and tags through the Assets Library's save; never archives or replaces the file).
 
-Places and props are in the context only ranked below the cast unless the request is about them (or asked from one).
+Planner 1.1.0: the tool schemas shown to the model carry their limits (lengths, ranges, allowed values); they are frozen
+into the request (`snapshot.tool_schemas`) and the worker sends a plan that breaks one back to the model once with the
+exact problems (e.g. an accent over 120 characters), before the API validates it as always.
+
+Places and props are in the context only ranked below the cast unless the request is about them (or asked from one);
+the cut's picture clips and the Assets Library are read only when the request is about them or asked from those pages.
 After an apply or undo the panel announces `aura:applied`; Casting, Locations & Props, Project Settings (unless you have
-unsaved edits there) and Audio Studio re-read at once (askBus
+unsaved edits there), Audio Studio, Editorial and the Assets Library re-read at once (askBus
 `useAssistantChanges`), so the change shows without a manual reload.
 
 ## One pass over a scene (task 36)

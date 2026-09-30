@@ -82,6 +82,14 @@ describe("editDecisionEngine", () => {
   it("refuses unknown clips in plain language", () => {
     expect(() => run({ op: "lift", clip_id: U(55) })).toThrow(/no longer on the timeline/);
   });
+  it("regression (live 2026-09-30): trimming a clip below its transition shrinks the transition (or makes it a cut) instead of refusing the edit", () => {
+    const base = [clip(1, "V1", 0, 12, { transition: { in: "fade_from_black", out: "cut", frames: 6 } })];
+    const shorter = editDecisionEngine({ clips: base, operation: { op: "trim", clip_id: U(1), edge: "out", delta: -8, ripple: false } });
+    expect(shorter.clips[0]).toMatchObject({ duration: 4, transition: { in: "fade_from_black", out: "cut", frames: 4 } });
+    const both = [clip(1, "V1", 0, 12, { transition: { in: "dissolve", out: "fade_to_black", frames: 6 } })];
+    const tiny = editDecisionEngine({ clips: both, operation: { op: "trim", clip_id: U(1), edge: "out", delta: -9, ripple: false } });
+    expect(tiny.clips[0]).toMatchObject({ duration: 3, transition: { in: "cut", out: "cut" } });
+  });
   it("transitions: set on a picture clip; refused on sound or when longer than the clip; a blade keeps the fade-in on the first piece and the fade-out on the second", () => {
     const r = run({ op: "transition", clip_id: U(2), transition: { in: "dissolve", out: "fade_to_black", frames: 12 } });
     expect(r.clips.find((c) => c.id === U(2))!.transition).toEqual({ in: "dissolve", out: "fade_to_black", frames: 12 });

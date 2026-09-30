@@ -253,6 +253,50 @@ function plan(snap: Snapshot) {
     }
   }
 
+  // ---- Editorial: a transition on a clip of the cut ("fade up from black on clip 1", "dissolve into the last clip") ----
+  const clips = byType("timeline_clip").sort((a, b) => Number(a.data.position) - Number(b.data.position));
+  const wantsIn = /\b(dissolve|cross-?fade|fade (?:up|in)|from black)\b/i.test(text), wantsOut = /\b(fade (?:out|to black)|to black)\b/i.test(text);
+  if (clips.length && (wantsIn || wantsOut)) {
+    const n = text.match(/\bclip\s+(\d+)\b/i)?.[1];
+    const clip = n ? clips.find((c) => String(c.data.position) === n) : /\b(first|opening)\b/i.test(text) ? clips[0] : /\b(last|final|closing)\b/i.test(text) ? clips[clips.length - 1] : undefined;
+    if (!clip) questions.push("Which clip? Say “clip 3”, “the first clip” or “the last clip”.");
+    else {
+      const cur = (clip.data.transition ?? { in: "cut", out: "cut", frames: 12 }) as { in: string; out: string; frames: number };
+      const secs = text.match(/\b(\d+(?:\.\d+)?)\s*(?:seconds?|secs?|s)\b/i)?.[1], fr = text.match(/\b(\d+)\s*frames?\b/i)?.[1];
+      const t = {
+        in: wantsIn ? (/\b(dissolve|cross-?fade)\b/i.test(text) ? "dissolve" : "fade_from_black") : cur.in,
+        out: wantsOut ? "fade_to_black" : cur.out,
+        frames: fr ? Number(fr) : secs ? Math.round(Number(secs) * 24) : cur.frames ?? 12,
+      };
+      // Fit the clip: every side that isn't a cut uses the frames.
+      const sides = (t.in !== "cut" ? 1 : 0) + (t.out !== "cut" ? 1 : 0);
+      t.frames = Math.max(2, Math.min(96, t.frames, Math.floor(Number(clip.data.frames) / Math.max(1, sides))));
+      if (Number(clip.data.frames) < 2 * sides) not_possible.push(`${clip.ref.label} is too short for a transition.`);
+      else {
+        add("setClipTransition", { clip_id: clip.ref.id, transition: t }, `${clip.ref.label}: ${t.in} in, ${t.out} out, ${t.frames} frames`);
+        done.push(`give ${clip.ref.label} a ${[t.in !== "cut" ? t.in.replace(/_/g, " ") : "", t.out !== "cut" ? t.out.replace(/_/g, " ") : ""].filter(Boolean).join(" and ")} (${t.frames} frames)`);
+      }
+    }
+  }
+
+  // ---- Assets Library: rename / describe / tag a file by its name ----
+  const assetBy = (name: string) => byType("asset").find((a) => a.ref.label.toLowerCase() === name.trim().toLowerCase());
+  const tagM = text.match(/\btag\s+(?:the\s+)?(?:asset|file)\s+["“]([^"”]+)["”]\s+(?:with|as)\s+["“]?([^"”\n.]+)["”]?/i);
+  const renameM = text.match(/\brename\s+(?:the\s+)?(?:asset|file)\s+["“]([^"”]+)["”]\s+to\s+["“]([^"”]+)["”]/i);
+  const describeM = text.match(/\bdescribe\s+(?:the\s+)?(?:asset|file)\s+["“]([^"”]+)["”]\s+as\s+["“]([^"”]+)["”]/i);
+  for (const [m, make] of [
+    [tagM, (a: any, m: RegExpMatchArray) => ({ tags: [...new Set([...((a.data.tags ?? []) as string[]), ...m[2].split(/\s*,\s*|\s+and\s+/).map((x) => x.trim().toLowerCase()).filter(Boolean)])].slice(0, 30) })],
+    [renameM, (_a: any, m: RegExpMatchArray) => ({ name: m[2].trim() })],
+    [describeM, (_a: any, m: RegExpMatchArray) => ({ description: m[2].trim() })],
+  ] as const) {
+    if (!m) continue;
+    const a = assetBy(m[1]);
+    if (!a) { questions.push(`Which file is “${m[1]}”? Open it in the Assets Library and ask again.`); continue; }
+    const changes = make(a, m);
+    add("updateAssetDetails", { asset_id: a.ref.id, changes }, `${a.ref.label}: ${Object.keys(changes).join(", ")}`);
+    done.push(`update “${a.ref.label}” in the Assets Library (${Object.keys(changes).join(", ")})`);
+  }
+
   // ---- Story fields ----
   const story = [...text.matchAll(/\b(?:change|set|make)\s+the\s+(title|logline|tone|genre|setting|time period)\s+(?:to|into)\s+["“]?([^"”\n]+?)["”]?(?:[.;]|$)/gi)];
   if (story.length) {
@@ -265,10 +309,10 @@ function plan(snap: Snapshot) {
     }
   }
 
-  if (!calls.length && !questions.length) not_possible.push("The development test planner only recognises common production requests (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields). Connect Claude for full understanding.");
+  if (!calls.length && !questions.length) not_possible.push("The development test planner only recognises common production requests (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields, settings, mix levels, transitions, asset details). Connect Claude for full understanding.");
   return {
     summary: calls.length ? `I'd ${done.join("; ")}.` : "I couldn't turn that into a change with the test planner.",
-    operation: (calls[0] ? { updateSceneDNA: "MODIFY_SCENE", updateCharacter: "MODIFY_CHARACTER", changeWardrobe: "CHANGE_WARDROBE", modifyDialogue: "MODIFY_DIALOGUE", modifyShot: "MODIFY_SHOT", updateStory: "UPDATE_STORY", updateLocationOrProp: "MODIFY_WORLD", updateSettings: "UPDATE_SETTINGS", adjustAudioTrack: "MIX_AUDIO" }[calls[0].tool] : "UNSUPPORTED") ?? "UNSUPPORTED",
+    operation: (calls[0] ? { updateSceneDNA: "MODIFY_SCENE", updateCharacter: "MODIFY_CHARACTER", changeWardrobe: "CHANGE_WARDROBE", modifyDialogue: "MODIFY_DIALOGUE", modifyShot: "MODIFY_SHOT", updateStory: "UPDATE_STORY", updateLocationOrProp: "MODIFY_WORLD", updateSettings: "UPDATE_SETTINGS", adjustAudioTrack: "MIX_AUDIO", setClipTransition: "EDIT_TIMELINE", updateAssetDetails: "ORGANISE_ASSETS" }[calls[0].tool] : "UNSUPPORTED") ?? "UNSUPPORTED",
     calls, not_possible, questions,
   };
 }

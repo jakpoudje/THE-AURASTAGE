@@ -926,9 +926,9 @@ async function planned(tok: string, id: string) {
   throw new Error("the planning worker didn't pick the request up within 90 s");
 }
 let aiPlanner = "";
-await check("assistant: capabilities come from configured keys (planner, nine tools incl. Locations & Props, Project Settings, Audio Studio)", async () => {
+await check("assistant: capabilities come from configured keys (planner, eleven tools incl. Locations & Props, Project Settings, Audio Studio, Editorial, Assets)", async () => {
   const c = await api("GET", "/api/assistant/capabilities");
-  assert(c.planner && c.tools.length === 9 && ["updateLocationOrProp", "updateSettings", "adjustAudioTrack"].every((n) => c.tools.some((t: any) => t.name === n)), JSON.stringify(c.tools.map((t: any) => t.name)));
+  assert(c.planner && c.tools.length === 11 && ["updateLocationOrProp", "updateSettings", "adjustAudioTrack", "setClipTransition", "updateAssetDetails"].every((n) => c.tools.some((t: any) => t.name === n)), JSON.stringify(c.tools.map((t: any) => t.name)));
   aiPlanner = c.planner.id;
   return `${c.planner.name}${c.planner.test_output ? " (test output)" : ""}`;
 });

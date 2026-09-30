@@ -3,6 +3,7 @@
 // Loads the Assets Library with its filters, the selected asset's detail, and every action on it.
 // Each change re-reads from the server, so what's shown is what was saved.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 import { useRouter } from "next/navigation";
 import type { Project } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
@@ -59,6 +60,14 @@ export function useLibrary(projectId: string) {
     if (!selected) return setDetail(null);
     assetsApi.detail(selected).then(setDetail).catch((e) => setError(e.message));
   }, [selected]);
+
+  // An Ask AuraStage change (name, description, tags) re-reads the list and the open file.
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  useAssistantChanges(() => {
+    load(filtersRef.current).catch(() => undefined);
+    if (selected) assetsApi.detail(selected).then(setDetail).catch(() => undefined);
+  });
 
   // The open asset lives in the URL (?asset=<id>) so a reload or a shared link opens it again.
   const selectAsset = (id: string | null) => {

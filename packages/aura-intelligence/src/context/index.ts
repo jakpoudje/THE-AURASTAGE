@@ -2,7 +2,7 @@
 import type { ContextBundle, ContextItem } from "../contracts";
 
 /** Types sent only in the budget's spare room unless the request is about them. */
-const OPTIONAL_TYPES: ContextItem["ref"]["type"][] = ["location", "prop", "settings"];
+const OPTIONAL_TYPES: ContextItem["ref"]["type"][] = ["location", "prop", "settings", "timeline_clip", "asset"];
 
 export const CONTEXT_LIMITS = { items: 60, charsPerItem: 4000 } as const;
 

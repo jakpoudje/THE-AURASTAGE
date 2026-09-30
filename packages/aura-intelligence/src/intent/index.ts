@@ -13,7 +13,8 @@ const SIGNALS: { module: AssistantModule; op: Operation; words: RegExp }[] = [
   { module: "shots", op: "MODIFY_SHOT", words: /\b(camera|coverage|close[- ]?up|wide|lens|dolly|push in|pan|tilt|handheld|angle|framing|shot)\b/i },
   { module: "generation", op: "GENERATE_MEDIA", words: /\b(generate|render an image|image|picture|take|video)\b/i },
   { module: "audio", op: "MODIFY_SCENE", words: /\b(sound|music|score|sfx|foley|ambience|footsteps|mix|volume|louder|quieter)\b/i },
-  { module: "editorial", op: "EDIT_TIMELINE", words: /\b(cut|trim|timeline|edit|hold on|extend this shot|shorten)\b/i },
+  { module: "editorial", op: "EDIT_TIMELINE", words: /\b(cut|trim|timeline|edit|hold on|extend this shot|shorten|transitions?|fades?|dissolves?|cross-?fade|fade to black|fade from black)\b/i },
+  { module: "assets", op: "ORGANISE_ASSETS", words: /\b(assets?|library|tags?|tagged|files?)\b/i },
   { module: "delivery", op: "EXPORT", words: /\b(export|master|deliverable|render the|4k|1080p|subtitles)\b/i },
 ];
 

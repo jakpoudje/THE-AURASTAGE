@@ -157,9 +157,11 @@ changes, the shots that used it are flagged "needs review".
 - ✅ Team roles and permissions, comments and mentions, tasks, activity, Help & Support, Project Settings, Assets
   Library (edit images/audio in the browser), dashboard from real evidence, AI & Generation readiness page.
 - ✅ **Ask AuraStage acts on**: story, characters, wardrobe, dialogue, Scene DNA (incl. on-screen text), shots,
-  locations & props, Project Settings (never spending), Audio Studio mixes. Every change goes through that stage's own
-  save (same permissions, versions and review flags as a manual edit), shows before → after, and can be undone; the page
-  updates at once. ⬜ Visual Generation, Editorial, Export and Assets are not yet actionable by the assistant.
+  locations & props, Project Settings (never spending), Audio Studio mixes, Editorial transitions, Assets Library details.
+  Every change goes through that stage's own save (same permissions, versions and review flags as a manual edit), shows
+  before → after, and can be undone; the page updates at once. In Visual Generation and Export it changes what those
+  pages are made from (shots, Scene DNA, Project Settings); starting paid generation or renders stays a person's click.
+- ✅ Suggestions respect every field's limits: a too-long value is sent back to the model once to be shortened.
 - ⬜ Real-time co-editing presence; ⬜ mobile review app.
 
 ---
@@ -231,7 +233,6 @@ Everything not yet done, in build order. When an item is finished it moves up in
 |---|---|---|
 | 1 | Better built-in sound effects and ambience (curated, licence-clear library beside the procedural generator) | Rain, crowd, traffic, doors, footsteps… play from real recordings, placed from the script |
 | 2 | AuraSketch drawings reviewed by the owner (characters and locations) | The owner is happy the sketches read as the described people and places |
-| 3 | Ask AuraStage in Visual Generation, Editorial, Export and Assets | Each of those pages can take a request, show before → after, apply and undo |
 | 5 | Music suggestions per scene + built-in library; music provider | Every scene has a suggested cue; a provider generates it when its key is added |
 | 6 | Premium voices (ElevenLabs) with Voice DNA | Lines are spoken by ElevenLabs when its key is added |
 | 7 | Lip sync on dialogue shots | Mouths match the lines when a lip-sync key is added |
@@ -242,5 +243,10 @@ Everything not yet done, in build order. When an item is finished it moves up in
 | 12 | Set dressing and prop continuity per scene; relationship map; pronunciation guide | Each works in its stage and is used downstream |
 | 13 | PDF import, version compare, beat board, social cut-downs, trailer assistant | Each works end to end |
 | 14 | Upload an actor's photos as the reference (with consent record) | Photos replace generated views for that character |
+| 16 | Casting: one click to accept the suggested profile for the whole cast; one click to develop every remaining field for every character; "Save — complete" for a finished character | Owner request 2026-09-30 |
+| 17 | Save and continue everywhere: every stage saves what the person typed and points to the next logical step (a guided "what's next") | Owner request 2026-09-30 |
+| 18 | Delete any asset, with a warning that lists exactly where it is used in the project | Owner request 2026-09-30 |
+| 19 | Characters named twice: find duplicates and merge them into one (keeping both histories) | Owner request 2026-09-30 |
+| 20 | Every stage shows what an action will cost before it runs (AI writing, images, video, voice) | Owner request 2026-09-30 |
 | 15 | Verify every page live after each change (the live checks grow with every feature) | `live-smoke` and `live-browser` both pass |
 

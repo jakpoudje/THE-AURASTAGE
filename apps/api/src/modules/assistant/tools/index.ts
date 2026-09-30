@@ -4,7 +4,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { ToolRegistry, type ToolDefinition } from "@aurastage/aura-intelligence";
-import { ProjectSettingsSchema, UpdateCharacterInputSchema, UpdateDialogueLineInputSchema, UpdateSceneDnaInputSchema, UpdateShotInputSchema } from "@aurastage/contracts";
+import { ClipTransitionSchema, ProjectSettingsSchema, UpdateAssetInputSchema, UpdateCharacterInputSchema, UpdateDialogueLineInputSchema, UpdateSceneDnaInputSchema, UpdateShotInputSchema } from "@aurastage/contracts";
 import { editProject } from "../../projects/projects.service";
 import { editCharacter, saveLook } from "../../characters/characters.service";
 import { updateDialogueLine } from "../../dialogue/dialogue.service";
@@ -14,6 +14,8 @@ import { updateWorldItem } from "../../world/world.service";
 import { saveSettings } from "../../settings/settings.service";
 import { updateTrack } from "../../audio/audio.service";
 import { readProjectSettings } from "../../settings/settings.read";
+import { editTimeline } from "../../editorial/editorial.service";
+import { editAsset } from "../../assets/assets.service";
 
 type Row = Record<string, any>;
 export interface ToolCtx { projectId: string; orgId: string }
@@ -290,6 +292,56 @@ const adjustAudioTrack: ToolImpl<{ track_id: string; changes: Row }> = {
   undo(db, i, b, _a, ctx) { return this.apply(db, { track_id: i.track_id, changes: Object.fromEntries(Object.entries(b.fields).filter(([k]) => TRACK_FIELDS.includes(k))) }, ctx); },
 };
 
-const IMPLS: ToolImpl<any>[] = [updateStory, updateCharacter, changeWardrobe, modifyDialogue, updateSceneDNA, modifyShot, updateLocationOrProp, updateSettings, adjustAudioTrack];
+// Editorial: a shot's transition on the cut (dissolve, fade from/to black) through the editorial module's own edit
+// (gate editorial:edit, the timeline's revision, the edit engine's checks). A locked picture is refused as it is by hand.
+const setClipTransition: ToolImpl<{ clip_id: string; transition: Row }> = {
+  def: {
+    name: "setClipTransition", module: "editorial", action: "edit", target: "timeline_clip",
+    description: "Set how one picture clip on the Editorial timeline (V1) starts and ends: transition { in: cut|dissolve|fade_from_black, out: cut|fade_to_black, frames: 2–96 (24 frames = 1 second) }. The clip must be long enough for the frames used.",
+    input: z.object({ clip_id: z.string().uuid(), transition: ClipTransitionSchema }).strict(),
+    impact: ["Editorial & Timeline (a new edit; a locked picture refuses it until the lock is broken)", "Export & Deliver (renders made from the next Picture Lock)"], undo: "inverse",
+  },
+  target: (i) => ({ type: "timeline_clip", id: i.clip_id }),
+  async before(db, input) {
+    const c = await one(db, "timeline_clips", "id, label, track, transition", input.clip_id);
+    return { object: { type: "timeline_clip", id: c.id, label: c.label }, fields: { transition: c.transition ?? { in: "cut", out: "cut", frames: 12 } } };
+  },
+  async apply(db, input, ctx) {
+    const c = await one(db, "timeline_clips", "timeline_id", input.clip_id);
+    const t = await one(db, "timelines", "revision", c.timeline_id);
+    await editTimeline(db, ctx.projectId, { base_revision: t.revision, operation: { op: "transition", clip_id: input.clip_id, transition: input.transition } });
+    return this.before(db, input, ctx);
+  },
+  after: (i) => ({ transition: i.transition }),
+  undo(db, i, b, _a, ctx) { return this.apply(db, { clip_id: i.clip_id, transition: b.fields.transition }, ctx); },
+};
+
+// Assets Library: a file's name, category, description and tags through the assets module's own save (gate assets:edit).
+// Never archives or replaces a file; its bytes and versions are untouched.
+const AssetChanges = UpdateAssetInputSchema.innerType().omit({ archived: true }).strict().refine((c) => Object.keys(c).length > 0, "Nothing to change");
+const updateAssetDetails: ToolImpl<{ asset_id: string; changes: Row }> = {
+  def: {
+    name: "updateAssetDetails", module: "assets", action: "edit", target: "asset",
+    description: "Rename, describe, categorise or tag one file in the Assets Library: changes { name, category, description, tags [up to 30 short tags] }. Never archives or replaces the file.",
+    input: z.object({ asset_id: z.string().uuid(), changes: AssetChanges }).strict(),
+    impact: ["Assets Library (the file's details; its versions and where it is used are unchanged)"], undo: "inverse",
+  },
+  target: (i) => ({ type: "asset", id: i.asset_id }),
+  async before(db, input) {
+    const a = await one(db, "assets", "id, name, category, description, tags", input.asset_id);
+    return { object: { type: "asset", id: a.id, label: a.name }, fields: pick(a, Object.keys(input.changes)) };
+  },
+  async apply(db, input, ctx) {
+    await editAsset(db, input.asset_id, input.changes);
+    return this.before(db, input, ctx);
+  },
+  after: (i) => i.changes,
+  undo(db, i, b, _a, ctx) {
+    const changes = Object.fromEntries(Object.entries(b.fields).map(([k, v]) => [k, v ?? (k === "tags" ? [] : k === "description" ? "" : v)]).filter(([, v]) => v !== null));
+    return this.apply(db, { asset_id: i.asset_id, changes }, ctx);
+  },
+};
+
+const IMPLS: ToolImpl<any>[] = [updateStory, updateCharacter, changeWardrobe, modifyDialogue, updateSceneDNA, modifyShot, updateLocationOrProp, updateSettings, adjustAudioTrack, setClipTransition, updateAssetDetails];
 export const toolRegistry = IMPLS.reduce((r, t) => r.register(t.def), new ToolRegistry());
 export const toolImpl = (name: string) => IMPLS.find((t) => t.def.name === name);
