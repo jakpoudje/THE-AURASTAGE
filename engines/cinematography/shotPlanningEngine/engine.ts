@@ -39,6 +39,28 @@ export function planStoryTime(durationSeconds: number, lineSeconds: number[]): n
   return Math.max(durationSeconds, r2(ESTABLISHING_SECONDS + dialogue));
 }
 
+/**
+ * Where things sit in the frame (1.2.0, owner 2026-09-30: "camera physics… the engines make these decisions"): the
+ * classic composition for each kind of shot — thirds, look room, headroom, foreground — shaped by the scene's mood.
+ */
+export function compositionFor(s: Pick<ProposedShot, "purpose" | "size" | "movement">, exterior: boolean, mood: string[]): string {
+  const tense = mood.some((m) => /tense|uneasy|menac|threat|dark|claustro|fear|volatile|hostile/i.test(m));
+  const warm = mood.some((m) => /warm|intimate|tender|hopeful|joy|romantic/i.test(m));
+  const edge = tense ? " Keep the frame a little tight and off-balance; let the dark edges press in." : warm ? " Soft, balanced framing with room around them." : "";
+  const byPurpose: Record<string, string> = {
+    establishing: `${exterior ? "Horizon on the lower third; the place and its scale read first" : "The whole room reads first, doorway or window as a frame within the frame"}; characters small in the frame.`,
+    master: "Every on-screen character in frame and blocking readable; the axis of action set here for every shot that follows.",
+    dialogue: s.size === "OTS" ? "Listener's shoulder soft in the foreground at the frame edge; the speaker on the far third, eyes on the upper third, look room toward the listener."
+      : "Speaker on a third, eyes on the upper third, look room in the direction they face; clean background.",
+    reaction: "The listener on the opposite third to the speaker's single, eyeline matched; tight enough to read the eyes.",
+    action: "Wide enough for the movement to read, leading room in the direction of travel.",
+    insert: "The object fills the frame, clean background; hands in frame if someone is using it.",
+    transition: "Composed to cut: a shape, colour or movement that carries into the next shot.",
+  };
+  const move = s.movement === "push_in" ? " The push-in ends on the eyes." : s.movement === "handheld" ? " Handheld: keep the subject near centre as the frame breathes." : "";
+  return fitText(`${byPurpose[s.purpose] ?? "Subject on a third with room to look into."}${edge}${move}`);
+}
+
 export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
   const { scene, dna, participants, lines, style } = validateShotPlanningInput(raw);
   const st = STYLE[style];
@@ -193,6 +215,6 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
     });
   }
 
-  const fitted = shots.map((x) => ({ ...x, description: fitText(x.description), character_ids: x.character_ids.slice(0, 20), dialogue_line_ids: x.dialogue_line_ids.slice(0, 50) }));
+  const fitted = shots.map((x) => ({ ...x, composition: x.composition ?? compositionFor(x, exterior, dna.mood ?? []), description: fitText(x.description), character_ids: x.character_ids.slice(0, 20), dialogue_line_ids: x.dialogue_line_ids.slice(0, 50) }));
   return { shots: fitted, scene_seconds: T, engine_version: ENGINE_VERSION };
 }

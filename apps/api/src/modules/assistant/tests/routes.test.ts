@@ -449,4 +449,16 @@ describe("Ask AuraStage", () => {
     const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
     expect(p.preview.calls[0]).toMatchObject({ tool: "updateLocationOrProp", after: { description: expect.stringMatching(/^HARBOUR: exterior\. Seen at day and night\. Areas: DOCK\./) } });
   });
+
+  it("built-in: the whole film's Scene DNA in one click — every scene, only empty fields, one suggestion", async () => {
+    const a = await app(fakeDb());
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "Fill every scene's Scene DNA from the script: only empty fields.", task: "fill_all_scene_dna" } });
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    const dna = p.preview.calls.filter((c: Row) => c.tool === "updateSceneDNA");
+    expect(dna.map((c: Row) => c.object.label).sort()).toEqual(["Scene 1", "Scene 2"]); // the omitted scene is left out
+    expect(dna.find((c: Row) => c.object.label === "Scene 2").after.mood).toBeUndefined(); // already written
+    expect(dna.every((c: Row) => c.allowed && !c.stale && c.after.lighting_intent)).toBe(true);
+    expect(p.preview.can_apply).toBe(true);
+  });
 });

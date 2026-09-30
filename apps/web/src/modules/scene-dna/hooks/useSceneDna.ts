@@ -12,7 +12,7 @@ import { apiGet } from "@/lib/apiClient";
 import { sceneDnaApi } from "../api/sceneDnaApi";
 import type { SceneDnaWorkspace } from "../types";
 
-type Busy = null | "save" | "approve";
+type Busy = null | "save" | "approve" | "all";
 
 export function useSceneDna(projectId: string) {
   const router = useRouter();
@@ -76,6 +76,22 @@ export function useSceneDna(projectId: string) {
     error,
     notice,
     save: (sceneId: string, input: UpdateSceneDnaInput) => run("save", async () => (await sceneDnaApi.save(projectId, sceneId, input), "Scene DNA saved.")),
+    /** Lock every scene that is ready, one by one through the same gated lock (owner: one click for the whole film). */
+    approveAll: (sceneIds: string[]) =>
+      run("all", async () => {
+        let ok = 0;
+        const failed: string[] = [];
+        for (const sid of sceneIds) {
+          try {
+            await sceneDnaApi.approve(projectId, sid);
+            ok++;
+            setNotice(`Locking… ${ok} of ${sceneIds.length}`);
+          } catch (e) {
+            failed.push(e instanceof Error ? e.message : String(e));
+          }
+        }
+        return `Locked ${ok} of ${sceneIds.length} ready scene(s).${failed.length ? ` ${failed.length} couldn't be locked: ${failed[0]}` : ""}`;
+      }),
     approve: (sceneId: string) =>
       run("approve", async () => {
         const r = await sceneDnaApi.approve(projectId, sceneId);

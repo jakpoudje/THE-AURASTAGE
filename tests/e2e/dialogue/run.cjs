@@ -103,6 +103,26 @@ async function api(method, path, body) {
     await page.getByText("Approved all 3 lines in this scene.").waitFor();
     await page.getByRole("button", { name: "Scene approved ✓" }).waitFor();
   });
+  await step("whole film: every line in the film filled free in one click (nothing left empty); approve every scene's dialogue in one click", async () => {
+    await page.getByRole("group", { name: "Whole film" }).getByRole("button", { name: "Fill every line in the film (free)" }).click();
+    const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
+    await panel.getByTestId("proposal-status").getByText(/Suggested|Couldn't/).waitFor();
+    if (await panel.getByRole("button", { name: "Apply" }).isEnabled()) {
+      await panel.getByRole("button", { name: "Apply" }).click();
+      await panel.getByTestId("proposal-status").getByText("Applied").waitFor();
+    }
+    await panel.getByRole("button", { name: "Close" }).click();
+    const d = await api("GET", `/api/projects/${P}/dialogue`);
+    const empty = d.lines.filter((l) => l.status === "active" && (!l.emotion || !l.intention || !l.subtext));
+    if (empty.length) throw new Error(`${empty.length} line(s) left empty`);
+    const all = page.getByRole("group", { name: "Whole film" }).getByRole("button", { name: /Approve every scene's dialogue/ });
+    if (await all.isEnabled()) {
+      await all.click();
+      await page.getByText(/Approved \d+ line\(s\) in \d+ scene\(s\)\./).waitFor();
+    }
+    await page.reload();
+    await page.getByRole("group", { name: "Whole film" }).getByRole("button", { name: "Approve every scene's dialogue (0)" }).waitFor();
+  });
   await step("script change: annotated line flagged with its old text, removed line kept aside", async () => {
     const v2 = await api("POST", `/api/projects/${P}/script/versions`, { source_text: V2, base_version_id: v1.id });
     await api("POST", `/api/projects/${P}/script/approve`, { version_id: v2.id });

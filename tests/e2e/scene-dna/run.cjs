@@ -189,6 +189,27 @@ async function api(method, path, body) {
     await page.getByRole("button", { name: /INT\. NEWSROOM/ }).click();
     await page.getByText(/The scene itself changed in the script since you locked version 4/).waitFor();
   });
+  await step("whole film (owner, 2026-09-30: downstream pages too): every scene's DNA filled free in one click — only empty fields; reload keeps it; lock every ready scene in one click", async () => {
+    const before = await api("GET", `/api/projects/${P}/scene-dna`);
+    const written = before.scenes.find((e) => e.editable.purpose);
+    await page.getByRole("group", { name: "Whole film" }).getByRole("button", { name: "Fill every scene's Scene DNA (free)" }).click();
+    const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
+    await panel.getByTestId("proposal-status").getByText("Suggested").waitFor();
+    await panel.getByTestId("proposal-provider").getByText(/built in · free/).waitFor();
+    await panel.getByRole("button", { name: "Apply" }).click();
+    await panel.getByTestId("proposal-status").getByText("Applied").waitFor();
+    await panel.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    const after = await api("GET", `/api/projects/${P}/scene-dna`);
+    const active = after.scenes.filter((e) => e.scene.status === "active");
+    if (!active.every((e) => e.editable.lighting_intent && e.editable.sound_intent && e.editable.purpose)) throw new Error("a scene was left empty");
+    if (written && after.scenes.find((e) => e.scene.id === written.scene.id).editable.purpose !== written.editable.purpose) throw new Error("a written purpose was replaced");
+    const lock = page.getByRole("group", { name: "Whole film" }).getByRole("button", { name: /Lock every ready scene/ });
+    if (await lock.isEnabled()) {
+      await lock.click();
+      await page.getByText(/Locked \d+ of \d+ ready scene/).waitFor();
+    }
+  });
   await page.screenshot({ path: `${OUT}/scene-dna.png`, fullPage: true });
   console.log("ERRORS:", errors);
   await browser.close();

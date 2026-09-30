@@ -13,11 +13,11 @@ async function rows(q: PromiseLike<{ data: unknown[] | null; error: unknown }>):
 const item = (type: ContextItem["ref"]["type"], r: Row, label: string, data: Row): ContextItem =>
   ({ ref: { type, id: r.id, version: r.updated_at ?? r.created_at ?? null, label }, data });
 
-export async function buildContext(db: SupabaseClient, req: AssistantRequest, intent: Intent, opts: { full?: boolean } = {}): Promise<ContextBundle> {
+export async function buildContext(db: SupabaseClient, req: AssistantRequest, intent: Intent, opts: { full?: boolean; wholeFilm?: boolean } = {}): Promise<ContextBundle> {
   const P = req.project_id;
   const [projectRows, scenes, chars, looks, dna, places, props] = await Promise.all([
     rows(db.from("projects").select("id, title, type, genre, subgenre, tone, setting, time_period, logline, target_runtime_minutes, updated_at").eq("id", P)),
-    rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, element_start, element_end, source_version_id, updated_at").eq("project_id", P).eq("status", "active").order("number", { ascending: true }).limit(200)),
+    rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, element_start, element_end, source_version_id, updated_at").eq("project_id", P).eq("status", "active").order("number", { ascending: true }).limit(opts.wholeFilm ? 1000 : 200)),
     rows(db.from("characters").select("id, name, role, status, age, gender, nationality, accent, languages, occupation, description, personality, backstory, motivation, fears, strengths, weaknesses, arc, merged_into, updated_at").eq("project_id", P).is("merged_into", null).limit(opts.full ? 250 : 100)),
     rows(db.from("wardrobe_looks").select("id, character_id, name, description, updated_at").eq("project_id", P).limit(300)),
     rows(db.from("scene_dna").select("id, scene_id, status, purpose, stakes, mood, weather, atmosphere, lighting_intent, sound_intent, story_time, camera_energy, wardrobe, notes, continuity_notes, on_screen_text, updated_at").eq("project_id", P)),
@@ -60,13 +60,23 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     ]);
   }
 
+  // The whole film (built-in fills from the downstream pages): every spoken line, page by page.
+  if (opts.wholeFilm) {
+    lines = [];
+    for (let from = 0; from < 20000; from += 1000) {
+      const page = await rows(db.from("dialogue_lines").select("id, scene_id, ordinal, speaker_name, character_id, text, parenthetical, intention, subtext, emotion, intensity, notes, status, updated_at").eq("project_id", P).eq("status", "active").order("ordinal", { ascending: true }).range(from, from + 999));
+      lines.push(...page);
+      if (page.length < 1000) break;
+    }
+  }
+
   const items: ContextItem[] = [
     item("project", project, project.title, { title: project.title, type: project.type, genre: project.genre, subgenre: project.subgenre, tone: project.tone, setting: project.setting,
       time_period: project.time_period, logline: project.logline, target_runtime_minutes: project.target_runtime_minutes }),
   ];
   // With a focus scene, the scenes right before and after come too (continuity: what must match across the cut).
   const fi = focusScene ? scenes.indexOf(focusScene) : -1;
-  const around = focusScene ? [scenes[fi - 1], focusScene, scenes[fi + 1]].filter(Boolean) as Row[] : scenes.slice(0, 30);
+  const around = opts.wholeFilm ? scenes : focusScene ? [scenes[fi - 1], focusScene, scenes[fi + 1]].filter(Boolean) as Row[] : scenes.slice(0, 30);
   for (const s of around) {
     const d = dna.find((x) => x.scene_id === s.id);
     // A scene's version is its Scene DNA's (what the tools change), falling back to the scene row.
@@ -112,7 +122,7 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     items,
   };
   // The built-in engines read everything (a whole cast, every line of a scene); a paid model gets a trimmed budget.
-  return opts.full ? { ...bundle, items: items.slice(0, 600) } : trimContext(bundle, intent.mentions, rel);
+  return opts.full ? { ...bundle, items: items.slice(0, 5000) } : trimContext(bundle, intent.mentions, rel);
 }
 
 /** Object types the request is about (places and props; project settings), which then rank above the rest of the cast. */

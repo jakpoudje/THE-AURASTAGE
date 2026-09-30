@@ -17,6 +17,7 @@ import { dnaStatus, SceneList } from "./components/SceneList";
 import { SceneEditor } from "./components/SceneEditor";
 import { ReadinessPanel } from "./components/ReadinessPanel";
 import { DriftBanner } from "./components/DriftBanner";
+import { askAuraStage } from "@/modules/ask-aurastage/askBus";
 
 export default function SceneDnaPage() {
   const { id } = useParams<{ id: string }>();
@@ -99,6 +100,23 @@ export default function SceneDnaPage() {
             {ws.summary.ready} ready to lock
             {ws.summary.needs_review > 0 && <span className="text-aura-gold"> · {ws.summary.needs_review} need review after upstream changes</span>}
           </p>
+        )}
+
+        {ws.script && (
+          <div role="group" aria-label="Whole film" className="flex flex-wrap items-center gap-2 rounded-xl border border-aura-border bg-aura-panel p-3 text-sm">
+            <span className="text-white/60">Whole film:</span>
+            <button onClick={() => askAuraStage("Fill every scene's Scene DNA from the script: only empty fields.", { task: "fill_all_scene_dna" })}
+              className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold">Fill every scene&apos;s Scene DNA (free)</button>
+            {(() => {
+              const ready = ws.scenes.filter((e) => e.scene.status === "active" && e.proposal.ready_for_approval && !(e.record?.status === "approved" && e.record.review_state === "current")).map((e) => e.scene.id);
+              return (
+                <button disabled={!ready.length || d.busy !== null}
+                  onClick={() => window.confirm(`Lock ${ready.length} ready scene(s)? Each locks the version of the script, cast and dialogue it was built from; Storyboard then plans from it.`) && d.approveAll(ready)}
+                  className="rounded-md bg-aura-gold px-3 py-1.5 font-medium text-black disabled:opacity-40">Lock every ready scene ({ready.length})</button>
+              );
+            })()}
+            <span className="text-[11px] text-white/40">A scene is ready once its dialogue is approved and its speakers are in Casting.</span>
+          </div>
         )}
 
         {(d.error || d.notice) && (

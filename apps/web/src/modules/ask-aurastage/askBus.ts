@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 
 export const ASK_EVENT = "aura:ask";
 /** A page's one-click fill: the built-in engines know exactly what to fill (free; owner, 2026-09-30). */
-export type BuiltinTask = "develop_character" | "develop_cast" | "annotate_scene" | "fill_scene_overview" | "fill_visual_sound" | "fill_continuity" | "fill_scene" | "describe_world";
+export type BuiltinTask = "develop_character" | "develop_cast" | "annotate_scene" | "fill_scene_overview" | "fill_visual_sound" | "fill_continuity" | "fill_scene" | "describe_world" | "fill_all_scene_dna" | "annotate_all_lines";
 export interface AskRequest { text: string; task?: BuiltinTask; object?: { type: string; id: string; version?: string | null; label?: string } }
 export function askAuraStage(text: string, opts: Omit<AskRequest, "text"> = {}) {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: { text, ...opts } }));

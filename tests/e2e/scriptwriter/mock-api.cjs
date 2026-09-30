@@ -1275,14 +1275,16 @@ http.createServer((req, res) => {
         else {
           const act = scenes.filter((y) => y.status === "active").sort((a1, a2) => a1.number - a2.number);
           const sc = (b.object && b.object.type === "scene" && act.find((y) => y.id === b.object.id)) || fs || null;
+          const whole = task === "fill_all_scene_dna" || task === "annotate_all_lines";
           const dnaOf = (id) => { const d = sdna.find((y) => y.scene_id === id) || {}; return { purpose: d.purpose ?? null, stakes: d.stakes ?? null, story_time: d.story_time ?? null, mood: d.mood || [], weather: d.weather ?? null, atmosphere: d.atmosphere ?? null, lighting_intent: d.lighting_intent ?? null, sound_intent: d.sound_intent ?? null, camera_energy: d.camera_energy ?? null, continuity_notes: d.continuity_notes ?? null }; };
           const W0 = globalThis.__world || { location: [], prop: [] };
           const PF = ["role", "age", "gender", "nationality", "accent", "languages", "occupation", "description", "personality", "backstory", "motivation", "fears", "strengths", "weaknesses", "arc"];
           const full = [
             { ref: { type: "project", id: P, version: project.updated_at, label: project.title }, data: {} },
-            ...(sc ? [{ ref: { type: "scene", id: sc.id, version: (sdna.find((y) => y.scene_id === sc.id) || {}).updated_at || null, label: `Scene ${sc.number}` }, data: { number: sc.number, heading: sc.heading, time_of_day: sc.time_of_day, dna: dnaOf(sc.id) } }] : []),
+            // The whole film (fill_all_scene_dna / annotate_all_lines): every scene and every line, as assistant.context does.
+            ...((whole ? act : sc ? [sc] : []).map((y) => ({ ref: { type: "scene", id: y.id, version: (sdna.find((z) => z.scene_id === y.id) || {}).updated_at || null, label: `Scene ${y.number}` }, data: { number: y.number, heading: y.heading, time_of_day: y.time_of_day, dna: dnaOf(y.id) } }))),
             ...chars.filter((c) => !c.merged_into).map((c) => ({ ref: { type: "character", id: c.id, version: c.updated_at || null, label: c.name }, data: { ...Object.fromEntries(PF.map((k) => [k, c[k] ?? null])), looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })) } })),
-            ...(sc ? dlines.filter((l) => l.scene_id === sc.id && l.status === "active").map((l) => ({ ref: { type: "dialogue_line", id: l.id, version: l.updated_at || null, label: `${l.speaker_name} line ${l.ordinal}` }, data: {} })) : []),
+            ...(whole || sc ? dlines.filter((l) => (whole || l.scene_id === sc.id) && l.status === "active").map((l) => ({ ref: { type: "dialogue_line", id: l.id, version: l.updated_at || null, label: `${l.speaker_name} line ${l.ordinal}` }, data: {} })) : []),
             ...W0.location.filter((r) => !r.archived_at).map((r) => ({ ref: { type: "location", id: r.id, version: r.updated_at || null, label: r.name }, data: { name: r.name, description: r.description, int_ext: r.int_ext || [], times_of_day: r.times_of_day || [], areas: r.areas || [] } })),
             ...W0.prop.filter((r) => !r.archived_at).map((r) => ({ ref: { type: "prop", id: r.id, version: r.updated_at || null, label: r.name }, data: { name: r.name, description: r.description, category: r.category || "prop" } })),
           ];

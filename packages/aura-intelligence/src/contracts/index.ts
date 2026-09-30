@@ -17,6 +17,8 @@ export type ObjectRef = z.infer<typeof ObjectRefSchema>;
 /** One-click fills the built-in story intelligence does for free (only EMPTY fields; a suggestion to review, undoable). */
 export const BUILTIN_TASKS = [
   "develop_character", "develop_cast", "annotate_scene", "fill_scene_overview", "fill_visual_sound", "fill_continuity", "fill_scene", "describe_world",
+  // Whole film (downstream pages): every scene's DNA, every spoken line — in batches of up to 250 changes.
+  "fill_all_scene_dna", "annotate_all_lines",
 ] as const;
 export type BuiltinTask = (typeof BUILTIN_TASKS)[number];
 
@@ -65,7 +67,7 @@ export const ContextBundleSchema = z.object({
   module: AssistantModuleSchema,
   focus: ObjectRefSchema.nullable(),
   // A paid model sees at most CONTEXT_LIMITS.items; the built-in engines read the whole cast or scene.
-  items: z.array(ContextItemSchema).max(600),
+  items: z.array(ContextItemSchema).max(5000),
 });
 export type ContextBundle = z.infer<typeof ContextBundleSchema>;
 

@@ -30,7 +30,8 @@ the person chooses a paid writer: `planner: "builtin"` (the default) or `"writer
 via `/estimate`, shown in the panel as "Refine with Claude").
 - `builtin/index.ts` (planner 1.0.0, provider `aurastage`, model `story-intelligence-1.0.0`): one-click fills given as
   `task` — `develop_character`, `develop_cast`, `annotate_scene`, `fill_scene_overview`, `fill_visual_sound`,
-  `fill_continuity`, `fill_scene`, `describe_world` — run `characterProfileEngine` (+ `wardrobeSuggestionEngine` for a
+  `fill_continuity`, `fill_scene`, `describe_world`, and for the whole film `fill_all_scene_dna` / `annotate_all_lines`
+  (scene by scene until a batch of up to 250 changes is full; press again for the rest) — run `characterProfileEngine` (+ `wardrobeSuggestionEngine` for a
   first look), `dialoguePerformanceEngine`, `sceneDnaFillEngine` and `worldDescribeEngine` on evidence read with the
   user's own access (`builtin/evidence.ts`: the approved script's action lines, every scene and spoken line, Casting's
   introductions and story accents). They fill only EMPTY fields; gender is never guessed (only from the script's words).

@@ -85,6 +85,17 @@ export function useDialogue(projectId: string) {
       }),
     updateLine: (lineId: string, input: UpdateDialogueLineInput, message = "Line saved.") =>
       run("line", async () => (await dialogueApi.updateLine(lineId, input), message)),
+    /** Approve the dialogue of every scene that still has lines to approve (the same gated approval, scene by scene). */
+    approveAll: (sceneIds: string[]) =>
+      run("scene", async () => {
+        let ok = 0, lines = 0;
+        for (const sid of sceneIds) {
+          const r = await dialogueApi.approveScene(projectId, sid);
+          ok++;
+          lines += r.approved_lines;
+        }
+        return `Approved ${lines} line(s) in ${ok} scene(s).`;
+      }),
     approveScene: (sceneId: string) =>
       run("scene", async () => {
         const r = await dialogueApi.approveScene(projectId, sceneId);

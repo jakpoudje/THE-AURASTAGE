@@ -30,6 +30,8 @@ export function taskOf(req: Pick<AssistantRequest, "text" | "object"> & { task?:
   if (req.task) return req.task;
   const t = req.text;
   if (/\bdevelop\b[^.]*\b(every|all|whole cast|each)\b[^.]*\bprofiles?\b/i.test(t)) return "develop_cast";
+  if (/\b(every|all) scenes?'?s? (?:Scene )?DNA\b|\bScene DNA (?:of|for) every scene\b/i.test(t)) return "fill_all_scene_dna";
+  if (/\bevery (?:spoken )?line in the (?:film|script)\b/i.test(t)) return "annotate_all_lines";
   if (/\bdevelop\b[^.]*\bprofile\b/i.test(t)) return "develop_character";
   if (/\bfill the Scene Overview\b/i.test(t)) return "fill_scene_overview";
   if (/\bfill Visual & Sound\b/i.test(t)) return "fill_visual_sound";
@@ -82,6 +84,27 @@ export function planFromEvidence(ev: Evidence, req: AssistantRequest, context: C
       const it = kind ? byType(kind).find((i) => (req.object?.id ? i.ref.id === req.object.id : i.ref.label.toLowerCase() === m?.[2]?.trim().toLowerCase())) : undefined;
       if (!it || !kind) out.questions.push("Which location or prop? Pick it in Locations & Props and ask again.");
       else describeWorld(ev, kind, it, out);
+      break;
+    }
+    case "fill_all_scene_dna":
+    case "annotate_all_lines": {
+      // The whole film, scene by scene, until the batch is full; press again for the rest (only empty fields each time).
+      const scenes = byType("scene").sort((a, b) => Number((a.data as Row).number) - Number((b.data as Row).number));
+      const LIMIT = 240;
+      let done = 0, from: string | null = null, to: string | null = null, left = 0;
+      for (const sc of scenes) {
+        const before = out.calls.length;
+        const sub: Out = { calls: [], done: [], not_possible: [], questions: [] };
+        if (task === "annotate_all_lines") annotate(ev, sc, sub, true, true);
+        else fillDna(ev, sc, [...OVERVIEW, ...VISUAL, ...CONTINUITY], annotate(ev, sc, sub, false), sub);
+        if (!sub.calls.length) continue;
+        if (out.calls.length + sub.calls.length > LIMIT) { left++; continue; }
+        out.calls.push(...sub.calls);
+        if (out.calls.length > before) { done++; from ??= sc.ref.label; to = sc.ref.label; }
+      }
+      if (done) out.done.push(task === "annotate_all_lines" ? `fill the performance of every empty line in ${done} scene(s) (${from}${to !== from ? ` to ${to}` : ""})` : `fill the empty Scene DNA of ${done} scene(s) (${from}${to !== from ? ` to ${to}` : ""})`);
+      if (left) out.not_possible.push(`${left} more scene(s) still have empty fields — apply this, then press the button again to continue (a batch holds up to 250 changes).`);
+      if (!out.calls.length) out.not_possible.push(task === "annotate_all_lines" ? "Every spoken line already has its performance filled in." : "Every scene's DNA is already filled in.");
       break;
     }
     default: {
@@ -166,7 +189,7 @@ function developCharacter(ev: Evidence, ch: ContextBundle["items"][number], out:
   if (!quiet && !out.calls.length) out.not_possible.push(`${ch.ref.label}'s profile is already filled in and they have a wardrobe look.`);
 }
 
-function annotate(ev: Evidence, scene: ContextBundle["items"][number], out: Out, write: boolean) {
+function annotate(ev: Evidence, scene: ContextBundle["items"][number], out: Out, write: boolean, quietEmpty = false) {
   const sceneLines = ev.lines.filter((l) => l.scene_id === scene.ref.id);
   const dna = ((scene.data as Row).dna ?? {}) as Row;
   const r = dialoguePerformanceEngine({ scene: { heading: String((scene.data as Row).heading ?? ""), mood: (dna.mood ?? []) as string[] },
@@ -187,7 +210,7 @@ function annotate(ev: Evidence, scene: ContextBundle["items"][number], out: Out,
     n++;
   }
   if (n) out.done.push(`give ${n} line(s) of ${scene.ref.label} their emotion, intensity, intention, subtext and delivery`);
-  else if (sceneLines.length === 0) out.not_possible.push(`${scene.ref.label} has no spoken lines to annotate.`);
+  else if (sceneLines.length === 0 && !quietEmpty) out.not_possible.push(`${scene.ref.label} has no spoken lines to annotate.`);
   return reads;
 }
 

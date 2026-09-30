@@ -276,7 +276,9 @@ await check("storyboard: one click plans every locked scene (coverage style); un
   const again = await api("POST", `/api/projects/${projectId}/storyboard/generate-all`, {});
   assert(again.planned.length === 0 && again.skipped.some((x: any) => x.scene_number === 1 && /kept as it is/.test(x.reason)), "an existing plan must never be replaced by plan-all");
   const first = (await api("GET", `/api/projects/${projectId}/storyboard`)).scenes[0];
-  assert(first.plan.engine_version === "1.1.0" && /^Intimate coverage: /.test(first.shots[0].notes ?? ""), `style not recorded: ${first.plan.engine_version} ${first.shots[0].notes}`);
+  // Coverage styles arrived in 1.1.0; any later version records them too.
+  const [maj, min] = String(first.plan.engine_version).split(".").map(Number);
+  assert((maj > 1 || min >= 1) && /^Intimate coverage: /.test(first.shots[0].notes ?? ""), `style not recorded: ${first.plan.engine_version} ${first.shots[0].notes}`);
   // Back to the standard plan (the rest of the run builds on it), replacing on purpose.
   const g = await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, { replace: true, style: "standard" });
   assert(g.shots >= 2 && g.scene_dna_version_number === 2, `shots ${g.shots} from v${g.scene_dna_version_number}`);

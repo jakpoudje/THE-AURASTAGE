@@ -32,6 +32,14 @@ const coverageOf = (plan: ReturnType<typeof shotPlanningEngine>, input = base())
   });
 
 describe("shotPlanningEngine", () => {
+  it("every shot is composed (1.2.0): thirds, look room, foreground — shaped by the scene's mood", () => {
+    const { shots } = shotPlanningEngine(base());
+    for (const s of shots) expect(s.composition && s.composition.length).toBeGreaterThan(20);
+    expect(shots[0].composition).toMatch(/Horizon on the lower third/);
+    expect(shots[0].composition).toMatch(/tight and off-balance/); // "tense" mood
+    expect(shots.find((s) => s.purpose === "master")!.composition).toMatch(/axis of action/);
+  });
+
   it("regression: a long lighting intent (over 500 characters) fits every shot instead of being refused (1.1.1)", async () => {
     const { ShotEditableSchema } = await import("@aurastage/contracts");
     const long = "A single buzzing fluorescent tube is the only real source: hard, greenish-white top light on the table. ".repeat(8);

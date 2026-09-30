@@ -52,12 +52,17 @@ export async function ask(db: SupabaseClient, projectId: string, body: unknown) 
     // Built-in story intelligence (owner, 2026-09-30): the engines plan it here, deterministically and for free; the
     // worker only records it (it holds the proposal's lifecycle). The frozen context keeps each object's id and the
     // version it was read at — what the preview's staleness check needs — without the full text.
-    const context = await buildContext(db, req, intent, { full: true });
+    const wholeFilm = req.task === "fill_all_scene_dna" || req.task === "annotate_all_lines";
+    const context = await buildContext(db, req, intent, { full: true, wholeFilm });
     const plan = await builtinPlan(db, req, context, tools.map((t) => t.name));
+    // Frozen: ids and versions for the staleness check, never the text.
+    const targets = new Set(plan.calls.map((c) => { try { const i = JSON.parse(c.input_json); return i.character_id ?? i.line_id ?? i.scene_id ?? i.id ?? i.shot_id ?? i.track_id ?? i.clip_id ?? i.asset_id ?? null; } catch { return null; } }));
+    // A whole-film context can hold thousands of objects; then only what the plan changes is kept (snapshot size limit).
+    const kept = context.items.length <= 300 ? context.items : context.items.filter((i) => i.ref.type === "project" || i.ref.type === "settings" || targets.has(i.ref.id) || (context.focus && i.ref.id === context.focus.id));
     const snapshot = {
       planner: "builtin", planner_version: BUILTIN_PLANNER_VERSION, provider: BUILTIN_PROVIDER, model: BUILTIN_MODEL,
       request: { text: req.text, module: req.module, object: req.object, mode: req.mode, task: req.task },
-      intent, context: { ...context, items: context.items.map((i) => ({ ref: i.ref, data: {} })) }, tools: tools.map((t) => t.name),
+      intent, context: { ...context, items: kept.map((i) => ({ ref: i.ref, data: {} })) }, tools: tools.map((t) => t.name),
       builtin_plan: plan,
     };
     const row = await repo.request(db, { project: projectId, module: req.module, object: req.object, text: req.text, mode: req.mode, intent, snapshot, engineVersion: BUILTIN_PLANNER_VERSION });
