@@ -69,9 +69,13 @@ async function api(method, path, body) {
     if (await page.getByRole("button", { name: "Plan shots from Scene DNA" }).isEnabled()) throw new Error("should be disabled");
     await sceneBtn(/EXT\. LAGOS HARBOUR/).click();
   });
+  await step("one click plans every locked scene (standard coverage); the unlocked one is left for later", async () => {
+    await page.getByText("1 locked scene(s) have no shots yet.").waitFor();
+    await page.getByRole("button", { name: "Plan every locked scene (Standard)" }).click();
+    await page.getByText(/Planned 1 scene with standard coverage \(\d+ shots\)\. 1 not locked in Scene DNA yet\./).waitFor();
+    if (await page.getByText("locked scene(s) have no shots yet.").count()) throw new Error("the plan-all bar should go once every locked scene has shots");
+  });
   await step("plan shots from the locked Scene DNA: storyboard, checks and timeline", async () => {
-    await page.getByRole("button", { name: "Plan shots from Scene DNA" }).click();
-    await page.getByText(/Planned \d+ shots from Scene DNA version 1/).waitFor();
     await page.getByRole("button", { name: "Shot 1", exact: true }).waitFor();
     await checks().getByText("2 of 2 lines covered").waitFor();
     await page.getByRole("list", { name: "Shot timeline" }).waitFor();
@@ -119,9 +123,14 @@ async function api(method, path, body) {
     await checks().getByText(/Not covered: AMARA: “They know everything\.”/).waitFor();
     if (await page.getByRole("button", { name: "Approve shot plan" }).isEnabled()) throw new Error("approve should be disabled");
   });
-  await step("re-plan asks before replacing, then approval works; reload keeps it approved", async () => {
+  await step("re-plan with a different coverage style asks before replacing, then approval works; reload keeps it approved", async () => {
+    await page.getByLabel("Coverage style").selectOption("intimate");
+    await page.getByText("Closer singles with shallow focus and more reactions, for emotional scenes.").waitFor();
     await page.getByRole("button", { name: "Re-plan shots from Scene DNA" }).click();
-    await page.getByText(/Planned \d+ shots from Scene DNA version 1/).waitFor();
+    await page.getByText(/Planned \d+ shots \(intimate coverage\) from Scene DNA version 1/).waitFor();
+    await page.getByRole("tab", { name: "Storyboard" }).click();
+    await page.getByRole("button", { name: "Shot 1", exact: true }).click();
+    if (!(await page.getByLabel("Notes").inputValue()).startsWith("Intimate coverage: ")) throw new Error("the shot's note should say which coverage style planned it");
     await page.getByRole("button", { name: "Approve shot plan" }).click();
     await page.getByText(/Shot plan approved as version 1 \(100% of the scene covered\)/).waitFor();
     await reload();

@@ -241,8 +241,16 @@ await check("storyboard: only locked scenes can be planned (412 otherwise)", asy
   await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s2}/generate`, {}, [412]);
 });
 let shotId = "";
-await check("storyboard: plan shots from locked Scene DNA; re-plan asks first (409)", async () => {
-  const g = await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, {});
+await check("storyboard: one click plans every locked scene (coverage style); unlocked ones are skipped; re-plan asks first (409)", async () => {
+  await api("POST", `/api/projects/${projectId}/storyboard/generate-all`, { style: "wild" }, [400]);
+  const all = await api("POST", `/api/projects/${projectId}/storyboard/generate-all`, { style: "intimate" });
+  assert(all.planned.length === 1 && all.planned[0].scene_number === 1 && all.skipped.some((x: any) => x.scene_number === 2 && /not locked/.test(x.reason)), JSON.stringify(all));
+  const again = await api("POST", `/api/projects/${projectId}/storyboard/generate-all`, {});
+  assert(again.planned.length === 0 && again.skipped.some((x: any) => x.scene_number === 1 && /kept as it is/.test(x.reason)), "an existing plan must never be replaced by plan-all");
+  const first = (await api("GET", `/api/projects/${projectId}/storyboard`)).scenes[0];
+  assert(first.plan.engine_version === "1.1.0" && /^Intimate coverage: /.test(first.shots[0].notes ?? ""), `style not recorded: ${first.plan.engine_version} ${first.shots[0].notes}`);
+  // Back to the standard plan (the rest of the run builds on it), replacing on purpose.
+  const g = await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, { replace: true, style: "standard" });
   assert(g.shots >= 2 && g.scene_dna_version_number === 2, `shots ${g.shots} from v${g.scene_dna_version_number}`);
   await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, {}, [409]);
   const ws = await api("GET", `/api/projects/${projectId}/storyboard`);

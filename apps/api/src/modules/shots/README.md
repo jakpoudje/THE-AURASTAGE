@@ -22,7 +22,13 @@ dialogue lines as mandatory beats, readiness predicates).
 
 ## API endpoints
 - `GET    /api/projects/:id/storyboard` — scenes with locked-DNA state, plan, shots, coverage; persists plan review state (MOS invalidation step)
-- `POST   /api/projects/:id/storyboard/scenes/:sceneId/generate` — `{replace?}`; 412 until Scene DNA is locked and current; 409 if shots exist and `replace` is not set
+- `POST   /api/projects/:id/storyboard/generate-all` — `{style?}`; one click for the film: plans every active scene whose Scene DNA is locked and current and that has **no** plan yet. Existing plans are never replaced; they (and unlocked scenes) come back in `skipped` with the reason
+- `POST   /api/projects/:id/storyboard/scenes/:sceneId/generate` — `{replace?, style?}`; 412 until Scene DNA is locked and current; 409 if shots exist and `replace` is not set
+
+Coverage styles (`CoverageStyleSchema`, shotPlanningEngine 1.1.0): `standard` (the 1.0.0 plan), `simple` (no reactions,
+medium singles, camera on sticks), `intimate` (one size closer, shallow focus, reactions from intensity 5), `energetic`
+(moving camera, push-ins from intensity 5, reactions from 6). Every style keeps full story-time and line coverage; each
+shot's note starts with the style's name so the choice is visible in the plan.
 - `POST   /api/projects/:id/storyboard/scenes/:sceneId/shots` — `{shot, after_ordinal?}`
 - `POST   /api/projects/:id/storyboard/scenes/:sceneId/approve` — 412 with the failing coverage checks unless ready
 - `PATCH  /api/shots/:id` — partial Shot DNA (strict)

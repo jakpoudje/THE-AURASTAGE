@@ -1,4 +1,4 @@
-import type { CameraEnergy, ShotMovement, ShotSize } from "@aurastage/contracts";
+import type { CameraEnergy, CoverageStyle, ShotMovement, ShotSize } from "@aurastage/contracts";
 
 /** Conventional starting focal lengths (full-frame equivalent) per shot size. */
 export const LENS_BY_SIZE: Partial<Record<ShotSize, number>> = {
@@ -27,3 +27,14 @@ export const LINE_PAD_SECONDS = 0.5;
 /** A listener's reaction is planned after lines at or above this intensity. */
 export const REACTION_INTENSITY = 7;
 export const REACTION_SECONDS = 1.5;
+
+/** One size closer, for the intimate style. */
+export const CLOSER: Partial<Record<ShotSize, ShotSize>> = { MS: "MCU", MCU: "CU", CU: "CU", OTS: "MCU" };
+
+/** What each coverage style changes (see CoverageStyleSchema). null = no reactions. */
+export const STYLE: Record<CoverageStyle, { reactionAt: number | null; pushAt: number; closer: boolean; energy: CameraEnergy | null; label: string }> = {
+  standard: { reactionAt: REACTION_INTENSITY, pushAt: REACTION_INTENSITY, closer: false, energy: null, label: "Standard coverage" },
+  simple: { reactionAt: null, pushAt: 11, closer: false, energy: "calm", label: "Simple coverage" },
+  intimate: { reactionAt: 5, pushAt: REACTION_INTENSITY, closer: true, energy: null, label: "Intimate coverage" },
+  energetic: { reactionAt: 6, pushAt: 5, closer: false, energy: "dynamic", label: "Energetic coverage" },
+};

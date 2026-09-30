@@ -5,13 +5,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Project, ShotEditable, UpdateShotInput } from "@aurastage/contracts";
+import type { CoverageStyle, Project, ShotEditable, UpdateShotInput } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet, ApiError } from "@/lib/apiClient";
 import { storyboardApi } from "../api/storyboardApi";
 import type { StoryboardWorkspace } from "../types";
 
 type Busy = null | "generate" | "shot" | "approve";
+
+const STYLE_NAME: Record<CoverageStyle, string> = { standard: "standard", simple: "simple", intimate: "intimate", energetic: "energetic" };
 
 export function useStoryboard(projectId: string) {
   const router = useRouter();
@@ -21,6 +23,7 @@ export function useStoryboard(projectId: string) {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [style, setStyle] = useState<CoverageStyle>("standard");
 
   const reload = useCallback(async () => setWs(await storyboardApi.getWorkspace(projectId)), [projectId]);
 
@@ -72,15 +75,31 @@ export function useStoryboard(projectId: string) {
     busy,
     error,
     notice,
+    style,
+    setStyle,
+    /** Plans every locked scene that has no shot plan yet; existing plans are never replaced. */
+    generateAll: () =>
+      run(
+        "generate",
+        () => storyboardApi.generateAll(projectId, style),
+        (r) => {
+          const planned = r.planned.length
+            ? `Planned ${r.planned.length} scene${r.planned.length === 1 ? "" : "s"} with ${STYLE_NAME[style]} coverage (${r.planned.reduce((n, p) => n + p.shots, 0)} shots).`
+            : "No scenes needed planning.";
+          const kept = r.skipped.filter((x) => x.reason.startsWith("already")).length;
+          const unlocked = r.skipped.length - kept;
+          return [planned, kept ? `${kept} already planned — kept as they are.` : "", unlocked ? `${unlocked} not locked in Scene DNA yet.` : ""].filter(Boolean).join(" ");
+        },
+      ),
     /** Asks before replacing existing shots (the server refuses with 409 otherwise). */
     generate: async (sceneId: string) => {
       setBusy("generate");
       setError(null);
       setNotice(null);
       const once = async (replace: boolean) => {
-        const r = await storyboardApi.generate(projectId, sceneId, replace);
+        const r = await storyboardApi.generate(projectId, sceneId, replace, style);
         await reload();
-        setNotice(`Planned ${r.shots} shots from Scene DNA version ${r.scene_dna_version_number}. Edit anything you like.`);
+        setNotice(`Planned ${r.shots} shots (${STYLE_NAME[style]} coverage) from Scene DNA version ${r.scene_dna_version_number}. Edit anything you like.`);
       };
       try {
         await once(false);

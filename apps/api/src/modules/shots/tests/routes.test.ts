@@ -149,6 +149,40 @@ describe("Storyboard & Shots routes", () => {
     expect(res.json().error.message).toBe("this scene already has 5 shots — confirm to replace them");
   });
 
+  it("plans with a chosen coverage style; an unknown style is a 400", async () => {
+    const fake = fakeDb(rows, () => ({ data: planRow() }));
+    const app = await appWith(fake);
+    const res = await app.inject({ method: "POST", url: `/api/projects/${P}/storyboard/scenes/${S1}/generate`, payload: { style: "simple" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().style).toBe("simple");
+    const shots = fake.calls[0].args.p_shots as Row[];
+    expect(shots.some((s) => s.purpose === "reaction")).toBe(false);
+    expect(fake.calls[0].args.p_engine_version).toBe("1.1.0");
+    expect((await app.inject({ method: "POST", url: `/api/projects/${P}/storyboard/scenes/${S1}/generate`, payload: { style: "wild" } })).statusCode).toBe(400);
+  });
+
+  it("plans every locked scene without a plan in one click; existing plans and unlocked scenes are skipped, never replaced", async () => {
+    const S2 = "88888888-8888-4888-8888-888888888882";
+    const S3 = "88888888-8888-4888-8888-888888888883";
+    rows.scenes.push(
+      { ...rows.scenes[0], id: S2, number: 2 },
+      { ...rows.scenes[0], id: S3, number: 3 },
+    );
+    rows.scene_dna.push({ ...rows.scene_dna[0], id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2", scene_id: S2, status: "draft", approved_version_id: null });
+    rows.shot_plans = [planRow({ scene_id: S3 })];
+    const fake = fakeDb(rows, () => ({ data: planRow() }));
+    const res = await (await appWith(fake)).inject({ method: "POST", url: `/api/projects/${P}/storyboard/generate-all`, payload: { style: "intimate" } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.planned.map((p: Row) => p.scene_number)).toEqual([1]);
+    expect(body.skipped).toEqual([
+      { scene_number: 2, reason: "Scene DNA isn't locked yet" },
+      { scene_number: 3, reason: "already has a shot plan (kept as it is)" },
+    ]);
+    expect(fake.calls.filter((c) => c.fn === "generate_shot_plan")).toHaveLength(1);
+    expect(fake.calls[0].args).toMatchObject({ p_scene_id: S1, p_replace: false });
+  });
+
   it("computes coverage from the shots against the locked Scene DNA", async () => {
     rows.shot_plans = [planRow()];
     rows.shots = [shotRow({ id: SH1, ordinal: 1, story_start: "0", story_end: "10", dialogue_line_ids: [L1], character_ids: [TUNDE] })];

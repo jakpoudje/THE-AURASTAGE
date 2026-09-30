@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CameraEnergySchema, IntExtSchema } from "@aurastage/contracts";
+import { CameraEnergySchema, CoverageStyleSchema, IntExtSchema } from "@aurastage/contracts";
 
 export const ShotPlanningInputSchema = z.object({
   scene: z.object({
@@ -31,5 +31,7 @@ export const ShotPlanningInputSchema = z.object({
       listener_ids: z.array(z.string().uuid()),
     })
   ),
+  /** Coverage style chosen by the person (1.1.0); "standard" is the 1.0.0 plan. */
+  style: CoverageStyleSchema.default("standard"),
 });
 export type ShotPlanningInput = z.input<typeof ShotPlanningInputSchema>;

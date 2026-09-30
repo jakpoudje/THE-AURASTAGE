@@ -594,20 +594,37 @@ http.createServer((req, res) => {
       return send(200, { scenes: out, summary: { scenes: act.length, dna_locked: act.filter((x) => x.dna.state === "locked").length, planned: act.filter((x) => x.plan).length, approved: act.filter((x) => x.plan && x.plan.status === "approved" && x.plan.review_state === "current").length, shots: out.reduce((n, x) => n + x.shots.length, 0), needs_review: out.filter((x) => x.plan && x.plan.review_state !== "current").length } });
     }
     const newShot = (plan, ordinal, x) => ({ id: crypto.randomUUID(), project_id: P, scene_id: plan.scene_id, plan_id: plan.id, ordinal, angle: "eye", movement: "static", support: "tripod", focus: "deep", lens_mm: null, composition: null, lighting: null, transition_in: "cut", notes: null, character_ids: [], dialogue_line_ids: [], ...x, created_at: now(), updated_at: now() });
-    if ((m = u.match(/^\/api\/projects\/[^/]+\/storyboard\/scenes\/([^/]+)\/generate$/))) {
-      const scene = scenes.find((x) => x.id === m[1]); const dna = locked(scene);
-      if (!dna || !dna.current) return send(412, { error: { code: "AURA-SHOT-412", message: "Lock this scene's Scene DNA first — shots are planned from a locked version." } });
+    const STYLES = ["standard", "simple", "intimate", "energetic"];
+    const planScene = (scene, dna, style) => {
       let plan = plans.find((x) => x.scene_id === scene.id);
-      if (plan && planShots(plan).length && !b.replace) return send(409, { error: { code: "AURA-SHOT-409", message: `this scene already has ${planShots(plan).length} shots — confirm to replace them` } });
       if (!plan) { plan = { id: crypto.randomUUID(), project_id: P, scene_id: scene.id, approved_version_id: null }; plans.push(plan); }
       for (let i = shots.length - 1; i >= 0; i--) if (shots[i].plan_id === plan.id) shots.splice(i, 1);
-      Object.assign(plan, { scene_dna_version_id: dna.v.id, status: "draft", review_state: "current", review_reason: null, engine_version: "1.0.0", updated_at: now() });
       const r = eng.shotPlanningEngine({ scene: { number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day, duration_seconds: dna.duration },
         dna: { camera_energy: dna.editable.camera_energy, mood: dna.editable.mood || [], lighting_intent: dna.editable.lighting_intent },
         participants: dna.participants.map((x) => ({ character_id: x.character_id, name: x.name, presence: x.presence })),
-        lines: dna.lines.map((l) => ({ id: l.id, character_id: l.character_id, speaker: l.speaker_name, text: l.text, estimated_seconds: l.estimated_seconds, intensity: l.intensity, listener_ids: l.listener_ids })) });
+        lines: dna.lines.map((l) => ({ id: l.id, character_id: l.character_id, speaker: l.speaker_name, text: l.text, estimated_seconds: l.estimated_seconds, intensity: l.intensity, listener_ids: l.listener_ids })), style });
+      Object.assign(plan, { scene_dna_version_id: dna.v.id, status: "draft", review_state: "current", review_reason: null, engine_version: r.engine_version, updated_at: now() });
       r.shots.forEach(({ rationale, ...x }, i) => shots.push(newShot(plan, i + 1, { ...x, notes: x.notes ?? rationale })));
-      return send(200, { plan_id: plan.id, shots: r.shots.length, scene_dna_version_number: dna.v.version_number });
+      return { plan_id: plan.id, shots: r.shots.length, scene_dna_version_number: dna.v.version_number, style };
+    };
+    if (u === `/api/projects/${P}/storyboard/generate-all` && req.method === "POST") {
+      const style = b.style ?? "standard"; if (!STYLES.includes(style)) return send(400, { error: { code: "AURA-SHOT-002", message: "Unknown coverage style" } });
+      const planned = [], skipped = [];
+      for (const scene of scenes.filter((x) => x.status === "active").sort((a, c) => a.number - c.number)) {
+        const dna = locked(scene);
+        if (plans.some((x) => x.scene_id === scene.id)) skipped.push({ scene_number: scene.number, reason: "already has a shot plan (kept as it is)" });
+        else if (!dna || !dna.current) skipped.push({ scene_number: scene.number, reason: "Scene DNA isn't locked yet" });
+        else planned.push({ scene_number: scene.number, shots: planScene(scene, dna, style).shots });
+      }
+      return send(200, { style, planned, skipped });
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/storyboard\/scenes\/([^/]+)\/generate$/))) {
+      const scene = scenes.find((x) => x.id === m[1]); const dna = locked(scene);
+      const style = b.style ?? "standard"; if (!STYLES.includes(style)) return send(400, { error: { code: "AURA-SHOT-002", message: "Unknown coverage style" } });
+      if (!dna || !dna.current) return send(412, { error: { code: "AURA-SHOT-412", message: "Lock this scene's Scene DNA first — shots are planned from a locked version." } });
+      const plan = plans.find((x) => x.scene_id === scene.id);
+      if (plan && planShots(plan).length && !b.replace) return send(409, { error: { code: "AURA-SHOT-409", message: `this scene already has ${planShots(plan).length} shots — confirm to replace them` } });
+      return send(200, planScene(scene, dna, style));
     }
     if ((m = u.match(/^\/api\/projects\/[^/]+\/storyboard\/scenes\/([^/]+)\/shots$/))) {
       const c = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));

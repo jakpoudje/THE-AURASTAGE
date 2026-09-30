@@ -3,7 +3,7 @@
 // Domain: Storyboard & Shots
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addShot, approveShotPlan, deleteShot, generateShots, getStoryboard, moveShot, updateShot } from "./shots.service";
+import { addShot, approveShotPlan, deleteShot, generateAllShots, generateShots, getStoryboard, moveShot, updateShot } from "./shots.service";
 import { ShotConflictError, ShotNotFoundError, ShotNotReadyError, ShotValidationError } from "./shots.validator";
 import { ShotForbiddenError } from "./shots.permissions";
 
@@ -32,6 +32,7 @@ const route =
 
 export async function registerShotsRoutes(app: FastifyInstance) {
   app.get("/api/projects/:id/storyboard", route(({ params, db }) => getStoryboard(db, params.id)));
+  app.post("/api/projects/:id/storyboard/generate-all", route(({ params, body, db }) => generateAllShots(db, params.id, body)));
   app.post("/api/projects/:id/storyboard/scenes/:sceneId/generate", route(({ params, body, db }) => generateShots(db, params.id, params.sceneId, body)));
   app.post("/api/projects/:id/storyboard/scenes/:sceneId/shots", route(({ params, body, db }) => addShot(db, params.id, params.sceneId, body)));
   app.post("/api/projects/:id/storyboard/scenes/:sceneId/approve", route(({ params, db }) => approveShotPlan(db, params.id, params.sceneId)));

@@ -23,6 +23,16 @@ export const ShotSupportSchema = z.enum(["tripod", "shoulder", "handheld", "gimb
 export const ShotFocusSchema = z.enum(["deep", "shallow", "focus_pull", "rack_focus", "subject_tracking"]);
 
 /** What the shot is for (drives coverage: dialogue/action beats are mandatory). */
+/**
+ * Coverage styles for the one-click shot list (shotPlanningEngine 1.1.0):
+ * standard — establishing, master, singles by intensity, reactions after strong lines;
+ * simple — fewer set-ups: no reactions, singles stay medium and still;
+ * intimate — one size closer, shallow focus, reactions from intensity 5;
+ * energetic — a moving camera on every shot, push-ins from intensity 5, reactions from intensity 6.
+ */
+export const CoverageStyleSchema = z.enum(["standard", "simple", "intimate", "energetic"]);
+export type CoverageStyle = z.infer<typeof CoverageStyleSchema>;
+
 export const ShotPurposeSchema = z.enum(["establishing", "master", "dialogue", "reaction", "action", "insert", "transition"]);
 export type ShotPurpose = z.infer<typeof ShotPurposeSchema>;
 

@@ -79,4 +79,43 @@ describe("shotPlanningEngine", () => {
   it("is deterministic", () => {
     expect(shotPlanningEngine(base())).toEqual(shotPlanningEngine(base()));
   });
+  describe("coverage styles (1.1.0)", () => {
+    it("standard is the 1.0.0 plan", () => {
+      expect(shotPlanningEngine({ ...base(), style: "standard" }).shots).toEqual(shotPlanningEngine(base()).shots);
+    });
+
+    it("simple: no reactions, medium singles, camera on sticks — still fully covered", () => {
+      const plan = shotPlanningEngine({ ...base(), style: "simple" });
+      expect(plan.shots.some((s) => s.purpose === "reaction")).toBe(false);
+      expect(plan.shots.filter((s) => s.purpose === "dialogue" && s.character_ids.length === 1).map((s) => s.size)).toEqual(["MS", "MS", "MS"]);
+      expect(new Set(plan.shots.map((s) => s.support))).toEqual(new Set(["tripod"]));
+      const c = coverageOf(plan);
+      expect(c.coverage).toBe(1);
+      expect(c.ready_for_approval).toBe(true);
+    });
+
+    it("intimate: one size closer with shallow focus, and reactions from intensity 5", () => {
+      const input = base();
+      input.lines[0].intensity = 5;
+      const plan = shotPlanningEngine({ ...input, style: "intimate" });
+      const dialogue = plan.shots.filter((s) => s.purpose === "dialogue");
+      expect(dialogue.map((s) => s.size)).toEqual(["CU", "CU", "MS"]); // the off-screen radio line still plays over its listener
+      expect(dialogue[0].focus).toBe("shallow");
+      expect(plan.shots.filter((s) => s.purpose === "reaction").map((s) => s.character_ids)).toEqual([[A], [T]]);
+      expect(plan.shots.find((s) => s.purpose === "reaction")!.rationale).toMatch(/^Intimate coverage: a line at intensity/);
+      expect(coverageOf(plan, input).ready_for_approval).toBe(true);
+    });
+
+    it("energetic: a moving camera even when the scene is calm, and never calms a frenetic one", () => {
+      const calm = shotPlanningEngine({ ...base(), dna: { ...base().dna, camera_energy: "calm" }, style: "energetic" });
+      expect(calm.shots[0]).toMatchObject({ movement: "tracking", support: "gimbal" });
+      expect(calm.shots.every((s) => s.support !== "tripod" || s.purpose === "reaction")).toBe(true);
+      const wild = shotPlanningEngine({ ...base(), dna: { ...base().dna, camera_energy: "frenetic" }, style: "energetic" });
+      expect(wild.shots[0].support).toBe("handheld");
+    });
+
+    it("an unknown style is refused", () => {
+      expect(() => shotPlanningEngine({ ...base(), style: "wild" })).toThrow();
+    });
+  });
 });

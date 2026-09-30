@@ -1,5 +1,5 @@
 // Thin client for the Storyboard & Shots API (apps/api/src/modules/shots). No logic here.
-import type { Shot, ShotEditable, UpdateShotInput } from "@aurastage/contracts";
+import type { CoverageStyle, Shot, ShotEditable, UpdateShotInput } from "@aurastage/contracts";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/apiClient";
 import type { StoryboardWorkspace } from "../types";
 
@@ -7,8 +7,13 @@ const scene = (projectId: string, sceneId: string) => `/api/projects/${projectId
 
 export const storyboardApi = {
   getWorkspace: (projectId: string) => apiGet<StoryboardWorkspace>(`/api/projects/${projectId}/storyboard`),
-  generate: (projectId: string, sceneId: string, replace = false) =>
-    apiPost<{ plan_id: string; shots: number; scene_dna_version_number: number }>(`${scene(projectId, sceneId)}/generate`, { replace }),
+  generate: (projectId: string, sceneId: string, replace = false, style: CoverageStyle = "standard") =>
+    apiPost<{ plan_id: string; shots: number; scene_dna_version_number: number }>(`${scene(projectId, sceneId)}/generate`, { replace, style }),
+  generateAll: (projectId: string, style: CoverageStyle) =>
+    apiPost<{ planned: { scene_number: number; shots: number }[]; skipped: { scene_number: number; reason: string }[] }>(
+      `/api/projects/${projectId}/storyboard/generate-all`,
+      { style },
+    ),
   addShot: (projectId: string, sceneId: string, shot: ShotEditable, afterOrdinal: number | null) =>
     apiPost<Shot>(`${scene(projectId, sceneId)}/shots`, { shot, after_ordinal: afterOrdinal }),
   approve: (projectId: string, sceneId: string) =>

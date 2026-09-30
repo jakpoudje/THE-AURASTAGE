@@ -114,7 +114,8 @@ changes, the shots that used it are flagged "needs review".
 
 ### Stage 6 — Storyboard & Shots
 - ✅ Shot plan per scene (size, angle, movement, lens, focus, composition, timing), approval, sketches.
-- ⬜ AI shot list from Scene DNA in one click ("coverage presets": dialogue two-hander, chase, reveal…).
+- ✅ One-click shot lists: "Plan every locked scene" and per-scene planning with a coverage style (standard, simple,
+  intimate, energetic); existing plans are never replaced without asking.
 
 ### Stage 7 — Visual Generation
 - ✅ Prompt compiled for every shot from all the canonical records; built-in sketch; Runway and OpenAI images when keys
@@ -144,7 +145,9 @@ changes, the shots that used it are flagged "needs review".
 - ✅ Clear assembly overview, scene row, volume automation you draw or set, kept after picture lock.
 - ✅ Opening title card, end-credits roll (cast from Casting, credits from Project Settings) and the film's built-in main
   theme under them, on video deliverables.
-- ⬜ Transitions (dissolve, fade); a second picture track for inserts; music on its own timeline track across scenes.
+- ✅ Transitions per shot (dissolve, fade from black, fade to black) set in the Inspector, saved with the cut and
+  rendered by the render worker (manifest 1.6.0).
+- ⬜ A second picture track for inserts; music on its own timeline track across scenes.
 
 ### Stage 10 — Export & Deliver
 - ✅ Streaming master, review copy, ProRes master, audio package (mix, stems, M&E), subtitles, EDL, technical QC.
@@ -191,7 +194,7 @@ Every one of these is recorded in the render's manifest, so any frame can be tra
 | 6 | Lip sync on dialogue shots | Believable speaking characters | Lip-sync provider key |
 | 7 | More video providers (Luma, Veo), image-to-video | Motion for every shot | Luma / Google keys |
 | 8 | 🟡 Titles, credits, theme, on-screen text done; transitions, music track remain | A finished-looking film | — |
-| 9 | 🟡 AI in every field: done for 9 stages; one-click shot lists and Visual/Editorial/Export/Assets remain | Speed | — |
+| 9 | 🟡 AI in every field: done for 9 stages; Visual/Editorial/Export/Assets remain | Speed | — |
 | 10 | Location Intelligence L1–L2 (Location DNA, entity resolution, real/fictional, scene states, World Library, packs) | Same places, right geography, before expensive generation | Claude credit |
 | 11 | Location Intelligence L3–L5 (shot geography, reference selection, continuity QC, ambience, assistant commands) | Continuity across a feature | — |
 | 12 | Social cut-downs, trailer assistant, PDF import, beat board | Reach and comfort | — |
@@ -229,12 +232,11 @@ Everything not yet done, in build order. When an item is finished it moves up in
 | 1 | Better built-in sound effects and ambience (curated, licence-clear library beside the procedural generator) | Rain, crowd, traffic, doors, footsteps… play from real recordings, placed from the script |
 | 2 | AuraSketch drawings reviewed by the owner (characters and locations) | The owner is happy the sketches read as the described people and places |
 | 3 | Ask AuraStage in Visual Generation, Editorial, Export and Assets | Each of those pages can take a request, show before → after, apply and undo |
-| 4 | One-click AI shot list per scene ("coverage presets") | A scene's shot plan is proposed from its Scene DNA in one click |
 | 5 | Music suggestions per scene + built-in library; music provider | Every scene has a suggested cue; a provider generates it when its key is added |
 | 6 | Premium voices (ElevenLabs) with Voice DNA | Lines are spoken by ElevenLabs when its key is added |
 | 7 | Lip sync on dialogue shots | Mouths match the lines when a lip-sync key is added |
 | 8 | More video providers verified with keys (Luma, Veo, Kling), image-to-video | A shot's approved still becomes a moving take |
-| 9 | Editorial transitions, insert track, music track | Dissolves and fades render; music runs across scenes |
+| 9 | Editorial insert track and music track (transitions ✅) | Inserts sit above the main picture; music runs across scenes |
 | 10 | Location Intelligence L1–L6 (see `LOCATION_INTELLIGENCE.md`) | Per phase, as written there |
 | 11 | Global platform: interface in many languages; scripts and dialogue in any language | The interface switches language; a script in another language flows through every stage |
 | 12 | Set dressing and prop continuity per scene; relationship map; pronunciation guide | Each works in its stage and is used downstream |

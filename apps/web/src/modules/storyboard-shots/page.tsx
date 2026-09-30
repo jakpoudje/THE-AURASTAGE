@@ -14,6 +14,7 @@ import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useStoryboard } from "./hooks/useStoryboard";
 import { planStatus, SceneList } from "./components/SceneList";
+import { COVERAGE_STYLES } from "./components/PlanPanel";
 import { StoryboardGrid } from "./components/StoryboardGrid";
 import { ShotListTable } from "./components/ShotListTable";
 import { ShotEditor } from "./components/ShotEditor";
@@ -99,6 +100,21 @@ export default function StoryboardShotsPage() {
           <span className="text-emerald-300">{ws.summary.approved}</span> of {ws.summary.scenes} scenes have an approved shot plan · {ws.summary.shots} shots
           {ws.summary.needs_review > 0 && <span className="text-aura-gold"> · {ws.summary.needs_review} need review after Scene DNA changes</span>}
         </p>
+        {ws.scenes.some((x) => x.scene.status === "active" && x.dna.state === "locked" && !x.plan) && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-aura-gold/30 px-4 py-3 text-sm">
+            <span className="text-white/70">
+              {ws.scenes.filter((x) => x.scene.status === "active" && x.dna.state === "locked" && !x.plan).length} locked scene(s) have no shots yet.
+            </span>
+            <button
+              onClick={() => d.generateAll()}
+              disabled={d.busy !== null}
+              className="rounded-md bg-aura-gold px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40"
+            >
+              {d.busy === "generate" ? "Planning…" : `Plan every locked scene (${COVERAGE_STYLES.find((o) => o.value === d.style)?.label ?? "Standard"})`}
+            </button>
+            <span className="text-xs text-white/40">Scenes that already have shots are kept as they are.</span>
+          </div>
+        )}
         {(d.error || d.notice) && (
           <div className={`rounded-md border px-4 py-2 text-sm ${d.error ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300"}`}>{d.error ?? d.notice}</div>
         )}
@@ -184,7 +200,15 @@ export default function StoryboardShotsPage() {
                   </div>
                 </div>
 
-                <PlanPanel s={s} projectId={id} busy={d.busy} onGenerate={() => d.generate(s.scene.id)} onApprove={() => d.approve(s.scene.id)} />
+                <PlanPanel
+                  s={s}
+                  projectId={id}
+                  busy={d.busy}
+                  onGenerate={() => d.generate(s.scene.id)}
+                  onApprove={() => d.approve(s.scene.id)}
+                  style={d.style}
+                  onStyle={d.setStyle}
+                />
               </div>
               <ShotTimeline shots={s.shots} selectedId={shot?.id ?? null} onSelect={setShotId} />
             </>

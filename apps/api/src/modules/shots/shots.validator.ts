@@ -1,6 +1,6 @@
 // apps/api/src/modules/shots/shots.validator.ts
 // Domain: Storyboard & Shots
-import { CreateShotInputSchema, UpdateShotInputSchema } from "@aurastage/contracts";
+import { CoverageStyleSchema, CreateShotInputSchema, UpdateShotInputSchema } from "@aurastage/contracts";
 import type { ReadinessPredicate } from "@aurastage/contracts";
 import { z } from "zod";
 
@@ -49,7 +49,9 @@ function parse<S extends z.ZodTypeAny>(schema: S, payload: unknown): z.output<S>
 
 export const validateCreateShot = (p: unknown) => parse(CreateShotInputSchema, p);
 export const validateUpdateShot = (p: unknown) => parse(UpdateShotInputSchema.strict(), p);
-export const validateGenerate = (p: unknown) => parse(z.object({ replace: z.boolean().default(false) }).strict(), p);
+export const validateGenerate = (p: unknown) =>
+  parse(z.object({ replace: z.boolean().default(false), style: CoverageStyleSchema.default("standard") }).strict(), p);
+export const validateGenerateAll = (p: unknown) => parse(z.object({ style: CoverageStyleSchema.default("standard") }).strict(), p ?? {});
 export const validateAdd = (p: unknown) =>
   parse(z.object({ shot: z.unknown(), after_ordinal: z.number().int().nonnegative().nullable().default(null) }).strict(), p);
 export const validateMove = (p: unknown) => parse(z.object({ direction: z.union([z.literal(-1), z.literal(1)]) }).strict(), p);

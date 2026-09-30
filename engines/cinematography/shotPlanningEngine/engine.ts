@@ -8,9 +8,11 @@
 //      intensity; voice-only speakers are covered on their on-screen listener.
 //   4. Reactions after high-intensity lines when a listener is on screen.
 //   5. An action shot for story time left after the last line.
+// A coverage style (1.1.0) adjusts framing, movement and reactions; the structure
+// above — and so full coverage of story time and every line — never changes.
 // Story-time intervals are laid out so coverage (coverageMathEngine) can be measured.
 
-import { ENERGY, ESTABLISHING_SECONDS, LENS_BY_SIZE, LINE_PAD_SECONDS, REACTION_INTENSITY, REACTION_SECONDS, sizeForIntensity } from "./rules";
+import { CLOSER, ENERGY, ESTABLISHING_SECONDS, LENS_BY_SIZE, LINE_PAD_SECONDS, REACTION_SECONDS, sizeForIntensity, STYLE } from "./rules";
 import { validateShotPlanningInput } from "./validator";
 import { ENGINE_VERSION } from "./version";
 import type { ProposedShot, ShotPlanningOutput } from "./output.schema";
@@ -24,8 +26,13 @@ export function planStoryTime(durationSeconds: number, lineSeconds: number[]): n
 }
 
 export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
-  const { scene, dna, participants, lines } = validateShotPlanningInput(raw);
-  const energy = ENERGY[dna.camera_energy ?? "measured"];
+  const { scene, dna, participants, lines, style } = validateShotPlanningInput(raw);
+  const st = STYLE[style];
+  // "energetic" never calms a frenetic scene; "simple" always keeps the camera still.
+  const energyKey = st.energy === "dynamic" && dna.camera_energy === "frenetic" ? "frenetic" : (st.energy ?? dna.camera_energy ?? "measured");
+  const energy = ENERGY[energyKey];
+  const moving = energyKey !== "calm";
+  const styled = (why: string) => (style === "standard" ? why : `${st.label}: ${why.charAt(0).toLowerCase()}${why.slice(1)}`);
   const onScreen = participants.filter((p) => p.presence === "on_screen");
   const name = new Map(participants.map((p) => [p.character_id, p.name]));
   const onScreenIds = new Set(onScreen.map((p) => p.character_id));
@@ -57,7 +64,7 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
     dialogue_line_ids: [],
     story_start: 0,
     story_end: r2(est),
-    rationale: "Orients the audience in the location before the scene plays.",
+    rationale: styled("Orients the audience in the location before the scene plays."),
   });
 
   if (onScreen.length >= 2) {
@@ -74,7 +81,7 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
       dialogue_line_ids: [],
       story_start: r2(est),
       story_end: r2(T),
-      rationale: "Keeps geography clear and gives the editor a fallback for every moment.",
+      rationale: styled("Keeps geography clear and gives the editor a fallback for every moment."),
     });
   }
 
@@ -94,14 +101,16 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
     const listeners = first.listener_ids.filter((id) => onScreenIds.has(id));
     const quote = `“${first.text.length > 60 ? first.text.slice(0, 57) + "…" : first.text}”`;
     if (speakerOnScreen) {
-      const size = onScreen.length === 2 && peak !== null && peak < 5 && listeners.length ? "OTS" : sizeForIntensity(peak);
+      const natural = style === "simple" ? "MS" : onScreen.length === 2 && peak !== null && peak < 5 && listeners.length ? "OTS" : sizeForIntensity(peak);
+      const size = st.closer ? (CLOSER[natural] ?? natural) : natural;
+      const push = peak !== null && peak >= st.pushAt && moving;
       shots.push({
         ...base,
         purpose: "dialogue",
         size,
-        focus: size === "CU" || size === "MCU" ? "shallow" : "deep",
-        movement: peak !== null && peak >= REACTION_INTENSITY && dna.camera_energy !== "calm" ? "push_in" : energy.close[0],
-        support: peak !== null && peak >= REACTION_INTENSITY && dna.camera_energy !== "calm" ? "dolly" : energy.close[1],
+        focus: size === "CU" || size === "MCU" || st.closer ? "shallow" : "deep",
+        movement: push ? "push_in" : energy.close[0],
+        support: push ? "dolly" : energy.close[1],
         lens_mm: LENS_BY_SIZE[size] ?? null,
         duration_seconds: dur,
         description: `${size === "OTS" && listeners[0] ? `Over ${name.get(listeners[0])}'s shoulder on ` : ""}${name.get(first.character_id!) ?? first.speaker}: ${quote}${run.length > 1 ? ` (+${run.length - 1} more)` : ""}`,
@@ -109,7 +118,7 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
         dialogue_line_ids: run.map((l) => l.id),
         story_start: r2(t),
         story_end: r2(t + dur),
-        rationale: peak !== null ? `Intensity ${peak}/10 sets the framing.` : "Default single; no intensity annotated yet in Dialogue.",
+        rationale: styled(peak !== null ? `Intensity ${peak}/10 sets the framing.` : "Default single; no intensity annotated yet in Dialogue."),
       });
     } else {
       // Voice-only / off-screen speaker: hold on who hears it.
@@ -127,11 +136,11 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
         dialogue_line_ids: run.map((l) => l.id),
         story_start: r2(t),
         story_end: r2(t + dur),
-        rationale: "The speaker isn't on screen, so the line plays over the listener.",
+        rationale: styled("The speaker isn't on screen, so the line plays over the listener."),
       });
     }
     t += dur;
-    if (peak !== null && peak >= REACTION_INTENSITY && listeners.length) {
+    if (st.reactionAt !== null && peak !== null && peak >= st.reactionAt && listeners.length) {
       const who = listeners[0];
       shots.push({
         ...base,
@@ -147,7 +156,7 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
         dialogue_line_ids: [],
         story_start: r2(Math.max(est, t - REACTION_SECONDS)),
         story_end: r2(t),
-        rationale: `A line at intensity ${peak}/10 deserves the listener's response.`,
+        rationale: styled(`A line at intensity ${peak}/10 deserves the listener's response.`),
       });
     }
   }
@@ -166,7 +175,7 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
       dialogue_line_ids: [],
       story_start: r2(t),
       story_end: r2(T),
-      rationale: "Covers story time with no dialogue so nothing is left unplanned.",
+      rationale: styled("Covers story time with no dialogue so nothing is left unplanned."),
     });
   }
 
