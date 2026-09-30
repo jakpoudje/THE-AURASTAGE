@@ -701,6 +701,10 @@ await check("titles & credits: with them on, a review copy opens on the title ca
   await api("PATCH", `/api/projects/${projectId}/scene-dna/${s1}`, { on_screen_text: "LAGOS — LIVE CHECK", on_screen_position: "lower_third" });
   const dna1 = (await api("GET", `/api/projects/${projectId}/scene-dna`)).scenes.find((x: any) => x.scene.id === s1);
   assert(dna1.record?.status === dna0.record?.status && dna1.record?.on_screen_text === "LAGOS — LIVE CHECK", `caption changed the lock: ${dna0.record?.status} → ${dna1.record?.status}`);
+  // Continuity notes (migration 0044) save the same way and also keep the lock.
+  await api("PATCH", `/api/projects/${projectId}/scene-dna/${s1}`, { continuity_notes: "Tunde's jacket stays on; same dawn light as the harbour." });
+  const dna2 = (await api("GET", `/api/projects/${projectId}/scene-dna`)).scenes.find((x: any) => x.scene.id === s1);
+  assert(dna2.record?.status === dna0.record?.status && /jacket stays on/.test(dna2.record?.continuity_notes ?? ""), `continuity notes: ${dna2.record?.status} ${dna2.record?.continuity_notes}`);
   const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "review_copy" });
   const m = (await api("GET", `/api/renders/${r.render_id}/manifest`)).manifest;
   assert(m.overlays?.length === 1 && m.overlays[0].text === "LAGOS — LIVE CHECK" && m.overlays[0].record_in === 72 && m.sources.scene_captions?.[0] === s1, `overlays ${JSON.stringify(m.overlays)}`);

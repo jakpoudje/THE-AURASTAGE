@@ -247,6 +247,7 @@ Everything not yet done, in build order. When an item is finished it moves up in
 | 17 | Save and continue everywhere: every stage saves what the person typed and points to the next logical step (a guided "what's next") | Owner request 2026-09-30 |
 | 18 | ✅ Delete any asset, with a warning that lists exactly where it is used (migration 0043, 2026-09-30) | Owner request 2026-09-30 |
 | 19 | ✅ Characters named twice: pointed out, merged in one click or kept apart (migration 0042, 2026-09-30) | Owner request 2026-09-30 |
+| 21 | ✅ Scene DNA in four sections (Scene Overview, Visual & Sound, Performance, Continuity) each with "Fill … with AI from the script"; Continuity notes (migration 0044) — 2026-09-30 | Owner request 2026-09-30 |
 | 20 | 🟡 Cost shown before every paid action: Visual Generation, Casting looks, Locations & Props views, AuraScript, Ask AuraStage (and the one-click AI buttons wait for Ask when paid) — done 2026-09-30. Remaining: confirm the prices marked "not confirmed" (Gemini, Imagen, Kling, MiniMax, Luma Photon, Runway images, some Stability models) and add voice/music when those providers arrive | Owner request 2026-09-30 |
 | 15 | Verify every page live after each change (the live checks grow with every feature) | `live-smoke` and `live-browser` both pass |
 

@@ -158,7 +158,7 @@ const SceneChanges = UpdateSceneDnaInputSchema.omit({ wardrobe: true }).strict()
 const updateSceneDNA: ToolImpl<{ scene_id: string; changes: Row }> = {
   def: {
     name: "updateSceneDNA", module: "scene_dna", action: "edit", target: "scene",
-    description: "Change a scene's blueprint: purpose, stakes, story_time, mood (list), weather, atmosphere, lighting_intent, sound_intent, camera_energy (calm|measured|dynamic|frenetic), silent_scene, notes, on_screen_text (a caption burned in over the start of the scene in the finished film, e.g. \"LAGOS — 1995\"; changing only it keeps a locked scene locked), on_screen_position (lower_third|top|center).",
+    description: "Change a scene's blueprint: purpose, stakes, story_time, mood (list), weather, atmosphere, lighting_intent, sound_intent, camera_energy (calm|measured|dynamic|frenetic), silent_scene, notes, on_screen_text (a caption burned in over the start of the scene in the finished film, e.g. \"LAGOS — 1995\"; changing only it keeps a locked scene locked), on_screen_position (lower_third|top|center), continuity_notes (what must match the scenes before and after: wardrobe, props, injuries, weather, time of day — from the script; changing only it keeps a locked scene locked).",
     input: z.object({ scene_id: z.string().uuid(), changes: SceneChanges }).strict(),
     impact: ["Storyboard & Shots (plans from the locked version are flagged)", "Visual Generation prompts", "Audio Studio sound intent"], undo: "inverse",
   },

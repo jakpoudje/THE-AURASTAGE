@@ -57,6 +57,7 @@ vi.mock("../../editorial/editorial.service", () => ({
 vi.mock("../../assets/assets.service", () => ({
   editAsset: async (_db: unknown, id: string, changes: Row) => Object.assign(tables.assets.find((a) => a.id === id)!, changes, { updated_at: bump() }),
 }));
+const S_OMITTED = "22222222-2222-4222-8222-22222222cafe";
 const CLIP1 = "77777777-7777-4777-8777-777777777771", CLIP2 = "77777777-7777-4777-8777-777777777772", ASSET = "88888888-8888-4888-8888-888888888881";
 const HARBOUR = "55555555-5555-4555-8555-555555555555";
 const MUSIC = "66666666-6666-4666-8666-666666666661", DIALOGUE = "66666666-6666-4666-8666-666666666662";
@@ -112,6 +113,7 @@ beforeEach(() => {
     scenes: [
       { id: S1, project_id: P, number: 1, heading: "INT. FLAT - DAY", time_of_day: "DAY", status: "active", updated_at: "2026-09-01T00:00:00+00:00" },
       { id: S2, project_id: P, number: 2, heading: "EXT. HARBOUR - DAY", time_of_day: "DAY", status: "active", updated_at: "2026-09-01T00:00:00+00:00" },
+      { id: S_OMITTED, project_id: P, number: 3, heading: "INT. CUT SCENE - DAY", time_of_day: "DAY", status: "omitted", updated_at: "2026-09-01T00:00:00+00:00" },
     ],
     scene_dna: [
       { id: "d1", scene_id: S1, project_id: P, mood: [], weather: null, updated_at: "2026-09-02T00:00:00+00:00" },
@@ -154,7 +156,8 @@ describe("Ask AuraStage", () => {
     expect(args.p_snapshot.prompt).toMatch(/"accent":\{"type":"string","maxLength":120/);
     expect(args.p_snapshot.prompt).toMatch(/Request: Make scene 2 night and rainy/);
     // Places and props come last (the request isn't about them), within the budget.
-    expect(r.context_refs.map((x: Row) => `${x.type}:${x.id}`)).toEqual([`scene:${S2}`, `project:${P}`, `character:${AMARA}`, `audio_track:${DIALOGUE}`, `audio_track:${MUSIC}`, `settings:${P}`, `location:${HARBOUR}`]);
+    // The scene before it comes too (continuity), after the focus scene.
+    expect(r.context_refs.map((x: Row) => `${x.type}:${x.id}`)).toEqual([`scene:${S2}`, `project:${P}`, `scene:${S1}`, `character:${AMARA}`, `audio_track:${DIALOGUE}`, `audio_track:${MUSIC}`, `settings:${P}`, `location:${HARBOUR}`]);
   });
 
   it("previews field-level before → after, labelled as test output, then applies through the domain service and undoes", async () => {
@@ -213,7 +216,7 @@ describe("Ask AuraStage", () => {
     await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "Make scene 2 night" } });
     await plan();
     const row = tables.ai_proposals[0];
-    row.plan.calls[0].input_json = JSON.stringify({ scene_id: S1, changes: { story_time: "Night" } }); // Scene 1 wasn't in the context
+    row.plan.calls[0].input_json = JSON.stringify({ scene_id: S_OMITTED, changes: { story_time: "Night" } }); // never in the context
     const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
     expect(p.preview.calls[0].problem).toMatch(/didn't read/);
     expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/apply` })).statusCode).toBe(422);
@@ -372,5 +375,15 @@ describe("Ask AuraStage", () => {
     } finally {
       if (keep === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = keep;
     }
+  });
+
+  it("Scene DNA sections (owner request 2026-09-30): continuity notes come from the scenes around it, and only facts from the script", async () => {
+    const a = await app(fakeDb());
+    const q = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "For scene 2, write its continuity notes in Scene DNA: what must match the previous and next scenes, from the script." } })).json();
+    expect(q.context_refs.filter((r: Row) => r.type === "scene").map((r: Row) => r.label)).toEqual(["Scene 2", "Scene 1"]);
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview.calls[0]).toMatchObject({ tool: "updateSceneDNA", allowed: true, after: { continuity_notes: expect.stringMatching(/^After Scene 1 \(INT\. FLAT - DAY\)\. The last scene\. Same time of day/) } });
+    expect(JSON.stringify(p)).toMatch(/needs a connected writer/);
   });
 });

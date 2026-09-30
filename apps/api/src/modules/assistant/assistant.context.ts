@@ -20,7 +20,7 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, element_start, element_end, source_version_id, updated_at").eq("project_id", P).eq("status", "active").order("number", { ascending: true }).limit(200)),
     rows(db.from("characters").select("id, name, role, status, age, gender, nationality, accent, languages, occupation, description, personality, backstory, motivation, fears, strengths, weaknesses, arc, merged_into, updated_at").eq("project_id", P).is("merged_into", null).limit(100)),
     rows(db.from("wardrobe_looks").select("id, character_id, name, description, updated_at").eq("project_id", P).limit(300)),
-    rows(db.from("scene_dna").select("id, scene_id, status, mood, weather, atmosphere, lighting_intent, sound_intent, story_time, camera_energy, wardrobe, updated_at").eq("project_id", P)),
+    rows(db.from("scene_dna").select("id, scene_id, status, purpose, stakes, mood, weather, atmosphere, lighting_intent, sound_intent, story_time, camera_energy, wardrobe, notes, continuity_notes, on_screen_text, updated_at").eq("project_id", P)),
     // Locations & Props (owned by the world module; read-only here).
     rows(db.from("locations").select("id, name, description, int_ext, times_of_day, areas, status, updated_at").eq("project_id", P).is("archived_at", null).order("name", { ascending: true }).limit(80)),
     rows(db.from("props").select("id, name, description, category, status, updated_at").eq("project_id", P).is("archived_at", null).order("name", { ascending: true }).limit(80)),
@@ -64,12 +64,17 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     item("project", project, project.title, { title: project.title, type: project.type, genre: project.genre, subgenre: project.subgenre, tone: project.tone, setting: project.setting,
       time_period: project.time_period, logline: project.logline, target_runtime_minutes: project.target_runtime_minutes }),
   ];
-  for (const s of focusScene ? [focusScene] : scenes.slice(0, 30)) {
+  // With a focus scene, the scenes right before and after come too (continuity: what must match across the cut).
+  const fi = focusScene ? scenes.indexOf(focusScene) : -1;
+  const around = focusScene ? [scenes[fi - 1], focusScene, scenes[fi + 1]].filter(Boolean) as Row[] : scenes.slice(0, 30);
+  for (const s of around) {
     const d = dna.find((x) => x.scene_id === s.id);
     // A scene's version is its Scene DNA's (what the tools change), falling back to the scene row.
     items.push(item("scene", { ...s, updated_at: d?.updated_at ?? s.updated_at }, `Scene ${s.number}`, { number: s.number, heading: s.heading, time_of_day: s.time_of_day,
       ...(s === focusScene && action ? { action } : {}),
-      dna: d ? { mood: d.mood, weather: d.weather, atmosphere: d.atmosphere, lighting_intent: d.lighting_intent, sound_intent: d.sound_intent, story_time: d.story_time, camera_energy: d.camera_energy, status: d.status } : null }));
+      ...(focusScene && s !== focusScene ? { relation: scenes.indexOf(s) < fi ? "previous scene" : "next scene" } : {}),
+      dna: d ? { purpose: d.purpose, stakes: d.stakes, mood: d.mood, weather: d.weather, atmosphere: d.atmosphere, lighting_intent: d.lighting_intent, sound_intent: d.sound_intent, story_time: d.story_time,
+        camera_energy: d.camera_energy, notes: d.notes, continuity_notes: d.continuity_notes, on_screen_text: d.on_screen_text, status: d.status } : null }));
   }
   for (const c of chars) {
     items.push(item("character", c, c.name, { name: c.name, role: c.role, age: c.age, gender: c.gender, nationality: c.nationality, accent: c.accent, languages: c.languages, occupation: c.occupation, description: c.description,

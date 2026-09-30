@@ -519,7 +519,7 @@ http.createServer((req, res) => {
     // ---- Scene DNA (mirrors apps/api/src/modules/scene-dna + migration 0011 semantics) ----
     const pg = require(require("path").resolve(__dirname, "../../../packages/production-graph/dist/index.js"));
     const follow = (id) => { let c = chars.find((x) => x.id === id); while (c && c.merged_into) c = chars.find((x) => x.id === c.merged_into); return c ? c.id : id; };
-    const EDIT = { purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, ages: {}, notes: null, on_screen_text: null, on_screen_position: "lower_third" };
+    const EDIT = { purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, ages: {}, notes: null, on_screen_text: null, on_screen_position: "lower_third", continuity_notes: null };
     const sdnaEntry = (scene) => {
       const v = approved(); const rec = sdna.find((r) => r.scene_id === scene.id);
       const editable = rec ? Object.fromEntries(Object.keys(EDIT).map((k) => [k, rec[k]])) : { ...EDIT };
@@ -571,7 +571,7 @@ http.createServer((req, res) => {
       let rec = sdna.find((x) => x.scene_id === m[1]);
       if (!rec) { rec = { id: crypto.randomUUID(), project_id: P, scene_id: m[1], ...EDIT, status: "draft", review_state: "current", approved_version_id: null, drift: [] }; sdna.push(rec); }
       // On-screen text alone keeps a locked scene locked (migration 0040).
-      const textOnly = Object.keys(r.data).every((k) => k === "on_screen_text" || k === "on_screen_position");
+      const textOnly = Object.keys(r.data).every((k) => k === "on_screen_text" || k === "on_screen_position" || k === "continuity_notes");
       Object.assign(rec, r.data, { status: textOnly ? rec.status : "draft", updated_at: now() });
       return send(200, { ...rec, approved_version_number: null });
     }
@@ -1232,8 +1232,14 @@ http.createServer((req, res) => {
       const num = (b.text.match(/\bscene\s+(\d+)\b/i) || [])[1]; const fs = num && scenes.find((x) => String(x.number) === num && x.status === "active");
       if (fs) {
         const v = approved(); const d = sdna.find((x) => x.scene_id === fs.id) || {};
-        items.push({ ref: { type: "scene", id: fs.id, version: d.updated_at || null, label: `Scene ${fs.number}` }, data: { number: fs.number, heading: fs.heading, action: v ? v.elements.filter((e) => e.index >= fs.element_start && e.index <= fs.element_end && e.type === "action").map((e) => e.text).join("\n") : "",
-          dna: { mood: d.mood || [], atmosphere: d.atmosphere ?? null, sound_intent: d.sound_intent ?? null, camera_energy: d.camera_energy ?? null } } });
+        items.push({ ref: { type: "scene", id: fs.id, version: d.updated_at || null, label: `Scene ${fs.number}` }, data: { number: fs.number, heading: fs.heading, time_of_day: fs.time_of_day, action: v ? v.elements.filter((e) => e.index >= fs.element_start && e.index <= fs.element_end && e.type === "action").map((e) => e.text).join("\n") : "",
+          dna: { mood: d.mood || [], story_time: d.story_time ?? null, atmosphere: d.atmosphere ?? null, sound_intent: d.sound_intent ?? null, camera_energy: d.camera_energy ?? null, continuity_notes: d.continuity_notes ?? null } } });
+        // The scenes right before and after (continuity), as assistant.context reads them.
+        const act = scenes.filter((x) => x.status === "active").sort((a, c) => a.number - c.number); const fi = act.indexOf(fs);
+        for (const [nb, rel] of [[act[fi - 1], "previous scene"], [act[fi + 1], "next scene"]]) if (nb) {
+          const nd = sdna.find((x) => x.scene_id === nb.id) || {};
+          items.push({ ref: { type: "scene", id: nb.id, version: nd.updated_at || null, label: `Scene ${nb.number}` }, data: { number: nb.number, heading: nb.heading, time_of_day: nb.time_of_day, relation: rel, dna: { continuity_notes: nd.continuity_notes ?? null } } });
+        }
         { const se = asessions.find((x) => x.scene_id === fs.id); if (se) for (const t of atracks.filter((x) => x.session_id === se.id).sort((a, b) => a.ordinal - b.ordinal))
           items.push({ ref: { type: "audio_track", id: t.id, version: null, label: `${t.name} track` }, data: { name: t.name, family: t.family, gain_db: Number(t.gain_db), pan: Number(t.pan), mute: t.mute, solo: t.solo } }); }
         for (const l of dlines.filter((x) => x.scene_id === fs.id && x.status === "active")) items.push({ ref: { type: "dialogue_line", id: l.id, version: l.updated_at || null, label: `${l.speaker_name} line ${l.ordinal}` }, data: { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity } });

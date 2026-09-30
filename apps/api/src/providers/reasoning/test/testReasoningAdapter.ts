@@ -297,6 +297,37 @@ function plan(snap: Snapshot) {
     done.push(`update “${a.ref.label}” in the Assets Library (${Object.keys(changes).join(", ")})`);
   }
 
+  // ---- Scene DNA sections (owner request 2026-09-30). The test planner writes only facts the script states: the story
+  // time from the scene heading, and continuity notes from the headings around the scene. Everything else needs a writer.
+  if (scene && /\bfill the Scene Overview\b/i.test(text)) {
+    const d = (scene.data.dna ?? {}) as Record<string, any>;
+    if (!d.story_time && scene.data.time_of_day) {
+      add("updateSceneDNA", { scene_id: scene.ref.id, changes: { story_time: String(scene.data.time_of_day).toLowerCase().replace(/^./, (c) => c.toUpperCase()) } }, `${scene.ref.label}: story time from the heading`);
+      done.push(`set ${scene.ref.label}'s story time from its heading`);
+    }
+    not_possible.push("Writing the purpose, stakes and mood needs a connected writer (Claude, OpenAI or Gemini) — the built-in test planner doesn't invent them.");
+  }
+  if (scene && /\bfill Visual & Sound\b/i.test(text)) {
+    not_possible.push("Describing weather, atmosphere, light and sound needs a connected writer (Claude, OpenAI or Gemini) — the built-in test planner doesn't invent them.");
+  }
+  if (scene && /\bcontinuity notes\b/i.test(text)) {
+    const d = (scene.data.dna ?? {}) as Record<string, any>;
+    const around = byType("scene").filter((i) => i.data.relation);
+    const prev = around.find((i) => i.data.relation === "previous scene"), next = around.find((i) => i.data.relation === "next scene");
+    const t = (i: typeof scene) => String(i?.data.time_of_day ?? "").toUpperCase();
+    const facts = [
+      prev ? `After ${prev.ref.label} (${prev.data.heading}).` : "The first scene.",
+      next ? `Before ${next.ref.label} (${next.data.heading}).` : "The last scene.",
+      prev && t(prev) && t(scene) && t(prev) !== t(scene) ? `Time changes from ${t(prev).toLowerCase()} to ${t(scene).toLowerCase()} — light and wardrobe may change.` : "",
+      prev && t(prev) && t(prev) === t(scene) ? `Same time of day as the scene before (${t(scene).toLowerCase()}) — keep light and wardrobe matching.` : "",
+    ].filter(Boolean).join(" ");
+    if (!d.continuity_notes) {
+      add("updateSceneDNA", { scene_id: scene.ref.id, changes: { continuity_notes: facts } }, `${scene.ref.label}: continuity from the scenes around it`);
+      done.push(`write ${scene.ref.label}'s continuity notes from the scenes around it`);
+    }
+    not_possible.push("Spotting wardrobe, prop and injury continuity inside the action needs a connected writer — the test planner only uses the headings.");
+  }
+
   // ---- Story fields ----
   const story = [...text.matchAll(/\b(?:change|set|make)\s+the\s+(title|logline|tone|genre|setting|time period)\s+(?:to|into)\s+["“]?([^"”\n]+?)["”]?(?:[.;]|$)/gi)];
   if (story.length) {

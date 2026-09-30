@@ -136,6 +136,27 @@ async function api(method, path, body) {
     await tab("Performance");
     await page.getByText("This is a silent scene").waitFor();
   });
+  await step("each section has AI help from the script (owner request 2026-09-30): Continuity notes are suggested from the scenes around it, applied, shown; reload: kept", async () => {
+    await tab("Continuity");
+    await page.getByTestId("section-ai").getByText("What must match the scenes before and after.").waitFor();
+    await page.getByRole("button", { name: "Fill Continuity with AI from the script" }).click();
+    const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
+    await panel.getByTestId("proposal-status").getByText("Suggested").waitFor();
+    await panel.getByRole("button", { name: "Apply" }).click();
+    await panel.getByTestId("proposal-status").getByText("Applied").waitFor();
+    await panel.getByRole("button", { name: "Close" }).click();
+    for (let i = 0; i < 40 && !/After Scene 1/.test(await page.getByLabel("Continuity notes").inputValue()); i++) await page.waitForTimeout(250);
+    if (!/After Scene 1/.test(await page.getByLabel("Continuity notes").inputValue())) throw new Error("the applied notes didn't show without a reload");
+    await page.reload();
+    await page.getByText("Production Blueprint").waitFor();
+    await page.getByRole("button", { name: /EXT\. HARBOUR/ }).click();
+    await tab("Continuity");
+    if (!/After Scene 1/.test(await page.getByLabel("Continuity notes").inputValue())) throw new Error("continuity notes lost after reload");
+    for (const t of ["Scene Overview", "Visual & Sound", "Performance"]) {
+      await tab(t);
+      await page.getByRole("button", { name: `Fill ${t} with AI from the script` }).waitFor();
+    }
+  });
   await step("age for this scene: a flashback age is chosen, saved, kept after reload and locked; changing it in Casting flags the scene", async () => {
     const st = await api("POST", `/api/characters/${tunde.id}/ages`, { label: "Flashback, 1995", age: "12", description: "Skinny, school uniform" });
     await page.reload();

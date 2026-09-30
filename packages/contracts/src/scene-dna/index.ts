@@ -29,6 +29,8 @@ export const SceneDnaEditableSchema = z.object({
   /** On-screen text burned into video deliverables over the start of the scene, e.g. "LAGOS — 1995" (migration 0040). */
   on_screen_text: z.string().trim().max(200).nullable().default(null),
   on_screen_position: z.enum(["lower_third", "top", "center"]).default("lower_third"),
+  /** What must match the scenes before and after — wardrobe, props, injuries, weather, time (migration 0044). */
+  continuity_notes: z.string().trim().max(4000).nullable().default(null),
 });
 export type SceneDnaEditable = z.infer<typeof SceneDnaEditableSchema>;
 

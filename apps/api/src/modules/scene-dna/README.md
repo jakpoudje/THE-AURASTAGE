@@ -67,3 +67,11 @@ that age in Casting flags the scene for review. The workspace returns each scene
 `storyTimeCueEngine` (1.0.0, deterministic) points at flashbacks, time jumps, dated headings/super-titles and characters
 shown at another age ("YOUNG AMARA", "AMARA (10)" when her profile says 32 — a normal "AMARA (32)" introduction is not a
 clue), with the line as evidence; it never sets an age itself.
+
+## Sections and AI help (owner request 2026-09-30)
+The editor is organised as Scene Overview (purpose, stakes, story time, mood), Visual & Sound (weather, atmosphere,
+lighting, sound, camera energy), Performance (each character's look and age; every line's performance from Dialogue),
+Continuity (links to the scenes around it + `continuity_notes`, migration 0044) and Notes. Each of the four sections has
+"Fill … with AI from the script": one Ask AuraStage request built from the scene's action and dialogue, the cast and the
+scenes before and after (the assistant context now includes the neighbouring scenes), shown before → after and applied
+only on request. Changing only `continuity_notes` (like on-screen text) keeps a locked scene locked.

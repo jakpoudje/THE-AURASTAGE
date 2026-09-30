@@ -8,9 +8,21 @@ import { useEffect, useMemo, useState } from "react";
 import type { CameraEnergy, SceneDnaEditable, UpdateSceneDnaInput } from "@aurastage/contracts";
 import type { SceneDnaEntry } from "../types";
 import { clearSceneDraft, readSceneDraft, writeSceneDraft } from "../state/sceneDraft";
+import { askAuraStage } from "@/modules/ask-aurastage/askBus";
 
 const TABS = ["Scene Overview", "Visual & Sound", "Performance", "Continuity", "Notes"] as const;
+
+// AI help per section (owner request 2026-09-30), from the script context: the scene's action and dialogue, the cast and
+// the scenes around it. Each is one Ask AuraStage request, shown before → after; nothing is written until applied.
+const keep = "Use the scene's action and dialogue in the script. Fill what is empty; keep what is already written.";
+const SECTION_AI: Record<Exclude<(typeof TABS)[number], "Notes">, { what: string; ask: (n: number) => string }> = {
+  "Scene Overview": { what: "Purpose, stakes, story time and mood.", ask: (n) => `For scene ${n}, fill the Scene Overview in Scene DNA: purpose, stakes, story time and mood. ${keep}` },
+  "Visual & Sound": { what: "Weather, atmosphere, lighting, sound and camera energy.", ask: (n) => `For scene ${n}, fill Visual & Sound in Scene DNA: weather, atmosphere, lighting intent, sound intent and camera energy. ${keep}` },
+  Performance: { what: "Every spoken line's intention, subtext, emotion and intensity.", ask: (n) => `For scene ${n}, fill the Performance: annotate every spoken line's intention, subtext, emotion and intensity in one pass, from how the scene plays. ${keep}` },
+  Continuity: { what: "What must match the scenes before and after.", ask: (n) => `For scene ${n}, write its continuity notes in Scene DNA: what must match the previous and next scenes (wardrobe, props, injuries, weather, time of day), from the script. ${keep}` },
+};
 type Tab = (typeof TABS)[number];
+let lastTab: Tab = "Scene Overview";
 const ENERGY: { value: CameraEnergy; label: string }[] = [
   { value: "calm", label: "Calm" },
   { value: "measured", label: "Measured" },
@@ -71,7 +83,9 @@ export function SceneEditor({
 }) {
   const base = entry.editable;
   const sceneId = entry.scene.id;
-  const [tab, setTab] = useState<Tab>("Scene Overview");
+  // The open section survives the editor re-reading the scene (e.g. after an AI change is applied).
+  const [tab, setTabState] = useState<Tab>(lastTab);
+  const setTab = (t: Tab) => ((lastTab = t), setTabState(t));
   const [form, setForm] = useState<SceneDnaEditable>(() => {
     const d = typeof window === "undefined" ? null : readSceneDraft(sceneId);
     return d ? { ...base, ...d } : base;
@@ -88,7 +102,7 @@ export function SceneEditor({
   }, [dirty, form, sceneId, onDirtyChange]);
 
   const set = <K extends keyof SceneDnaEditable>(k: K, v: SceneDnaEditable[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const text = (k: "purpose" | "stakes" | "story_time" | "weather" | "atmosphere" | "lighting_intent" | "sound_intent" | "notes" | "on_screen_text") => ({
+  const text = (k: "purpose" | "stakes" | "story_time" | "weather" | "atmosphere" | "lighting_intent" | "sound_intent" | "notes" | "on_screen_text" | "continuity_notes") => ({
     value: form[k] ?? "",
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set(k, e.target.value === "" ? null : e.target.value),
   });
@@ -139,6 +153,16 @@ export function SceneEditor({
       )}
 
       <div className="space-y-4 p-4">
+        {tab !== "Notes" && (
+          <div data-testid="section-ai" className="flex flex-wrap items-center gap-2 rounded-md border border-aura-border bg-black/20 px-3 py-2 text-xs">
+            <span className="text-white/60">{SECTION_AI[tab].what}</span>
+            <button type="button" onClick={() => askAuraStage(SECTION_AI[tab].ask(entry.scene.number))}
+              className="rounded border border-aura-gold/60 px-2 py-0.5 text-aura-gold">
+              Fill {tab} with AI from the script
+            </button>
+            <span className="text-white/35">You see every change before it&apos;s saved.</span>
+          </div>
+        )}
         {tab === "Scene Overview" && (
           <>
             <Field label="Purpose" hint="What must this scene achieve for the story?">
@@ -322,6 +346,9 @@ export function SceneEditor({
 
         {tab === "Continuity" && (
           <div className="space-y-3 text-sm">
+            <Field label="Continuity notes" hint="What must match the scenes before and after: wardrobe, props, injuries, weather, time of day.">
+              <textarea rows={4} className={input} {...text("continuity_notes")} />
+            </Field>
             <div className="grid gap-3 sm:grid-cols-3">
               <Fact label="Previous scene" value={p.continuity.previous ? `${p.continuity.previous.number}. ${p.continuity.previous.heading}` : "—"} />
               <Fact label="This scene" value={`${entry.scene.number}. ${entry.scene.heading}`} highlight />
