@@ -8,7 +8,7 @@ import { characterAppearanceEngine, characterLook } from "@aurastage/engines";
 import { stillBackends, stillBackendStatuses } from "../../providers";
 import { readProjectSettings } from "../settings/settings.read";
 import { mapDbError } from "./characters.repository";
-import { CharacterNotFoundError, CharacterValidationError } from "./characters.validator";
+import { CharacterConflictError, CharacterNotFoundError, CharacterValidationError } from "./characters.validator";
 
 type Env = Record<string, string | undefined>;
 type Row = Record<string, any>;
@@ -129,8 +129,11 @@ export async function generateAllCharacterLooks(db: SupabaseClient, projectId: s
   const cast = (await many(db.from("characters").select("id, name, merged_into, created_at").eq("project_id", projectId).order("created_at", { ascending: true })))
     .filter((c) => !c.merged_into);
   const characters: Row[] = [];
-  let provider: string | null = null;
+  let provider: string | null = null, paused: string | null = null;
   for (const c of cast) {
+    // The per-minute safety limit (paid images: 40 a minute) stops the run cleanly; a later click carries on, skipping
+    // views already made or being made (regression, seen live 2026-09-30: the whole run failed at the limit).
+    if (paused) { characters.push({ id: c.id, name: c.name, requested: 0, note: "Not started yet — click again in a minute" }); continue; }
     const look = await getCharacterLook(db, c.id, null, env);
     const todo = look.views.filter((v) => v.in_default_set).filter((v) => {
       const working = v.latest && (v.latest.status === "queued" || v.latest.status === "running");
@@ -138,9 +141,15 @@ export async function generateAllCharacterLooks(db: SupabaseClient, projectId: s
       return p.data.redo || !v.image || v.image.stale;
     }).map((v) => v.key);
     if (!todo.length) { characters.push({ id: c.id, name: c.name, requested: 0, note: "Already made from the current profile" }); continue; }
-    const r = await generateCharacterLook(db, c.id, { views: todo, ...(p.data.provider ? { provider: p.data.provider } : {}) }, env);
-    provider = r.provider;
-    characters.push({ id: c.id, name: c.name, requested: r.requested.length });
+    try {
+      const r = await generateCharacterLook(db, c.id, { views: todo, ...(p.data.provider ? { provider: p.data.provider } : {}) }, env);
+      provider = r.provider;
+      characters.push({ id: c.id, name: c.name, requested: r.requested.length });
+    } catch (e) {
+      if (!(e instanceof CharacterConflictError) || !/in a minute/.test(e.message)) throw e;
+      paused = "AuraStage makes at most 40 paid images a minute, so it stopped here. Click again in a minute to carry on — views already made or being made are skipped.";
+      characters.push({ id: c.id, name: c.name, requested: 0, note: "Some or all views wait for the next click" });
+    }
   }
-  return { characters, requested: characters.reduce((a, c) => a + c.requested, 0), provider };
+  return { characters, requested: characters.reduce((a, c) => a + c.requested, 0), provider, paused };
 }

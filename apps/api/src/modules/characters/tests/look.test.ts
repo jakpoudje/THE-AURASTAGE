@@ -79,4 +79,23 @@ describe("character look panel API", () => {
     const again = (await (await app(fakeDb(base))).inject({ method: "POST", url: `/api/projects/${P}/characters/looks/generate`, payload: { redo: true } })).json();
     expect(again.requested).toBe(16);
   });
+  it("regression (live 2026-09-30): at the per-minute limit the whole-cast run stops cleanly and says to click again, instead of failing", async () => {
+    const C2 = "55555555-5555-4555-8555-555555555555";
+    const base = rows();
+    base.characters.push({ id: C2, project_id: P, name: "Tunde Okafor", age: "35", gender: "Man", description: "Tall", merged_into: null } as Row);
+    const fake = fakeDb(base);
+    let n = 0;
+    const limited = { ...fake.db, rpc: async (fn: string, args: Row) => (++n > 10
+      ? { data: null, error: { message: "AURA-CHR-429: that's a lot of paid images in a minute — give it a moment" } }
+      : fake.db.rpc(fn, args)) };
+    const a = Fastify();
+    a.addHook("onRequest", async (req) => void ((req as any).db = limited));
+    await registerCharactersRoutes(a);
+    const r = await a.inject({ method: "POST", url: `/api/projects/${P}/characters/looks/generate`, payload: {} });
+    expect(r.statusCode).toBe(200);
+    const b = r.json();
+    expect(b.characters[0]).toMatchObject({ name: "Amara Bello", requested: 8 });
+    expect(b.characters[1]).toMatchObject({ name: "Tunde Okafor", requested: 0, note: "Some or all views wait for the next click" });
+    expect(b.paused).toMatch(/Click again in a minute/);
+  });
 });

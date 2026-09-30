@@ -30,6 +30,6 @@ export const lookApi = {
     apiPost<{ requested: { id: string; key: string }[]; provider: string }>(`/api/characters/${characterId}/look/generate`, body),
   /** Standard views for the whole cast in one click; views already made from the current profile are kept unless redo. */
   generateAll: (projectId: string, body: { provider?: string; redo?: boolean }) =>
-    apiPost<{ characters: { id: string; name: string; requested: number; note?: string }[]; requested: number; provider: string | null }>(`/api/projects/${projectId}/characters/looks/generate`, body),
+    apiPost<{ characters: { id: string; name: string; requested: number; note?: string }[]; requested: number; provider: string | null; paused?: string | null }>(`/api/projects/${projectId}/characters/looks/generate`, body),
   image: (assetId: string) => apiGetBytes(`/api/assets/${assetId}/content`),
 };
