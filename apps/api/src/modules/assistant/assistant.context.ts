@@ -14,12 +14,15 @@ const item = (type: ContextItem["ref"]["type"], r: Row, label: string, data: Row
 
 export async function buildContext(db: SupabaseClient, req: AssistantRequest, intent: Intent): Promise<ContextBundle> {
   const P = req.project_id;
-  const [projectRows, scenes, chars, looks, dna] = await Promise.all([
+  const [projectRows, scenes, chars, looks, dna, places, props] = await Promise.all([
     rows(db.from("projects").select("id, title, type, genre, subgenre, tone, setting, time_period, logline, target_runtime_minutes, updated_at").eq("id", P)),
     rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, element_start, element_end, source_version_id, updated_at").eq("project_id", P).eq("status", "active").order("number", { ascending: true }).limit(200)),
     rows(db.from("characters").select("id, name, role, status, age, gender, nationality, accent, languages, occupation, description, personality, backstory, motivation, fears, strengths, weaknesses, arc, merged_into, updated_at").eq("project_id", P).is("merged_into", null).limit(100)),
     rows(db.from("wardrobe_looks").select("id, character_id, name, description, updated_at").eq("project_id", P).limit(300)),
     rows(db.from("scene_dna").select("id, scene_id, status, mood, weather, atmosphere, lighting_intent, sound_intent, story_time, camera_energy, wardrobe, updated_at").eq("project_id", P)),
+    // Locations & Props (owned by the world module; read-only here).
+    rows(db.from("locations").select("id, name, description, int_ext, times_of_day, areas, status, updated_at").eq("project_id", P).is("archived_at", null).order("name", { ascending: true }).limit(80)),
+    rows(db.from("props").select("id, name, description, category, status, updated_at").eq("project_id", P).is("archived_at", null).order("name", { ascending: true }).limit(80)),
   ]);
   const project = projectRows[0];
   if (!project) throw Object.assign(new Error("Project not found"), { code: "AURA-AI-404" });
@@ -69,6 +72,8 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
       looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })) }));
   }
   for (const l of lines) items.push(item("dialogue_line", l, `${l.speaker_name} line ${l.ordinal}`, { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity }));
+  for (const l of places) items.push(item("location", l, l.name, { name: l.name, description: l.description, int_ext: l.int_ext, times_of_day: l.times_of_day, areas: l.areas, status: l.status }));
+  for (const pr of props) items.push(item("prop", pr, pr.name, { name: pr.name, description: pr.description, category: pr.category, status: pr.status }));
   for (const s of shots) items.push(item("shot", s, `Shot ${s.ordinal}`, { ordinal: s.ordinal, purpose: s.purpose, size: s.size, angle: s.angle, movement: s.movement, description: s.description }));
 
   return trimContext({
@@ -76,7 +81,12 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     module: req.module,
     focus: focusScene ? { type: "scene", id: focusScene.id, version: dna.find((x) => x.scene_id === focusScene!.id)?.updated_at ?? focusScene.updated_at ?? null, label: `Scene ${focusScene.number}` } : req.object,
     items,
-  }, intent.mentions);
+  }, intent.mentions, aboutWorld(req));
+}
+
+/** Is the request about places or props (named, or asked from one of them)? Then they rank above the rest of the cast. */
+function aboutWorld(req: AssistantRequest) {
+  return req.object?.type === "location" || req.object?.type === "prop" || /\b(locations?|places?|props?|vehicles?|set dressing|the set)\b/i.test(req.text);
 }
 
 /** The current version of a tool's target, read the same way the context read it (for the stale check). */
@@ -87,6 +97,8 @@ export async function currentVersion(db: SupabaseClient, projectId: string, t: {
     case "character": return one("characters", "id", t.id);
     case "dialogue_line": return one("dialogue_lines", "id", t.id);
     case "shot": return one("shots", "id", t.id);
+    case "location": return one("locations", "id", t.id);
+    case "prop": return one("props", "id", t.id);
     case "scene": return (await one("scene_dna", "scene_id", t.id)) ?? one("scenes", "id", t.id);
     default: return null;
   }

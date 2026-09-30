@@ -25,6 +25,15 @@ vi.mock("../../characters/characters.service", () => ({
   editCharacter: async (_db: unknown, id: string, changes: Row) => Object.assign(tables.characters.find((c) => c.id === id)!, changes, { updated_at: bump() }),
   saveLook: async () => ({}),
 }));
+vi.mock("../../world/world.service", () => ({
+  updateWorldItem: async (_db: unknown, kind: string, id: string, body: Row) => {
+    const r = tables[kind === "location" ? "locations" : "props"].find((x) => x.id === id)!;
+    if (body.revision !== r.revision) throw Object.assign(new Error("stale"), { code: "AURA-WLD-409" });
+    const { revision: _r, ...patch } = body;
+    return Object.assign(r, patch, { revision: r.revision + 1, updated_at: bump() });
+  },
+}));
+const HARBOUR = "55555555-5555-4555-8555-555555555555";
 
 function fakeDb(access: Record<string, string[]> = { scene_dna: ["view", "edit"], casting: ["view", "edit"] }) {
   const calls: { fn: string; args: Row }[] = [];
@@ -84,6 +93,8 @@ beforeEach(() => {
     ],
     characters: [{ id: AMARA, project_id: P, name: "Amara", age: "30", merged_into: null, updated_at: "2026-09-03T00:00:00+00:00" }],
     wardrobe_looks: [], shots: [], dialogue_lines: [], ai_proposals: [],
+    locations: [{ id: HARBOUR, project_id: P, name: "HARBOUR", description: "", int_ext: ["EXT"], times_of_day: ["DAY", "NIGHT"], areas: ["DOCK"], status: "detected", archived_at: null, revision: 3, updated_at: "2026-09-04T00:00:00+00:00" }],
+    props: [],
   };
 });
 
@@ -103,7 +114,8 @@ describe("Ask AuraStage", () => {
     expect(args.p_snapshot.context.focus).toMatchObject({ type: "scene", id: S2, version: "2026-09-02T00:00:00+00:00" });
     expect(args.p_snapshot.tools).toContain("updateSceneDNA");
     expect(args.p_snapshot.prompt).toMatch(/Request: Make scene 2 night and rainy/);
-    expect(r.context_refs.map((x: Row) => x.id).sort()).toEqual([P, S2, AMARA].sort());
+    // Places and props come last (the request isn't about them), within the budget.
+    expect(r.context_refs.map((x: Row) => x.id)).toEqual([S2, P, AMARA, HARBOUR]);
   });
 
   it("previews field-level before → after, labelled as test output, then applies through the domain service and undoes", async () => {
@@ -183,6 +195,33 @@ describe("Ask AuraStage", () => {
     expect(capabilities({}).planner).toEqual({ id: "aurastage-test", name: "AuraStage test planner", test_output: true });
     expect(capabilities({ ANTHROPIC_API_KEY: "k" }).planner).toMatchObject({ id: "anthropic", test_output: false });
     expect(capabilities({ AURA_TEST_PROVIDER: "off" }).planner).toBeNull();
-    expect(capabilities({}).tools.map((t) => t.name)).toEqual(["updateStory", "updateCharacter", "changeWardrobe", "modifyDialogue", "updateSceneDNA", "modifyShot"]);
+    expect(capabilities({}).tools.map((t) => t.name)).toEqual(["updateStory", "updateCharacter", "changeWardrobe", "modifyDialogue", "updateSceneDNA", "modifyShot", "updateLocationOrProp"]);
+  });
+
+  it("describes a location through Locations & Props (owner: AI helps on every page), with its revision; undo puts it back", async () => {
+    const fake = fakeDb();
+    const a = await app(fake);
+    const q = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: 'Describe the location "HARBOUR" for its reference views' } })).json();
+    const args = fake.calls.find((c) => c.fn === "request_ai_proposal")!.args;
+    expect(args.p_intent.operation).toBe("MODIFY_WORLD");
+    expect(args.p_snapshot.tools).toContain("updateLocationOrProp");
+    expect(q.context_refs.map((x: Row) => x.id)).toContain(HARBOUR);
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview.calls[0]).toMatchObject({ tool: "updateLocationOrProp", allowed: true, stale: false, object: { label: "HARBOUR" },
+      before: { description: "" }, after: { description: "HARBOUR — exterior; seen at day, night; areas: DOCK (from the script)." } });
+    expect(p.plan.not_possible[0]).toMatch(/needs a connected writer/);
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/apply` })).json().status).toBe("applied");
+    expect(tables.locations[0]).toMatchObject({ description: "HARBOUR — exterior; seen at day, night; areas: DOCK (from the script).", revision: 4 });
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/undo` })).json().status).toBe("undone");
+    expect(tables.locations[0]).toMatchObject({ description: "", revision: 5 });
+  });
+
+  it("places and props stay out of the way unless the request is about them", async () => {
+    const fake = fakeDb();
+    const r = (await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "casting", text: "Make Amara approximately 45" } })).json();
+    const ids = r.context_refs.map((x: Row) => x.id);
+    // Still readable (budget permitting) but ranked after the cast.
+    expect(ids.indexOf(HARBOUR)).toBeGreaterThan(ids.indexOf(AMARA));
   });
 });

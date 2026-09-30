@@ -17,6 +17,7 @@ import { can, useProjectAccess } from "@/lib/useProjectAccess";
 import { useReferenceImage } from "@/modules/casting-characters/components/LookPanel";
 import { worldApi, type WorldItem, type WorldKind, type WorldWorkspace } from "./api/worldApi";
 import { WorldLookPanel } from "./components/WorldLookPanel";
+import { askAuraStage, useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 
 const input = "w-full rounded-md border border-aura-border bg-black/40 px-3 py-2 text-sm outline-none focus:border-aura-gold";
 
@@ -48,6 +49,7 @@ export default function LocationsPropsPage() {
   const [adding, setAdding] = useState<{ name: string; category: "prop" | "vehicle" } | null>(null);
 
   const reload = useCallback(async () => setWs(await worldApi.workspace(id)), [id]);
+  useAssistantChanges(reload);
   useEffect(() => {
     (async () => {
       const { data } = await getSupabaseClient().auth.getSession();
@@ -206,6 +208,10 @@ export default function LocationsPropsPage() {
                 <button onClick={() => run(() => worldApi.update(sel.kind, sel.id, { revision: sel.revision, name: draft.name, description: draft.description, ...(sel.kind === "prop" ? { category: draft.category } : {}) }), () => "Saved.")}
                   disabled={!canEdit || busy || !dirty || !draft.name.trim()} className="rounded-md bg-aura-gold px-4 py-1.5 text-sm font-medium text-black disabled:opacity-40">Save</button>
                 {dirty && <button onClick={() => setDraft({ name: sel.name, description: sel.description, category: sel.category ?? "prop" })} className="rounded-md border border-aura-border px-3 py-1.5 text-sm">Discard</button>}
+                {!dirty && (
+                  <button onClick={() => askAuraStage(`Describe the ${sel.kind} "${sel.name}" for its reference views: what it looks like (materials, age, colour, condition, light) as the script and the story suggest.${sel.description ? " Keep what is already written and add to it." : ""}`)}
+                    disabled={!canEdit} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">Describe with AI</button>
+                )}
               </div>
 
               <div>

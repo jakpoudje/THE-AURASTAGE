@@ -27,7 +27,13 @@ providers — from configured keys, never guessed).
 ## Tools (`tools/index.ts`)
 `updateStory` (projects service), `updateCharacter` (profile fields; never renames or approves), `changeWardrobe`
 (look + the look worn in a scene; a created look is kept on undo), `modifyDialogue` (performance annotations; words
-come from the approved script), `updateSceneDNA`, `modifyShot`.
+come from the approved script), `updateSceneDNA`, `modifyShot`, `updateLocationOrProp` (Locations & Props: name,
+description, prop category, confirm — through the world module's own save with its revision; gated `scene_dna:edit`;
+views made from the old description are flagged, never replaced).
+
+Places and props are in the context only ranked below the cast unless the request is about them (or asked from one).
+After an apply or undo the panel announces `aura:applied`; Casting and Locations & Props re-read at once (askBus
+`useAssistantChanges`), so the change shows without a manual reload.
 
 ## One pass over a scene (task 36)
 In Dialogue Intelligence and Scene DNA the panel offers "Annotate scene in one pass": one request that proposes every

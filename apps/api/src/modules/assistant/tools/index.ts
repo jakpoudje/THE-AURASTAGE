@@ -10,6 +10,7 @@ import { editCharacter, saveLook } from "../../characters/characters.service";
 import { updateDialogueLine } from "../../dialogue/dialogue.service";
 import { updateSceneDna } from "../../scene-dna/sceneDna.service";
 import { updateShot } from "../../shots/shots.service";
+import { updateWorldItem } from "../../world/world.service";
 
 type Row = Record<string, any>;
 export interface ToolCtx { projectId: string; orgId: string }
@@ -197,6 +198,38 @@ const modifyShot: ToolImpl<{ shot_id: string; changes: Row }> = {
   undo(db, i, b, _a, ctx) { return this.apply(db, { shot_id: i.shot_id, changes: b.fields }, ctx); },
 };
 
-const IMPLS: ToolImpl<any>[] = [updateStory, updateCharacter, changeWardrobe, modifyDialogue, updateSceneDNA, modifyShot];
+// Locations & Props (owner request: "AI helps with any stage"). Goes through the world module's own save (gate_write
+// scene_dna:edit, revision check, audit); the reference views made from the old description are then flagged, never replaced.
+const WorldChanges = z.object({
+  name: z.string().trim().min(1).max(160), description: z.string().max(2000), category: z.enum(["prop", "vehicle"]), status: z.literal("confirmed"),
+}).partial().strict().refine((c) => Object.keys(c).length > 0, "Nothing to change");
+const updateLocationOrProp: ToolImpl<{ kind: "location" | "prop"; id: string; changes: Row }> = {
+  def: {
+    name: "updateLocationOrProp", module: "scene_dna", action: "edit", target: "location",
+    description: "Describe, rename or confirm a location or prop from Locations & Props: kind (location|prop), id, changes { name, description (what it looks like: materials, age, colour, condition, light), category (prop|vehicle, props only), status: \"confirmed\" }. Never archives.",
+    input: z.object({ kind: z.enum(["location", "prop"]), id: z.string().uuid(), changes: WorldChanges }).strict()
+      .refine((i) => i.kind === "prop" || !("category" in i.changes), "Only props have a category"),
+    impact: ["Locations & Props (reference views made from the old description are marked for a refresh)", "Scene DNA and Visual Generation prompts that use this place or prop"], undo: "inverse",
+  },
+  target: (i) => ({ type: i.kind, id: i.id }),
+  async before(db, input) {
+    const r = await one(db, input.kind === "location" ? "locations" : "props", "*", input.id);
+    return { object: { type: input.kind, id: r.id, label: r.name }, fields: pick(r, Object.keys(input.changes)) };
+  },
+  async apply(db, input) {
+    // The world module refuses a stale save by revision; the assistant's own stale check (updated_at) already ran.
+    const cur = await one(db, input.kind === "location" ? "locations" : "props", "revision", input.id);
+    const r = (await updateWorldItem(db, input.kind, input.id, { revision: cur.revision, ...input.changes })) as Row;
+    return { object: { type: input.kind, id: input.id, label: r.name }, fields: pick(r, Object.keys(input.changes)) };
+  },
+  after: (i) => i.changes,
+  // A confirmed item stays confirmed (the world module has no "unconfirm"); the other fields go back as they were.
+  undo(db, i, b, _a, ctx) {
+    const changes = Object.fromEntries(Object.entries(b.fields).filter(([k, v]) => k !== "status" && v !== null));
+    return Object.keys(changes).length ? this.apply(db, { ...i, changes }, ctx) : this.before(db, i, ctx);
+  },
+};
+
+const IMPLS: ToolImpl<any>[] = [updateStory, updateCharacter, changeWardrobe, modifyDialogue, updateSceneDNA, modifyShot, updateLocationOrProp];
 export const toolRegistry = IMPLS.reduce((r, t) => r.register(t.def), new ToolRegistry());
 export const toolImpl = (name: string) => IMPLS.find((t) => t.def.name === name);

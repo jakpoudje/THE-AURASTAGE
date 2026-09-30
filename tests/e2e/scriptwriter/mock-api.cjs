@@ -1151,7 +1151,9 @@ http.createServer((req, res) => {
       modifyDialogue: { module: "dialogue", impact: ["Scene DNA (the scene's dialogue evidence)", "Audio Studio voice direction"], target: (i) => { const l = dlines.find((x) => x.id === i.line_id); return l && { label: `${l.speaker_name}: "${l.text.slice(0, 50)}"`, get: () => l, set: (ch) => Object.assign(l, ch, { approval: "draft", updated_at: now() }) }; } },
       updateSceneDNA: { module: "scene_dna", impact: ["Storyboard & Shots (plans from the locked version are flagged)", "Visual Generation prompts", "Audio Studio sound intent"], target: (i) => { const sc = scenes.find((x) => x.id === i.scene_id); if (!sc) return null;
         const rec = () => { let r = sdna.find((x) => x.scene_id === sc.id); if (!r) { r = { id: crypto.randomUUID(), project_id: P, scene_id: sc.id, purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, ages: {}, notes: null, status: "draft", review_state: "current", approved_version_id: null, drift: [] }; sdna.push(r); } return r; };
-        return { label: `Scene ${sc.number}`, get: () => sdna.find((x) => x.scene_id === sc.id) || {}, set: (ch) => Object.assign(rec(), Object.fromEntries(Object.entries(ch).map(([k, v]) => [k, v ?? (k === "mood" ? [] : null)])), { status: "draft", updated_at: now() }) }; } } };
+        return { label: `Scene ${sc.number}`, get: () => sdna.find((x) => x.scene_id === sc.id) || {}, set: (ch) => Object.assign(rec(), Object.fromEntries(Object.entries(ch).map(([k, v]) => [k, v ?? (k === "mood" ? [] : null)])), { status: "draft", updated_at: now() }) }; } },
+      updateLocationOrProp: { module: "scene_dna", impact: ["Locations & Props (reference views made from the old description are marked for a refresh)", "Scene DNA and Visual Generation prompts that use this place or prop"],
+        target: (i) => { const W0 = globalThis.__world || { location: [], prop: [] }; const r = (W0[i.kind] || []).find((x) => x.id === i.id); return r && { label: r.name, get: () => r, set: (ch) => Object.assign(r, ch, { revision: r.revision + 1, updated_at: now() }) }; } } };
     const aiPreview = (x) => {
       const acc = teamAccess().modules;
       const calls = (x.plan?.calls ?? []).map((c, index) => {
@@ -1174,6 +1176,12 @@ http.createServer((req, res) => {
         items.push({ ref: { type: "scene", id: fs.id, version: d.updated_at || null, label: `Scene ${fs.number}` }, data: { number: fs.number, heading: fs.heading, action: v ? v.elements.filter((e) => e.index >= fs.element_start && e.index <= fs.element_end && e.type === "action").map((e) => e.text).join("\n") : "",
           dna: { mood: d.mood || [], atmosphere: d.atmosphere ?? null, sound_intent: d.sound_intent ?? null, camera_energy: d.camera_energy ?? null } } });
         for (const l of dlines.filter((x) => x.scene_id === fs.id && x.status === "active")) items.push({ ref: { type: "dialogue_line", id: l.id, version: l.updated_at || null, label: `${l.speaker_name} line ${l.ordinal}` }, data: { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity } });
+      }
+      // Places and props when the request is about them (as assistant.context does).
+      if (/\b(locations?|places?|props?|vehicles?)\b/i.test(b.text)) {
+        const W0 = globalThis.__world || { location: [], prop: [] };
+        for (const r of W0.location.filter((x) => !x.archived_at)) items.push({ ref: { type: "location", id: r.id, version: r.updated_at || null, label: r.name }, data: { name: r.name, description: r.description, int_ext: r.int_ext || [], times_of_day: r.times_of_day || [], areas: r.areas || [] } });
+        for (const r of W0.prop.filter((x) => !x.archived_at)) items.push({ ref: { type: "prop", id: r.id, version: r.updated_at || null, label: r.name }, data: { name: r.name, description: r.description, category: r.category || "prop" } });
       }
       const x = { id: crypto.randomUUID(), module: b.module, request: b.text.trim(), mode: "suggest", intent, status: "queued", provider: null, model: null, test_output: false, plan: null, results: null, error: null, created_at: now(), polls: 0,
         snapshot: { request: { text: b.text, module: b.module, object: null }, context: { items, focus: fs ? { type: "scene", id: fs.id } : null }, tools: Object.keys(aiTools) } };

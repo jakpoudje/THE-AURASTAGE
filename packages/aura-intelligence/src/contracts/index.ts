@@ -6,7 +6,7 @@ export const AssistantModuleSchema = z.enum(ASSISTANT_MODULES);
 export type AssistantModule = z.infer<typeof AssistantModuleSchema>;
 
 export const ObjectRefSchema = z.object({
-  type: z.enum(["project", "scene", "character", "dialogue_line", "shot", "take", "audio_session", "timeline", "asset"]),
+  type: z.enum(["project", "scene", "character", "dialogue_line", "shot", "take", "audio_session", "timeline", "asset", "location", "prop"]),
   id: z.string().uuid(),
   /** The exact version the context was read at (rule 10). */
   version: z.string().max(80).nullable().default(null),
@@ -25,7 +25,7 @@ export const AssistantRequestSchema = z.object({
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 
 export const OPERATIONS = [
-  "UPDATE_STORY", "MODIFY_SCENE", "MODIFY_CHARACTER", "CHANGE_WARDROBE", "MODIFY_DIALOGUE", "MODIFY_SHOT",
+  "UPDATE_STORY", "MODIFY_SCENE", "MODIFY_CHARACTER", "CHANGE_WARDROBE", "MODIFY_DIALOGUE", "MODIFY_SHOT", "MODIFY_WORLD",
   "GENERATE_MEDIA", "EDIT_TIMELINE", "EXPORT", "QUESTION", "UNSUPPORTED",
 ] as const;
 export const OperationSchema = z.enum(OPERATIONS);

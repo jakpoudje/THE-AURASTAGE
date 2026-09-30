@@ -1,6 +1,6 @@
 // apps/api/src/providers/reasoning/test/testReasoningAdapter.ts
 // The labelled TestProvider for reasoning (directive §17). It does NOT understand language: it recognises a fixed set
-// of production phrasings (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields) and turns
+// of production phrasings (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields, describing a location or prop) and turns
 // them into real tool calls against the canonical ids in the context, so the whole Ask AuraStage flow can be tested
 // end to end without a paid model. Everything it returns is marked test_output and labelled in the UI.
 import { ProviderError } from "../../types";
@@ -198,6 +198,26 @@ function plan(snap: Snapshot) {
     } else questions.push("Which shot? Open the scene in Storyboard & Shots and ask again.");
   }
 
+  // ---- A location or prop: the test planner writes only what the script states (interior/exterior, times, areas) ----
+  const place = text.match(/\bdescribe\s+the\s+(location|prop)\s+["“]([^"”]+)["”]/i);
+  if (place) {
+    const kind = place[1].toLowerCase() as "location" | "prop";
+    const it = byType(kind).find((i) => i.ref.label.toLowerCase() === place[2].trim().toLowerCase());
+    if (!it) questions.push(`Which ${kind}? Pick it in Locations & Props and ask again.`);
+    else {
+      const d = it.data as Record<string, any>;
+      const facts = kind === "location"
+        ? [(d.int_ext ?? []).length ? (d.int_ext as string[]).map((x) => (x === "INT" ? "interior" : "exterior")).join(" and ") : "", (d.times_of_day ?? []).length ? `seen at ${(d.times_of_day as string[]).map((x) => x.toLowerCase()).join(", ")}` : "", (d.areas ?? []).length ? `areas: ${(d.areas as string[]).join(", ")}` : ""]
+        : [d.category === "vehicle" ? "a vehicle" : "a prop"];
+      const found = facts.filter(Boolean).join("; ");
+      if (!d.description && found) {
+        add("updateLocationOrProp", { kind, id: it.ref.id, changes: { description: `${it.ref.label} — ${found} (from the script).` } }, `${it.ref.label}: what the script says about it`);
+        done.push(`describe ${it.ref.label} from what the script says`);
+      }
+      not_possible.push("Describing how it looks (materials, colour, condition, light) needs a connected writer (Claude, OpenAI or Gemini) — the built-in test planner doesn't invent details.");
+    }
+  }
+
   // ---- Story fields ----
   const story = [...text.matchAll(/\b(?:change|set|make)\s+the\s+(title|logline|tone|genre|setting|time period)\s+(?:to|into)\s+["“]?([^"”\n]+?)["”]?(?:[.;]|$)/gi)];
   if (story.length) {
@@ -213,7 +233,7 @@ function plan(snap: Snapshot) {
   if (!calls.length && !questions.length) not_possible.push("The development test planner only recognises common production requests (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields). Connect Claude for full understanding.");
   return {
     summary: calls.length ? `I'd ${done.join("; ")}.` : "I couldn't turn that into a change with the test planner.",
-    operation: (calls[0] ? { updateSceneDNA: "MODIFY_SCENE", updateCharacter: "MODIFY_CHARACTER", changeWardrobe: "CHANGE_WARDROBE", modifyDialogue: "MODIFY_DIALOGUE", modifyShot: "MODIFY_SHOT", updateStory: "UPDATE_STORY" }[calls[0].tool] : "UNSUPPORTED") ?? "UNSUPPORTED",
+    operation: (calls[0] ? { updateSceneDNA: "MODIFY_SCENE", updateCharacter: "MODIFY_CHARACTER", changeWardrobe: "CHANGE_WARDROBE", modifyDialogue: "MODIFY_DIALOGUE", modifyShot: "MODIFY_SHOT", updateStory: "UPDATE_STORY", updateLocationOrProp: "MODIFY_WORLD" }[calls[0].tool] : "UNSUPPORTED") ?? "UNSUPPORTED",
     calls, not_possible, questions,
   };
 }

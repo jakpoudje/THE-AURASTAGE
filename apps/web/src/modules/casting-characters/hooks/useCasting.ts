@@ -3,6 +3,7 @@
 // Loads and mutates the Casting workspace. Every change goes through the API
 // and the screen reloads from it, so what you see is what is stored.
 
+import { useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CharacterRole, Project, SaveWardrobeLookInput, SetRelationshipInput, UpdateCharacterInput } from "@aurastage/contracts";
@@ -23,6 +24,7 @@ export function useCasting(projectId: string) {
   const [notice, setNotice] = useState<string | null>(null);
 
   const reload = useCallback(async () => setWs(await castingApi.getWorkspace(projectId)), [projectId]);
+  useAssistantChanges(reload);
 
   useEffect(() => {
     let cancelled = false;

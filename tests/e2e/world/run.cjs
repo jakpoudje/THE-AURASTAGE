@@ -81,6 +81,30 @@ async function api(method, path, body) {
     if ((await page.getByLabel("Description").inputValue()) !== "Rusting cranes, stacked containers, oily water") throw new Error("description not kept");
     await page.getByTestId("world-identity").getByText("Lagos Harbour — exterior. Rusting cranes, stacked containers, oily water.").waitFor();
   });
+  await step("Describe with AI (owner: AI helps on every page): Ask AuraStage suggests a description from the script; applying shows it at once; reload: kept; undo restores it", async () => {
+    await list("Locations").getByRole("button", { name: /Tunde's Flat/ }).click();
+    if ((await page.getByLabel("Description").inputValue()) !== "") throw new Error("expected an empty description");
+    await page.getByRole("button", { name: "Describe with AI" }).click();
+    const ask = page.getByRole("complementary", { name: "Ask AuraStage" });
+    await ask.getByText(/Describe the location "Tunde's Flat"/).first().waitFor();
+    await ask.getByText(/DEVELOPMENT \/ TEST OUTPUT|test output/i).first().waitFor({ timeout: 15000 });
+    await ask.getByText(/needs a connected writer/).first().waitFor();
+    await ask.getByRole("button", { name: /^Apply/ }).click();
+    await ask.getByText("Applied", { exact: true }).first().waitFor();
+    // The page underneath re-reads at once — no manual reload.
+    await page.waitForFunction(() => document.querySelector('textarea[aria-label="Description"]')?.value.includes("from the script"));
+    const d = await page.getByLabel("Description").inputValue();
+    if (!/^Tunde's Flat — interior; seen at .*(night|day).*areas: Kitchen \(from the script\)\.$/i.test(d)) throw new Error(`description: ${d}`);
+    await reload();
+    await list("Locations").getByRole("button", { name: /Tunde's Flat/ }).click();
+    if (!(await page.getByLabel("Description").inputValue()).includes("from the script")) throw new Error("not kept after reload");
+    await page.getByRole("button", { name: "Ask AuraStage" }).click();
+    await ask.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Describe the location "Tunde's Flat"/ }).click();
+    await ask.getByRole("button", { name: "Undo" }).click();
+    await page.waitForFunction(() => document.querySelector('textarea[aria-label="Description"]')?.value === "");
+    await ask.getByRole("button", { name: "Close" }).click();
+    await list("Locations").getByRole("button", { name: /Lagos Harbour/ }).click();
+  });
   await step("generate the reference set: views by time of day appear in the background; reload keeps them; they're in the Assets Library", async () => {
     await page.getByRole("button", { name: /Generate reference set \(3 views\)/ }).click();
     await page.getByText(/Making 3 views with AuraStage Sketch/).waitFor();

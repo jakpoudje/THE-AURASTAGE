@@ -906,9 +906,9 @@ async function planned(tok: string, id: string) {
   throw new Error("the planning worker didn't pick the request up within 90 s");
 }
 let aiPlanner = "";
-await check("assistant: capabilities come from configured keys (planner, six tools)", async () => {
+await check("assistant: capabilities come from configured keys (planner, seven tools incl. Locations & Props)", async () => {
   const c = await api("GET", "/api/assistant/capabilities");
-  assert(c.planner && c.tools.length === 6, JSON.stringify(c.planner));
+  assert(c.planner && c.tools.length === 7 && c.tools.some((t: any) => t.name === "updateLocationOrProp"), JSON.stringify(c.planner));
   aiPlanner = c.planner.id;
   return `${c.planner.name}${c.planner.test_output ? " (test output)" : ""}`;
 });
@@ -948,6 +948,26 @@ await check("assistant: a discarded suggestion changes nothing; recent requests 
   const list = await api("GET", `/api/projects/${projectId}/assistant`);
   assert(list.proposals.length >= 2 && list.proposals[0].id === q.id, "list");
   await api("GET", `/api/assistant/proposals/00000000-0000-4000-8000-000000000000`, undefined, [404]);
+});
+// ---- AI on every page (task 40): Ask AuraStage describes a place through Locations & Props ----
+await check("assistant: on Locations & Props, describe a location; apply saves it through Locations & Props (revision bumps); undo restores it", async () => {
+  const w0 = await api("GET", `/api/projects/${projectId}/world`);
+  const h0 = w0.locations.find((l: any) => l.name === "Lagos Harbour");
+  const q = await api("POST", `/api/projects/${projectId}/assistant`, { module: "scene_dna", text: 'Describe the location "Lagos Harbour" for its reference views: what it looks like (materials, age, colour, condition, light) as the script and the story suggest. Keep what is already written and add to it.' });
+  assert(q.context_refs.some((r: any) => r.id === h0.id), "the location wasn't in the context");
+  const p = await planned(token, q.id);
+  assert(p.status === "proposed", `${p.status} ${p.error ?? ""}`);
+  const call = p.preview.calls.find((c: any) => c.tool === "updateLocationOrProp" && c.object.id === h0.id);
+  assert(call && call.allowed && !call.stale && typeof call.after.description === "string" && call.after.description.length > 0, JSON.stringify(p.preview).slice(0, 400));
+  assert(p.preview.can_apply, "can't apply: " + JSON.stringify(p.preview.issues));
+  await api("POST", `/api/assistant/proposals/${q.id}/apply`, {});
+  const h1 = (await api("GET", `/api/projects/${projectId}/world`)).locations.find((l: any) => l.id === h0.id);
+  assert(h1.description === call.after.description && h1.revision > h0.revision, "not saved through Locations & Props");
+  const u = await api("POST", `/api/assistant/proposals/${q.id}/undo`, {});
+  assert(u.status === "undone", u.status);
+  const h2 = (await api("GET", `/api/projects/${projectId}/world`)).locations.find((l: any) => l.id === h0.id);
+  assert(h2.description === h0.description, `undo: ${h2.description}`);
+  return `${p.provider} · "${String(call.after.description).slice(0, 90)}…"`;
 });
 await check("AI & Generation readiness: states come from real results in this project (Claude, sketches, references, sound, voice, renders proven)", async () => {
   const r = await api("GET", `/api/projects/${projectId}/generation-readiness`);

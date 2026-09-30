@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/apiClient";
+import { announceAssistantChange } from "../askBus";
 import { assistantApi, type AssistantModule, type Proposal } from "../api/assistantApi";
 
 const FIELD = (k: string) => k.replace(/_/g, " ");
@@ -78,6 +79,7 @@ export function AskAuraStage({ projectId, module, request, onClose }: { projectI
   const act = (fn: (id: string) => Promise<Proposal>) => current && run(async () => {
     await fn(current.id);
     await open(current.id);
+    announceAssistantChange();
   });
 
   const p = current;

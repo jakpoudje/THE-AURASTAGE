@@ -62,7 +62,7 @@ Timeline/Version/PictureLock, Render, ProjectSettings, Comment/Task/Notification
    to claim/complete planning jobs; audit events.
 4. Tool Registry, first tools (each through its existing domain service, so the gate, versions and review flags apply):
    `updateStory` (Project story fields), `updateCharacter`, `changeWardrobe`, `modifyDialogue`, `updateSceneDNA`,
-   `modifyShot`. Apply = execute each tool call in order, record the new version ids, report downstream impact from
+   `modifyShot`; then `updateLocationOrProp` (2026-09-30, "AI helps on every page"). Apply = execute each tool call in order, record the new version ids, report downstream impact from
    the domains' own review states.
 5. API `apps/api/src/modules/assistant`: POST ask, GET proposal, POST apply / reject; GET capabilities.
 6. Ask AuraStage UI in AppShell (every workspace) with context of the current workspace/object: shows the plan as
