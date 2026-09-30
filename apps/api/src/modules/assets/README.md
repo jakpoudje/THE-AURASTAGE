@@ -15,7 +15,7 @@ trigger for every new asset.
 - **Approved work is flagged, not changed (rule 11).** When a recording on an approved Audio Studio mix is replaced, the
   mix is marked review_required with the reason; approval waits for a fresh loudness measurement (checked in the API
   readiness and again in the `approve_audio_session` database wrapper).
-- **Usage is evidence, not a guess:** Audio Studio clips, render manifests (`sources.asset_ids`) and links people made.
+- **Usage is evidence, not a guess:** Audio Studio clips, the Editorial music track (A2, kind `timeline`), render manifests (`sources.asset_ids`) and links people made.
 - **Search is honest:** `assetCatalogEngine` (engines/assets, 1.0.0) matches names, descriptions, tags and categories.
   Searching inside images/audio (vector/multimodal) isn't built yet and the page says so.
 

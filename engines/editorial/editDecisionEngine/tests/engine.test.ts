@@ -14,6 +14,26 @@ const run = (operation: unknown, extra: Record<string, unknown> = {}) => editDec
 const pick = (r: ReturnType<typeof run>, track: string) => r.clips.filter((c) => c.track === track).map((c) => [c.label, c.record_in, c.duration, c.source_in]);
 
 describe("editDecisionEngine", () => {
+  it("1.2.0: an insert over the picture (V2) and music (A2) never move the cut; a ripple carries them along; music has its own level", () => {
+    const ins = { ...clip(9, "V1", 0, 24), track: "V2", id: null, label: "INSERT" };
+    let r = run({ op: "insert", at: 60, source: { kind: "insert_shot", shot_id: U(99) } }, { new_clip: ins });
+    expect(pick(r, "V1")).toEqual([["C1", 0, 48, 0], ["C2", 48, 48, 0], ["C3", 96, 96, 0]]);
+    expect(pick(r, "V2")).toEqual([["INSERT", 60, 24, 0]]);
+    expect(r.summary).toMatch(/cut is unchanged/);
+    const mus = { ...clip(8, "A1", 0, 150), track: "A2", kind: "music", id: null, audio_session_version_id: null, asset_id: U(55), source_frames: 400, label: "THEME" };
+    const withIds = (x: ReturnType<typeof run>) => x.clips.map((c, k) => ({ ...c, id: c.id ?? U(200 + k) }));
+    r = editDecisionEngine({ clips: withIds(r), operation: { op: "overwrite", at: 0, source: { kind: "music", asset_id: U(55) } }, new_clip: mus });
+    expect(pick(r, "A2")).toEqual([["THEME", 0, 150, 0]]);
+    // Extracting C1 (48 frames at the start) pulls the insert and the music with the picture.
+    r = editDecisionEngine({ clips: withIds(r), operation: { op: "extract", clip_id: U(1) } });
+    expect(pick(r, "V2")).toEqual([["INSERT", 12, 24, 0]]);
+    expect(pick(r, "A2")).toEqual([["THEME", 0, 102, 48]]);
+    const music = r.clips.find((c) => c.track === "A2")!;
+    r = editDecisionEngine({ clips: withIds(r), operation: { op: "gain", clip_id: music.id, gain_db: -9 } });
+    expect(r.clips.find((c) => c.track === "A2")!.gain_db).toBe(-9);
+    expect(() => editDecisionEngine({ clips: withIds(r), operation: { op: "gain", clip_id: U(2), gain_db: -9 } })).toThrow(/Only music clips/);
+  });
+
   it("blade splits a clip; the new piece continues the source", () => {
     const r = run({ op: "blade", track: "V1", at: 120 });
     expect(pick(r, "V1")).toEqual([["C1", 0, 48, 0], ["C2", 48, 48, 0], ["C3", 96, 24, 0], ["C3", 120, 72, 24]]);

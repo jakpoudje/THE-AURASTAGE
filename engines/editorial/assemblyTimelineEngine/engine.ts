@@ -15,7 +15,7 @@ export function assemblyTimelineEngine(raw: unknown): AssemblyOutput {
   const clips: EngineClip[] = [];
   const rationale: string[] = [];
   let cursor = 0;
-  const base = { id: null, grade: { ...NEUTRAL_GRADE }, transition: { ...NO_TRANSITION }, take_id: null, audio_session_version_id: null, shot_id: null } as const;
+  const base = { id: null, grade: { ...NEUTRAL_GRADE }, transition: { ...NO_TRANSITION }, take_id: null, audio_session_version_id: null, shot_id: null, asset_id: null, gain_db: 0 } as const;
 
   for (const sc of [...scenes].sort((a, b) => a.number - b.number)) {
     const shots = sc.shots.filter((s) => s.story_end > s.story_start).map((s) => ({ ...s, a: F(s.story_start), b: F(s.story_end) }));

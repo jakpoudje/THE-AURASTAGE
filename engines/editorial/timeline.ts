@@ -23,7 +23,7 @@ export function timecode(frames: number, fps: number, startHour = 0) {
 /** Pairs of overlapping clips on the same track. */
 export function overlaps<T extends { track: TimelineTrack; record_in: number; duration: number }>(clips: T[]): [T, T][] {
   const out: [T, T][] = [];
-  for (const t of ["V1", "A1"] as const) {
+  for (const t of ["V1", "V2", "A1", "A2"] as const) {
     const list = onTrack(clips, t);
     for (let i = 1; i < list.length; i++) if (list[i].record_in < end(list[i - 1])) out.push([list[i - 1], list[i]]);
   }

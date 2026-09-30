@@ -37,5 +37,7 @@ export interface EditorialWorkspace {
   bin: BinScene[];
   media: Record<string, { url: string | null; media_type: string | null; capability: string; take_number: number }>;
   mixes: Record<string, MixSnapshot>;
+  /** Audio files from the Assets Library the music track (A2) can use (music first). */
+  music_library?: { asset_id: string; name: string; category: string | null; seconds: number | null }[];
 }
 export type Tool = "select" | "ripple" | "roll" | "slip" | "slide" | "blade" | "draw";

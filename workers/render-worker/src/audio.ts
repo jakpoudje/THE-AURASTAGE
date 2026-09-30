@@ -25,7 +25,8 @@ export function mixToWav(m: RenderManifest, pcm: Map<string, Pcm>, bus: Bus, pat
   const total = Math.round((m.duration_frames / m.fps) * SAMPLE_RATE);
   // The timeline's volume automation (manifest ≥ 1.3.0) shapes the whole cut, every stem alike.
   const input = { fps: m.fps, sample_rate: SAMPLE_RATE, audio: m.audio, mixes: m.mixes, pcm, bus, automation: m.automation?.A1 ?? [] };
-  const music = bus === null || bus === "MX" || bus === "ME" ? titleMusic(m) : [];
+  // Music belongs to the music stem, the M&E and the full mix: the title theme and the A2 music track (manifest ≥ 1.7.0).
+  const music = bus === null || bus === "MX" || bus === "ME" ? [...titleMusic(m), ...musicTrack(m, pcm)] : [];
   return writeWav24(path, SAMPLE_RATE, total, SAMPLE_RATE * 10, (s, n) => {
     const out = timelineAudioMixEngine(input, s, n);
     for (const t of music) {
@@ -48,5 +49,26 @@ export function titleMusic(m: RenderManifest): { at: number; L: Float32Array; R:
     const L = r.channels[0].map((v, i, a) => v * gain * Math.min(1, (a.length - 1 - i) / fade));
     const R = r.channels[1].map((v, i, a) => v * gain * Math.min(1, (a.length - 1 - i) / fade));
     return { at: Math.round((s.record_in / m.fps) * SAMPLE_RATE), L, R };
+  });
+}
+
+/** The A2 music track (manifest ≥ 1.7.0): each clip's part of its file, at the clip's level, with 0.5 s fades at its edges. */
+export function musicTrack(m: RenderManifest, pcm: Map<string, Pcm>): { at: number; L: Float32Array; R: Float32Array }[] {
+  const list = ((m as { music?: { record_in: number; duration: number; source_in: number; asset_id: string; gain_db: number }[] }).music ?? []);
+  const spf = SAMPLE_RATE / m.fps;
+  return list.flatMap((c) => {
+    const p = pcm.get(c.asset_id);
+    if (!p) return [];
+    const n = Math.round(c.duration * spf), s0 = Math.round(c.source_in * spf), g = Math.pow(10, c.gain_db / 20), fade = Math.min(Math.round(SAMPLE_RATE * 0.5), Math.floor(n / 2));
+    const [l, r] = [p.channels[0], p.channels[1] ?? p.channels[0]];
+    const L = new Float32Array(n), R = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      const src = s0 + k;
+      if (src >= l.length) break;
+      const env = g * Math.min(1, fade ? k / fade : 1, fade ? (n - 1 - k) / fade : 1);
+      L[k] = l[src] * env;
+      R[k] = r[src] * env;
+    }
+    return [{ at: Math.round(c.record_in * spf), L, R }];
   });
 }

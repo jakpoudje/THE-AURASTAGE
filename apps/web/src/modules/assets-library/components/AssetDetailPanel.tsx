@@ -155,7 +155,7 @@ export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, o
               {a.usage.map((u, i) => (
                 <li key={`${u.kind}-${i}`} className="flex items-center justify-between gap-2">
                   <span>{u.href ? <Link href={u.href} className="underline decoration-white/20">{u.label}</Link> : u.label}</span>
-                  <span className="text-[10px] uppercase text-white/40">{u.kind === "audio_clip" ? "in the mix" : u.kind === "render" ? "rendered" : u.kind === "reference" ? "reference view" : "linked"}</span>
+                  <span className="text-[10px] uppercase text-white/40">{u.kind === "audio_clip" ? "in the mix" : u.kind === "render" ? "rendered" : u.kind === "reference" ? "reference view" : u.kind === "timeline" ? "music in the cut" : "linked"}</span>
                 </li>
               ))}
             </ul>

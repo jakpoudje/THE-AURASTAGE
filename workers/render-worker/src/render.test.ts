@@ -32,6 +32,7 @@ function wav(seconds: number, amp: number) {
 const media: Record<string, { bytes: Uint8Array; contentType: string }> = {
   "k/take.svg": { bytes: Buffer.from(svg), contentType: "image/svg+xml" },
   "k/line.wav": { bytes: wav(1.5, 0.3), contentType: "audio/wav" },
+  "k/music.wav": { bytes: wav(2, 0.5), contentType: "audio/wav" },
 };
 function manifest(profile: string, extra: Record<string, unknown> = {}): RenderManifest {
   const clip = (n: number, over: Record<string, unknown>) => ({ id: U(n), source_in: 0, source_frames: null, scene_id: U(90), shot_id: U(80), take_id: null, audio_session_version_id: null, grade: NEUTRAL_GRADE, label: `C${n}`, ...over });
@@ -117,6 +118,27 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
     expect(maxDb("stem_FX.wav")).toBeLessThan(-90);
     const size = (f: string) => statSync(join(r.store, f)).size;
     expect(size("mix.wav")).toBe(44 + 2 * 48000 * 2 * 3);
+  }, 120000);
+  it("music on A2 (manifest 1.7.0) plays at its level in the music stem, the M&E and the mix — never in the dialogue stem", async () => {
+    const m0 = manifest("audio_package");
+    const base = { id: U(15), source_in: 0, scene_id: null, shot_id: null, take_id: null, audio_session_version_id: null, grade: NEUTRAL_GRADE, transition: { in: "cut", out: "cut", frames: 12 } };
+    const r = await render("audio_package", {
+      clips: [
+        { ...base, id: U(10), track: "V1", kind: "take", record_in: 0, duration: 48, source_frames: null, scene_id: U(90), shot_id: U(80), take_id: U(20), label: "C10" },
+        { ...base, id: U(12), track: "A1", kind: "audio_mix", record_in: 0, duration: 48, source_frames: 48, scene_id: U(90), audio_session_version_id: U(30), label: "C12" },
+        { ...base, track: "A2", kind: "music", record_in: 0, duration: 48, source_frames: 48, asset_id: U(41), gain_db: -6, label: "Theme" },
+      ],
+      assets: { [U(40)]: { storage_key: "k/line.wav", media_type: "audio/wav" }, [U(41)]: { storage_key: "k/music.wav", media_type: "audio/wav" } },
+    });
+    expect(m0.music).toEqual([]);
+    expect(r.qc.passed).toBe(true);
+    const maxDb = (f: string) => {
+      const res = execFileSync("sh", ["-c", `ffmpeg -hide_banner -i '${join(r.store, f)}' -af volumedetect -f null - 2>&1`], { encoding: "utf8" });
+      return Number((/max_volume: (-?[\d.]+|-inf) dB/.exec(res)?.[1] ?? "NaN").replace("-inf", "-200"));
+    };
+    // The approved scene mix's music bed peaks ≈ -18.4 dBFS; the A2 theme (0.5 peak at -6 dB, mono centre ≈ -12 dBFS) sits above it.
+    expect(maxDb("stem_MX.wav")).toBeGreaterThan(-13.5);
+    expect(maxDb("stem_DX.wav")).toBeCloseTo(-13.5 + 1.14, 0);
   }, 120000);
   it("timeline volume automation drawn in Editorial shapes the delivered sound (manifest 1.3.0)", async () => {
     const r = await render("audio_package", { automation: { A1: [{ frame: 0, db: -6 }] }, automation_revision: U(55) });

@@ -47,6 +47,25 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
   }
   if (duration > t) black(t, duration);
 
+  // Inserts over the picture (V2, manifest ≥ 1.7.0): while one lasts it is the picture; V1 carries on underneath,
+  // so its source keeps running and the cut after the insert is unchanged.
+  const v2 = i.clips.filter((c) => c.track === "V2").sort((a, b) => a.record_in - b.record_in);
+  for (const c of v2) {
+    const tk = c.take_id ? i.takes[c.take_id] : undefined;
+    if (c.kind !== "take" || !c.take_id) { missing.push(`${c.label}: the insert has no approved take`); continue; }
+    if (!tk?.storage_key) { missing.push(`${c.label}: the insert's media file is missing`); continue; }
+    const a = c.record_in, b = c.record_in + c.duration;
+    const next: PictureSegment[] = [];
+    for (const seg of picture) {
+      const e = seg.record_in + seg.duration;
+      if (e <= a || seg.record_in >= b) { next.push(seg); continue; }
+      if (seg.record_in < a) next.push({ ...seg, duration: a - seg.record_in, ...(seg.transition ? { transition: { ...seg.transition, out: "cut" as const } } : {}) });
+      if (e > b) next.push({ ...seg, record_in: b, duration: e - b, source_in: seg.source_in + (b - seg.record_in), ...(seg.transition ? { transition: { ...seg.transition, in: "cut" as const } } : {}) });
+    }
+    next.push({ kind: "take", record_in: a, duration: c.duration, source_in: c.source_in, take_id: c.take_id, storage_key: tk.storage_key, media_type: tk.media_type ?? null, capability: tk.capability ?? null, grade: c.grade, label: `Insert: ${c.label}` });
+    picture.splice(0, picture.length, ...next.sort((x, y) => x.record_in - y.record_in));
+  }
+
   // Sound: the approved scene mixes, real recordings only.
   const mixes: RenderManifest["mixes"] = {};
   const assets: RenderManifest["assets"] = {};
@@ -80,6 +99,15 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
     }
   }
 
+  // Music across scenes (A2, manifest ≥ 1.7.0): audio files from the Assets Library, each at its own level.
+  const music: RenderManifest["music"] = [];
+  for (const c of i.clips.filter((x) => x.track === "A2").sort((a, b) => a.record_in - b.record_in)) {
+    const a = c.asset_id ? i.assets[c.asset_id] : undefined;
+    if (!c.asset_id || !a?.storage_key) { missing.push(`${c.label}: the music file is missing`); continue; }
+    assets[c.asset_id] = { storage_key: a.storage_key, media_type: a.media_type };
+    music.push({ record_in: c.record_in, duration: c.duration, source_in: c.source_in, asset_id: c.asset_id, gain_db: c.gain_db ?? 0, label: c.label });
+  }
+
   // Titles (video deliverables only): the opening card pushes the whole cut later; the credit roll follows it.
   const p0 = i.profile;
   const titled = !!p0.video && !!i.titles && (!!i.titles.opening || !!i.titles.end_credits);
@@ -88,6 +116,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
   if (offset) {
     for (const s of picture) s.record_in += offset;
     for (const a of audio) a.record_in += offset;
+    for (const x of music) x.record_in += offset;
     picture.unshift({ kind: "title", record_in: 0, duration: offset, source_in: 0, take_id: null, storage_key: null, media_type: "image/svg+xml", capability: null, grade: null, label: "Opening title", svg: i.titles!.opening!.svg });
   }
   const roll = titled ? i.titles!.end_credits : null;
@@ -122,7 +151,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
   const p = i.profile;
   if (!p.available) missing.push(`${p.label} isn't available: ${p.unavailable_reason}`);
   if (NEEDS_PICTURE.has(p.id) && !v1.length) missing.push("The locked cut has no picture");
-  if (NEEDS_AUDIO.has(p.id) && !audio.length) missing.push("The locked cut has no sound — place the approved scene mixes on A1");
+  if (NEEDS_AUDIO.has(p.id) && !audio.length && !music.length) missing.push("The locked cut has no sound — place the approved scene mixes on A1");
   if (p.id === "subtitles" && !subtitles.cues.length) missing.push("There is no dialogue in the locked cut to subtitle");
   const files = p.files.filter((f) => !(f === "captions.srt" && !subtitles.cues.length));
 
@@ -136,6 +165,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
     duration_frames: totalFrames,
     picture,
     audio,
+    music,
     mixes,
     assets,
     automation,

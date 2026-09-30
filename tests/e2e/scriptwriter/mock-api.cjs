@@ -997,7 +997,10 @@ http.createServer((req, res) => {
             take: at ? { take_id: at.id, take_number: at.take_number, capability: at.capability, source_frames: takeFrames(at) } : null }; }),
           mix: r.mixCurrent ? { version_id: r.mixCurrent.id, version_number: r.mixCurrent.version_number, seconds: r.mixCurrent.measurement.duration_seconds } : null,
           mix_note: r.mixCurrent ? null : r.session && r.session.approved_version_id ? "Sound needs review in Audio Studio" : "No approved mix yet" })),
-        media, mixes });
+        media, mixes,
+        // The music track's choices (mirrors editorial.service: audio files in the Assets Library, music first).
+        music_library: assets.filter((a) => a.type === "audio" && !a.archived_at).map((a) => ({ asset_id: a.id, name: a.name, category: a.category ?? null, seconds: Number((a.metadata || {}).duration_seconds || a.duration_seconds || 0) || null }))
+          .sort((a, c) => Number(c.category === "music") - Number(a.category === "music")) });
     }
     if (u === `/api/projects/${P}/editorial/assemble`) {
       const rows = edScenes().filter((r) => r.pv);
@@ -1016,8 +1019,18 @@ http.createServer((req, res) => {
       if (timeline.revision !== b.base_revision) return edErr(409, "The timeline changed — reload and try again.");
       const rows = edScenes(); const op = b.operation; let new_clip;
       if (op.op === "insert" || op.op === "overwrite") {
-        const base = { id: null, source_in: 0, record_in: op.at, grade: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 }, take_id: null, audio_session_version_id: null, shot_id: null };
-        if (op.source.kind === "shot") { const f = findShot(rows, op.source.shot_id); const at = approvedTake(op.source.shot_id); const fr = at ? takeFrames(at) : null;
+        const base = { id: null, source_in: 0, record_in: op.at, grade: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 }, take_id: null, audio_session_version_id: null, shot_id: null, asset_id: null, gain_db: 0 };
+        if (op.source.kind === "insert_shot") { const f = findShot(rows, op.source.shot_id); const at = approvedTake(op.source.shot_id);
+          if (!at) return edErr(412, "Approve a take of that shot in Visual Generation first — an insert needs real picture.");
+          const fr = takeFrames(at); const want = op.duration || Math.max(1, F(f.sh.story_end - f.sh.story_start));
+          new_clip = { ...base, track: "V2", kind: "take", duration: fr === null ? want : Math.min(want, fr), source_frames: fr, scene_id: f.r.scene.id, shot_id: f.sh.id, take_id: at.id, label: shotLabel(f.r, f.sh) };
+        } else if (op.source.kind === "music") { const a = assets.find((x) => x.id === op.source.asset_id && !x.archived_at);
+          if (!a) return edErr(404, "That file isn't in this project's Assets Library.");
+          if (a.type !== "audio") return edErr(412, "Only an audio file can go on the music track.");
+          const secs = Number((a.metadata || {}).duration_seconds || a.duration_seconds || 0); if (!(secs > 0)) return edErr(412, "That file's length isn't known — upload it again in the Assets Library.");
+          const fr = Math.max(1, Math.floor(secs * FPS));
+          new_clip = { ...base, track: "A2", kind: "music", duration: Math.min(op.duration || fr, fr), source_frames: fr, scene_id: null, asset_id: a.id, gain_db: op.source.gain_db ?? -6, label: String(a.name).slice(0, 200) };
+        } else if (op.source.kind === "shot") { const f = findShot(rows, op.source.shot_id); const at = approvedTake(op.source.shot_id); const fr = at ? takeFrames(at) : null;
           const want = op.duration || Math.max(1, F(f.sh.story_end - f.sh.story_start)); const duration = fr === null ? want : Math.min(want, fr);
           new_clip = at ? { ...base, track: "V1", kind: "take", duration, source_frames: fr, scene_id: f.r.scene.id, shot_id: f.sh.id, take_id: at.id, label: shotLabel(f.r, f.sh) }
             : { ...base, track: "V1", kind: "slug", duration, source_frames: null, scene_id: f.r.scene.id, shot_id: f.sh.id, label: `${shotLabel(f.r, f.sh)} — no approved take` };

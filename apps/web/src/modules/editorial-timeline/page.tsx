@@ -128,7 +128,8 @@ export default function EditorialPage() {
   }
   const ws = d.ws;
   const t = ws.timeline;
-  const onPicture = clipAt(clips, "V1", frame);
+  // What the viewer shows: an insert over the picture (V2) wins while it lasts.
+  const onPicture = clipAt(clips, "V2", frame) ?? clipAt(clips, "V1", frame);
   const issueFor = (cid: string) => ws.issues.find((i) => i.clip_id === cid)?.message ?? null;
 
   return (
@@ -202,7 +203,7 @@ export default function EditorialPage() {
           </div>
         ) : (
           <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_320px]">
-            <Bin bin={ws.bin} media={ws.media} canEdit={canEdit} busy={d.busy !== null} onPlace={(source, mode) => edit({ op: mode, at: frame, source })} />
+            <Bin bin={ws.bin} media={ws.media} music={ws.music_library ?? []} canEdit={canEdit} busy={d.busy !== null} onPlace={(source, mode) => edit({ op: mode, at: frame, source })} />
 
             <div className="min-w-0 space-y-3">
               <Viewer clip={onPicture} frame={frame} fps={fps} length={length} playing={playing} media={ws.media} />

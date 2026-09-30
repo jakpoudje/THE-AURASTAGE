@@ -28,8 +28,8 @@ function fakeDb(rows: Record<string, Row[]>, rpcImpl: (fn: string, a: Row) => { 
   const calls: { fn: string; args: Row }[] = [];
   const from = (t: string) => {
     const f: [string, unknown][] = [];
-    const res = () => (rows[t] ?? []).filter((r) => f.every(([k, v]) => r[k] === v));
-    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), order: () => q,
+    const res = () => (rows[t] ?? []).filter((r) => f.every(([k, v]) => (v === null ? r[k] == null : r[k] === v)));
+    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), is: (k: string, v: unknown) => (f.push([k, v]), q), order: () => q,
       maybeSingle: async () => ({ data: res()[0] ?? null, error: null }), then: (ok: any) => ok({ data: res(), error: null }) };
     return q;
   };
@@ -129,6 +129,30 @@ describe("Editorial routes", () => {
     rows.audio_sessions[0].review_state = "stale";
     const r2 = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/edit`, payload: { base_revision: REV, operation: { op: "insert", at: 96, source: { kind: "scene_mix", scene_id: S1 } } } });
     expect(r2.statusCode).toBe(412);
+  });
+
+  it("item 9: an insert over the picture (V2) and music across scenes (A2) are laid without moving the cut; music has its own level", async () => {
+    withTimeline();
+    const MUS = "9a9a9a9a-9a9a-49a9-89a9-9a9a9a9a9a9a";
+    rows.assets = [{ id: MUS, project_id: P, name: "Main theme.wav", type: "audio", metadata: { duration_seconds: 10 }, archived_at: null }];
+    let fake = fakeDb(rows);
+    let res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/editorial/edit`, payload: { base_revision: REV, operation: { op: "overwrite", at: 10, source: { kind: "insert_shot", shot_id: SH1 } } } });
+    expect(res.statusCode).toBe(200);
+    let saved = fake.calls[0].args.p_clips as Row[];
+    expect(saved.find((c) => c.track === "V2")).toMatchObject({ kind: "take", take_id: TK1, record_in: 10 });
+    expect(saved.filter((c) => c.track === "V1").map((c) => [c.record_in, c.duration])).toEqual([[0, 48], [48, 48]]);
+    // No approved take → no insert (an offline slug over the picture would hide it).
+    res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/edit`, payload: { base_revision: REV, operation: { op: "overwrite", at: 10, source: { kind: "insert_shot", shot_id: SH2 } } } });
+    expect(res.statusCode).toBe(412);
+    fake = fakeDb(rows);
+    res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/editorial/edit`, payload: { base_revision: REV, operation: { op: "overwrite", at: 0, source: { kind: "music", asset_id: MUS, gain_db: -9 } } } });
+    expect(res.statusCode).toBe(200);
+    saved = fake.calls[0].args.p_clips as Row[];
+    expect(saved.find((c) => c.track === "A2")).toMatchObject({ kind: "music", asset_id: MUS, gain_db: -9, duration: 240, source_frames: 240, label: "Main theme.wav" });
+    expect(saved.find((c) => c.track === "A1")).toMatchObject({ record_in: 0, duration: 96 });
+    rows.assets[0].type = "image";
+    res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/edit`, payload: { base_revision: REV, operation: { op: "overwrite", at: 0, source: { kind: "music", asset_id: MUS } } } });
+    expect(res.statusCode).toBe(412);
   });
 
   it("a newer approved take flags the timeline for review without touching the cut; Conform swaps it in", async () => {

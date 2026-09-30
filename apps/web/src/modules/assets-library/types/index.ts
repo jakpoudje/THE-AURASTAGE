@@ -1,4 +1,4 @@
-export type Usage = { kind: "audio_clip" | "render" | "link" | "reference"; scene_id: string | null; label: string; href: string | null };
+export type Usage = { kind: "audio_clip" | "render" | "link" | "reference" | "timeline"; scene_id: string | null; label: string; href: string | null };
 export type LibraryAsset = {
   id: string; project_id: string; type: "audio" | "image" | "video" | "document" | "reference"; name: string; checksum: string | null;
   media_type: string | null; size_bytes: number | null; duration_seconds: number | null; created_at: string;

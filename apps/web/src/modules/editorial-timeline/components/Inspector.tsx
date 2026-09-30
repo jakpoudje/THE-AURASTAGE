@@ -20,6 +20,7 @@ export function Inspector({ clip, fps, issue, busy, onOp }: { clip: TimelineClip
   const baseT: ClipTransition = clip.transition ?? { in: "cut", out: "cut", frames: 12 };
   const [trans, setTrans] = useState<ClipTransition>(baseT);
   const dirtyTrans = JSON.stringify(trans) !== JSON.stringify(baseT);
+  const [gain, setGain] = useState<number>(clip.gain_db ?? 0);
   const row = (k: string, v: string) => (
     <div className="flex justify-between gap-2">
       <dt className="text-white/40">{k}</dt>
@@ -37,6 +38,7 @@ export function Inspector({ clip, fps, issue, busy, onOp }: { clip: TimelineClip
         {row("Length", `${clip.duration} f (${(clip.duration / fps).toFixed(2)}s)`)}
         {row("Source in", tc(clip.source_in, fps))}
         {row("Source", clip.kind === "slug" ? "Offline" : clip.source_frames === null ? "Still image" : `${clip.source_frames} f`)}
+        {clip.kind === "music" && row("Level", `${clip.gain_db ?? 0} dB`)}
       </dl>
       <div className="mt-3 border-t border-aura-border pt-3">
         <label className="flex items-center justify-between gap-2 text-xs">
@@ -69,6 +71,14 @@ export function Inspector({ clip, fps, issue, busy, onOp }: { clip: TimelineClip
             <button disabled={busy || !dirtyGrade} onClick={() => onOp({ op: "grade", clip_id: clip.id, grade })} className="flex-1 rounded bg-aura-gold px-2 py-1 text-xs font-medium text-black disabled:opacity-40">Apply grade</button>
             <button disabled={busy} onClick={() => setGrade({ exposure: 0, contrast: 0, saturation: 0, temperature: 0 })} className="rounded border border-aura-border px-2 py-1 text-xs">Reset</button>
           </div>
+        </div>
+      )}
+      {clip.kind === "music" && (
+        <div className="mt-3 border-t border-aura-border pt-3 text-xs" role="group" aria-label="Music level">
+          <label className="flex items-center justify-between gap-2">Level under the scene mixes
+            <span><input aria-label="Music level (dB)" type="number" min={-60} max={12} step={1} value={gain} onChange={(e) => setGain(Math.max(-60, Math.min(12, Math.round(Number(e.target.value) || 0))))} className="w-16 rounded border border-aura-border bg-black px-1 py-0.5 text-right" /> dB</span>
+          </label>
+          <button disabled={busy || gain === (clip.gain_db ?? 0)} onClick={() => onOp({ op: "gain", clip_id: clip.id, gain_db: gain })} className="mt-1 w-full rounded bg-aura-gold px-2 py-1 font-medium text-black disabled:opacity-40">Set level</button>
         </div>
       )}
       {clip.track === "V1" && (

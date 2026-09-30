@@ -42,7 +42,8 @@ async function loadLock(db: SupabaseClient, projectId: string) {
   const takeIds = [...new Set(clips.map((c) => c.take_id).filter((x): x is string => !!x))];
   const mixIds = [...new Set(clips.map((c) => c.audio_session_version_id).filter((x): x is string => !!x))];
   const [takes, mixes, sessions] = await Promise.all([repo.listTakes(db, takeIds), repo.listMixVersions(db, mixIds), repo.listSessions(db, projectId)]);
-  const assetIds = [...new Set(mixes.flatMap((m) => ((m.clips as Row[]) ?? []).map((c) => c.asset_id).filter((x): x is string => !!x)))];
+  // Recordings inside the scene mixes, and the music on A2 (migration 0045).
+  const assetIds = [...new Set([...mixes.flatMap((m) => ((m.clips as Row[]) ?? []).map((c) => c.asset_id).filter((x): x is string => !!x)), ...clips.map((c) => c.asset_id).filter((x): x is string => !!x)])];
   const lineIds = [...new Set(mixes.flatMap((m) => ((m.clips as Row[]) ?? []).map((c) => c.source?.dialogue_line_id).filter((x): x is string => typeof x === "string")))];
   const [assets, lines, cast, captions] = await Promise.all([repo.listAssets(db, assetIds), repo.listLines(db, lineIds), repo.listCast(db, projectId), repo.listCaptions(db, projectId)]);
   return { timeline, lock, version, clips, takes, mixes, sessions, assets, lines, cast, captions };

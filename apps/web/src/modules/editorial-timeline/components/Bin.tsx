@@ -6,8 +6,8 @@
 import type { EditSource } from "@aurastage/contracts";
 import type { EditorialWorkspace } from "../types";
 
-export function Bin({ bin, media, canEdit, busy, onPlace }: {
-  bin: EditorialWorkspace["bin"]; media: EditorialWorkspace["media"]; canEdit: boolean; busy: boolean;
+export function Bin({ bin, media, music, canEdit, busy, onPlace }: {
+  bin: EditorialWorkspace["bin"]; media: EditorialWorkspace["media"]; music: NonNullable<EditorialWorkspace["music_library"]>; canEdit: boolean; busy: boolean;
   onPlace: (source: EditSource, mode: "insert" | "overwrite") => void;
 }) {
   return (
@@ -48,6 +48,12 @@ export function Bin({ bin, media, canEdit, busy, onPlace }: {
                       <button disabled={!canEdit || busy} onClick={() => onPlace({ kind: "shot", shot_id: sh.shot_id }, "overwrite")} className="rounded border border-aura-border px-1.5 text-[10px] disabled:opacity-40">
                         Overwrite
                       </button>
+                      {sh.take && (
+                        <button disabled={!canEdit || busy} onClick={() => onPlace({ kind: "insert_shot", shot_id: sh.shot_id }, "overwrite")} title="Show this shot over the picture at the playhead (V2) — the cut doesn't move"
+                          className="rounded border border-amber-300/60 px-1.5 text-[10px] text-amber-200 disabled:opacity-40">
+                          Over picture
+                        </button>
+                      )}
                     </div>
                   </li>
                 );
@@ -63,6 +69,20 @@ export function Bin({ bin, media, canEdit, busy, onPlace }: {
             </ul>
           </div>
         ))}
+        <div role="group" aria-label="Music for the music track">
+          <p className="text-xs font-medium text-white/70">Music (A2) — runs across scenes</p>
+          {music.length === 0 && <p className="mt-1 text-[11px] text-white/40">Upload music in the Assets Library, or make a theme in Audio Studio, and it appears here.</p>}
+          <ul className="mt-1 space-y-1">
+            {music.map((m) => (
+              <li key={m.asset_id} className="flex items-center justify-between gap-2 rounded border border-fuchsia-500/30 bg-fuchsia-950/30 p-1.5 text-[11px]">
+                <span className="min-w-0 truncate">{m.name}{m.seconds ? ` · ${m.seconds.toFixed(1)}s` : ""}</span>
+                <button aria-label={`Place ${m.name} on A2`} disabled={!canEdit || busy || !m.seconds} onClick={() => onPlace({ kind: "music", asset_id: m.asset_id }, "overwrite")} className="shrink-0 rounded border border-aura-border px-1.5 text-[10px] disabled:opacity-40">
+                  Place on A2
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   );

@@ -60,7 +60,7 @@ export async function readAssetContent(db: SupabaseClient, assetId: string, env:
 // ---------------------------------------------------------------------------------
 // Assets Library (completion pass 12b)
 // ---------------------------------------------------------------------------------
-type Usage = { kind: "audio_clip" | "render" | "link" | "reference"; scene_id: string | null; label: string; href: string | null };
+type Usage = { kind: "audio_clip" | "render" | "link" | "reference" | "timeline"; scene_id: string | null; label: string; href: string | null };
 
 const PROFILE_LABELS: Record<string, string> = {
   streaming_master: "Streaming Master", review_copy: "Review Copy", mezzanine_master: "Mezzanine Master", audio_package: "Audio Package",
@@ -69,10 +69,10 @@ const PROFILE_LABELS: Record<string, string> = {
 
 /** Where every asset is used, from the records themselves: Audio Studio clips, render manifests, and links people made. */
 async function usageIndex(db: SupabaseClient, projectId: string) {
-  const [clips, sessions, scenes, chars, links, renders, world, refs] = await Promise.all([
+  const [clips, sessions, scenes, chars, links, renders, world, refs, music] = await Promise.all([
     repo.listAssetClips(db, projectId), repo.listSessions(db, projectId), repo.listScenes(db, projectId),
     repo.listCharacters(db, projectId), repo.listLinks(db, projectId), repo.listRenderSources(db, projectId), repo.listWorldNames(db, projectId),
-    repo.listReferenceUses(db, projectId),
+    repo.listReferenceUses(db, projectId), repo.listTimelineMusic(db, projectId),
   ]);
   const sceneLabel = (id: string) => {
     const s = scenes.find((x) => x.id === id);
@@ -88,6 +88,7 @@ async function usageIndex(db: SupabaseClient, projectId: string) {
     const s = sessions.find((x) => x.id === c.session_id);
     if (s) push(c.asset_id, { kind: "audio_clip", scene_id: s.scene_id, label: `${sceneLabel(s.scene_id)} · Audio Studio`, href: `/projects/${projectId}/audio` });
   }
+  for (const m of music) push(m.asset_id, { kind: "timeline", scene_id: null, label: "Editorial · music track (A2)", href: `/projects/${projectId}/editorial` });
   for (const l of links) {
     if (l.object_type === "scene") push(l.asset_id, { kind: "link", scene_id: l.object_id, label: sceneLabel(l.object_id), href: `/projects/${projectId}/scene-dna` });
     else if (l.object_type === "location" || l.object_type === "prop") {

@@ -94,11 +94,12 @@ function clipIssues(ctx: Ctx, up: Up) {
 function conformReplacements(ctx: Ctx, up: Up) {
   const out: NonNullable<editDecision.EditDecisionInput["replacements"]> = [];
   for (const c of ctx.clips) {
-    if (c.track === "V1" && c.shot_id && up.shotInfo.has(c.shot_id)) {
+    if ((c.track === "V1" || c.track === "V2") && c.shot_id && up.shotInfo.has(c.shot_id)) {
       const at = up.approvedTake(c.shot_id);
       const base = up.shotLabel(c.shot_id);
       if (at && at.id !== c.take_id) out.push({ clip_id: c.id, kind: "take", take_id: at.id, audio_session_version_id: null, source_frames: takeFrames(at), label: base });
-      else if (!at && c.kind === "take") out.push({ clip_id: c.id, kind: "slug", take_id: null, audio_session_version_id: null, source_frames: null, label: `${base} — no approved take` });
+      // An insert (V2) without an approved take stays flagged for review; only V1 falls back to an offline slug.
+      else if (!at && c.kind === "take" && c.track === "V1") out.push({ clip_id: c.id, kind: "slug", take_id: null, audio_session_version_id: null, source_frames: null, label: `${base} — no approved take` });
     } else if (c.kind === "audio_mix") {
       const row = up.scenes.find((s) => s.scene.id === c.scene_id);
       if (row?.mixCurrent && row.mixCurrent.id !== c.audio_session_version_id)
@@ -151,6 +152,10 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
     mixes[id] = { id, scene_id: session?.scene_id ?? null, version_number: v.version_number, seconds: mixSeconds(v, session), tracks: v.tracks, clips: v.clips, mix: v.mix ?? {} };
   }
   const lock = timeline?.current_lock_id ? locks.find((l) => l.id === timeline!.current_lock_id) : undefined;
+  // The music track's choices: audio files in the Assets Library (music first), with their length.
+  const audio = await repo.listAudioAssets(db, projectId);
+  const music_library = audio.map((a) => ({ asset_id: a.id as string, name: a.name as string, category: (a.category ?? null) as string | null, seconds: Number(a.metadata?.duration_seconds ?? 0) || null }))
+    .sort((a, b) => Number(b.category === "music") - Number(a.category === "music"));
   return {
     fps,
     project: { title: ctx.project.title, target_runtime_minutes: ctx.project.target_runtime_minutes ?? null },
@@ -184,6 +189,7 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
       })),
     media,
     mixes,
+    music_library,
     engines: { assembly: assemblyTimeline.ENGINE_VERSION, edit: editDecision.ENGINE_VERSION, qc: editorialQC.ENGINE_VERSION },
   };
 }
@@ -236,15 +242,36 @@ export async function assembleTimeline(db: SupabaseClient, projectId: string, pa
     await repo.saveVersion(db, projectId, "Before re-assembly", "auto", runQC(ctx, ctx.clips, clipIssues(ctx, up)));
   }
   const online = r.clips.filter((c) => c.kind === "take").length, offline = r.clips.filter((c) => c.kind === "slug").length;
-  await persist(db, ctx, r.clips, {
+  // A fresh assembly rebuilds the cut (V1/A1); inserts over the picture (V2) and music (A2) laid by hand are kept.
+  await persist(db, ctx, [...r.clips, ...ctx.clips.filter((c) => c.track === "V2" || c.track === "A2")], {
     action: "assemble", summary: `First assembly: ${input.length} scene${input.length === 1 ? "" : "s"}, ${online} picture clip${online === 1 ? "" : "s"}${offline ? `, ${offline} offline` : ""}.`,
     engineVersion: r.engine_version, baseRevision: ctx.timeline ? req.base_revision : null, breakLock: !!req.break_lock,
   });
   return { summary: `Assembled ${input.length} scene${input.length === 1 ? "" : "s"} from approved shots: ${online} picture clip${online === 1 ? "" : "s"}${offline ? `, ${offline} still offline (no approved take)` : ""}.`, rationale: r.rationale };
 }
 
-function resolveSource(ctx: Ctx, up: Up, op: Extract<EditOperation, { op: "insert" | "overwrite" }>): EngineClip {
-  const base = { id: null, source_in: 0, record_in: op.at, grade: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 }, transition: { in: "cut", out: "cut", frames: 12 }, take_id: null, audio_session_version_id: null, shot_id: null } as const;
+async function resolveSource(db: SupabaseClient, ctx: Ctx, up: Up, op: Extract<EditOperation, { op: "insert" | "overwrite" }>): Promise<EngineClip> {
+  const base = { id: null, source_in: 0, record_in: op.at, grade: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 }, transition: { in: "cut", out: "cut", frames: 12 }, take_id: null, audio_session_version_id: null, shot_id: null, asset_id: null, gain_db: 0 } as const;
+  if (op.source.kind === "insert_shot") {
+    // An insert over the picture (V2): only an approved take — an offline slug over the picture would hide it.
+    const info = up.shotInfo.get(op.source.shot_id);
+    if (!info) throw new EditorialNotReadyError("That shot isn't in an approved shot plan.");
+    const at = up.approvedTake(op.source.shot_id);
+    if (!at) throw new EditorialNotReadyError("Approve a take of that shot in Visual Generation first — an insert needs real picture.");
+    const frames = takeFrames(at);
+    const want = op.duration ?? Math.max(1, F(info.story_end - info.story_start));
+    return { ...base, track: "V2", kind: "take", duration: frames === null ? want : Math.min(want, frames), source_frames: frames, scene_id: info.scene_id, shot_id: op.source.shot_id, take_id: at.id, label: up.shotLabel(op.source.shot_id) };
+  }
+  if (op.source.kind === "music") {
+    // Music across scenes (A2): an audio file from the Assets Library, as long as the file (or what was asked for).
+    const a = await repo.getAudioAsset(db, ctx.project.id, op.source.asset_id);
+    if (!a || a.archived_at) throw new EditorialNotFoundError("That file isn't in this project's Assets Library.");
+    if (a.type !== "audio") throw new EditorialNotReadyError("Only an audio file can go on the music track.");
+    const secs = Number(a.metadata?.duration_seconds ?? 0);
+    if (!(secs > 0)) throw new EditorialNotReadyError("That file's length isn't known — upload it again in the Assets Library.");
+    const frames = Math.max(1, Math.floor(secs * fps));
+    return { ...base, track: "A2", kind: "music", duration: Math.min(op.duration ?? frames, frames), source_frames: frames, scene_id: null, asset_id: a.id, gain_db: op.source.gain_db ?? -6, label: String(a.name).slice(0, 200) };
+  }
   if (op.source.kind === "shot") {
     const info = up.shotInfo.get(op.source.shot_id);
     if (!info) throw new EditorialNotReadyError("That shot isn't in an approved shot plan.");
@@ -275,7 +302,7 @@ export async function editTimeline(db: SupabaseClient, projectId: string, payloa
   try {
     r = editDecisionEngine({
       clips: ctx.clips, operation: op,
-      new_clip: op.op === "insert" || op.op === "overwrite" ? resolveSource(ctx, up, op) : undefined,
+      new_clip: op.op === "insert" || op.op === "overwrite" ? await resolveSource(db, ctx, up, op) : undefined,
       replacements: op.op === "conform" ? conformReplacements(ctx, up) : undefined,
     });
   } catch (e) {

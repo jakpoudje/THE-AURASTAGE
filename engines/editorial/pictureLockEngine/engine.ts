@@ -39,5 +39,9 @@ export function pictureLockEngine(raw: unknown): PictureLockOutput {
   }
   const audioChanged = JSON.stringify(onTrack(locked, "A1").map((c) => [c.audio_session_version_id, c.record_in, c.duration, c.source_in])) !== JSON.stringify(onTrack(proposed, "A1").map((c) => [c.audio_session_version_id, c.record_in, c.duration, c.source_in]));
   if (audioChanged && !impact.length) impact.push({ scene_id: null, label: "Sound track (A1)", change: "recut", evidence: "Scene mixes changed", affects: ["Renders & deliveries"] });
+  // Inserts over the picture (V2) and music (A2) are part of the locked cut too.
+  const layer = (clips: EngineClip[], t: "V2" | "A2") => JSON.stringify(onTrack(clips, t).map((c) => [c.take_id ?? c.asset_id, c.record_in, c.duration, c.source_in, c.gain_db]));
+  if (layer(locked, "V2") !== layer(proposed, "V2")) impact.push({ scene_id: null, label: "Inserts over the picture (V2)", change: "recut", evidence: `${onTrack(locked, "V2").length} → ${onTrack(proposed, "V2").length} insert(s)`, affects: ["Renders & deliveries"] });
+  if (layer(locked, "A2") !== layer(proposed, "A2")) impact.push({ scene_id: null, label: "Music track (A2)", change: "recut", evidence: `${onTrack(locked, "A2").length} → ${onTrack(proposed, "A2").length} music clip(s)`, affects: ["Renders & deliveries"] });
   return { changed: impact.length > 0, impact, engine_version: ENGINE_VERSION };
 }

@@ -237,7 +237,7 @@ Everything not yet done, in build order. When an item is finished it moves up in
 | 6 | Premium voices (ElevenLabs) with Voice DNA | Lines are spoken by ElevenLabs when its key is added |
 | 7 | Lip sync on dialogue shots | Mouths match the lines when a lip-sync key is added |
 | 8 | More video providers verified with keys (Luma, Veo, Kling), image-to-video | A shot's approved still becomes a moving take |
-| 9 | Editorial insert track and music track (transitions ✅) | Inserts sit above the main picture; music runs across scenes |
+| 9 | ✅ Editorial insert track (V2) and music track (A2) — migration 0045, editDecisionEngine 1.2.0, renderManifest 1.7.0, 2026-09-30: an approved shot laid over the picture ("Over picture" in the bin) and music from the Assets Library placed across scenes with its own level; both ride along with every ripple edit, are in versions, Picture Lock, the EDL and the render (music in the mix, MX and M&E stems); an asset on the music track can't be deleted until it is removed from the cut | Inserts sit above the main picture; music runs across scenes |
 | 10 | Location Intelligence L1–L6 (see `LOCATION_INTELLIGENCE.md`) | Per phase, as written there |
 | 11 | Global platform: interface in many languages; scripts and dialogue in any language | The interface switches language; a script in another language flows through every stage |
 | 12 | Set dressing and prop continuity per scene; relationship map; pronunciation guide | Each works in its stage and is used downstream |

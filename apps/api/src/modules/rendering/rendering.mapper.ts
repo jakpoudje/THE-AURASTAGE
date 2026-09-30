@@ -10,4 +10,5 @@ export const toLockedClip = (r: Row): TimelineClip =>
     scene_id: r.scene_id ?? null, shot_id: r.shot_id ?? null, take_id: r.take_id ?? null, audio_session_version_id: r.audio_session_version_id ?? null,
     label: r.label, grade: { exposure: 0, contrast: 0, saturation: 0, temperature: 0, ...(r.grade ?? {}) },
     transition: r.transition ?? undefined,
+    asset_id: r.asset_id ?? null, gain_db: r.gain_db === null || r.gain_db === undefined ? 0 : Number(r.gain_db),
   });

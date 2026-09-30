@@ -42,6 +42,17 @@ export const listSessions = (db: SupabaseClient, p: string) =>
   rows(db.from("audio_sessions").select("id, scene_id, status, review_state, review_reason, approved_version_id, scene_seconds").eq("project_id", p));
 export const listMixVersions = (db: SupabaseClient, p: string) =>
   rows(db.from("audio_session_versions").select("id, session_id, version_number, tracks, clips, measurement, mix").eq("project_id", p));
+/** An audio file from this project's Assets Library (read-only; the Assets Library owns it), for the music track. */
+export async function getAudioAsset(db: SupabaseClient, p: string, id: string) {
+  const { data, error } = await db.from("assets").select("id, name, type, metadata, archived_at").eq("project_id", p).eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data as Row | null;
+}
+
+/** Audio files the music track can use (the Assets Library's own records, read-only). */
+export const listAudioAssets = (db: SupabaseClient, p: string) =>
+  rows(db.from("assets").select("id, name, category, metadata").eq("project_id", p).eq("type", "audio").is("archived_at", null).order("name", { ascending: true }));
+
 export async function getTimeline(db: SupabaseClient, p: string) {
   const { data, error } = await db.from("timelines").select("*").eq("project_id", p).maybeSingle();
   if (error) throw error;

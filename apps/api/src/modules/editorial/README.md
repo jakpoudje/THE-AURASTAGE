@@ -2,7 +2,9 @@
 
 ## Purpose
 Canonical authority for AssemblyTimeline / PictureLock (SRS §12). One timeline
-per project: V1 picture cut from APPROVED takes, A1 the APPROVED scene mixes.
+per project: V1 picture cut from APPROVED takes, A1 the APPROVED scene mixes, V2 inserts (an approved take shown
+over the picture while it lasts) and A2 music (an audio file from the Assets Library, its own level `gain_db`,
+migration 0045). V2/A2 are layer tracks: placing a clip there never ripples, and they ride along with every ripple edit.
 
 ## Canonical owner
 `timelines`, `timeline_clips`, `timeline_versions`, `picture_locks` (migration 0017).
@@ -17,12 +19,13 @@ Before reading, the service asks Audio Studio to refresh its review state
 ## Outputs / writes
 Only through SECURITY DEFINER functions: `save_timeline` (atomic replace of the clip
 list against the revision; references must belong to the project, takes must be
-finished takes of their shot, mixes must be of their scene, no overlaps),
+finished takes of their shot, mixes must be of their scene, music must be an audio asset of the project, no overlaps per track,
+transitions only on V1),
 `save_timeline_version`, `lock_picture`, `set_timeline_review`.
 
 ## Engines
 - `assemblyTimelineEngine` — first assembly: per scene, cut to the most recently started shot covering each moment of story time; no approved take → offline slug; mix on A1 in sync.
-- `editDecisionEngine` — insert, overwrite, trim (with/without ripple), roll, slip, slide, blade, lift, extract, move, grade, conform. Sync lock always on.
+- `editDecisionEngine` — insert, overwrite, trim (with/without ripple), roll, slip, slide, blade, lift, extract, move, grade, conform, gain (music level). Sources: take, insert_shot (V2), music (A2). Sync lock always on (1.2.0).
 - `editorialQCEngine` — blocking: picture present, no offline media, sources current, no overlaps; recommended: flash frames, gaps, A/V sync per scene, scenes without sound, runtime vs target. Each with timecodes.
 - `pictureLockEngine` — impact of changing a locked picture, per scene.
 - `edlExportEngine` — CMX 3600 EDL.
@@ -30,7 +33,7 @@ finished takes of their shot, mixes must be of their scene, no overlaps),
   edits a person makes: draw a stroke (thinned), set / move / remove a point, dip under a clip, clear a range.
 
 ## API endpoints
-- `GET  /api/projects/:id/editorial` — timeline, clips, upstream issues, QC, versions, locks, media bin, signed media links, mix snapshots for playback
+- `GET  /api/projects/:id/editorial` — timeline, clips, upstream issues, QC, versions, locks, media bin, `music_library` (the project's audio assets), signed media links, mix snapshots for playback
 - `POST /api/projects/:id/editorial/assemble` — `{base_revision, break_lock?}`; keeps the current cut as a version first
 - `POST /api/projects/:id/editorial/edit` — `EditRequest` (one NLE operation)
 - `POST /api/projects/:id/editorial/versions` — `{label}`
@@ -68,4 +71,4 @@ Project members read (RLS); editors write (checked inside every function).
 AURA-EDT-002 invalid input · 400 invalid reference/overlap · 403 · 404 · 409 timeline changed / edit not possible · 412 not ready · 423 picture locked (needs confirmation) · 500.
 
 ## Not built yet (tracked)
-Titles/graphics and subtitle tracks, transitions, multi-cam, colour scopes/curves (only a basic per-clip grade), VFX conform, AI-assisted assembly suggestions (needs the Provider Gateway).
+Subtitle tracks, multi-cam, colour scopes/curves (only a basic per-clip grade), VFX conform, AI-assisted assembly suggestions (needs the Provider Gateway).

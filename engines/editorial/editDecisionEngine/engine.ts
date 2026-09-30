@@ -3,7 +3,7 @@
 // Pieces created by a cut have id null; the caller assigns ids.
 import { NEUTRAL_GRADE, type TimelineTrack } from "@aurastage/contracts";
 import { end, onTrack, overlaps, sortClips, type EngineClip } from "../timeline";
-import { SYNC_LOCKED_TRACKS } from "./rules";
+import { LAYER_TRACKS, SYNC_LOCKED_TRACKS } from "./rules";
 import { EditRejectedError, validateEditDecisionInput } from "./validator";
 import { ENGINE_VERSION } from "./version";
 import type { EditDecisionOutput } from "./output.schema";
@@ -98,7 +98,11 @@ export function editDecisionEngine(raw: unknown): EditDecisionOutput {
       if (!new_clip) return reject("Nothing to place.");
       const d = new_clip.duration;
       const placed = { ...new_clip, record_in: op.at };
-      if (op.op === "insert") {
+      if ((LAYER_TRACKS as readonly string[]).includes(placed.track)) {
+        // An insert over the picture (V2) or music (A2) is laid on its own track: the cut never moves.
+        clips = clearRange(clips, op.at, op.at + d, placed.track);
+        summary = placed.track === "V2" ? `Laid “${placed.label}” over the picture — the cut is unchanged.` : `Laid “${placed.label}” on the music track — the cut is unchanged.`;
+      } else if (op.op === "insert") {
         clips = insertGap(clips, op.at, d, all);
         summary = `Inserted “${placed.label}” — everything after it moved ${d} frames later.`;
       } else {
@@ -206,12 +210,19 @@ export function editDecisionEngine(raw: unknown): EditDecisionOutput {
     }
     case "transition": {
       const c = find(op.clip_id);
-      if (c.track !== "V1") return reject("Transitions are for picture clips.");
+      if (c.track !== "V1") return reject("Transitions are for picture clips on V1.");
       const t = op.transition, used = (t.in !== "cut" ? t.frames : 0) + (t.out !== "cut" ? t.frames : 0);
       if (used > c.duration) return reject(`“${c.label}” is only ${c.duration} frames — too short for a ${t.frames}-frame transition at ${t.in !== "cut" && t.out !== "cut" ? "both ends" : "that end"}.`);
       c.transition = t;
       const words = [t.in === "dissolve" ? "dissolves in" : t.in === "fade_from_black" ? "fades up from black" : "", t.out === "fade_to_black" ? "fades out to black" : ""].filter(Boolean);
       summary = words.length ? `“${c.label}” now ${words.join(" and ")} (${t.frames} frames).` : `“${c.label}” now cuts in and out.`;
+      break;
+    }
+    case "gain": {
+      const c = find(op.clip_id);
+      if (c.kind !== "music") return reject("Only music clips have their own level here — scene mixes are levelled in Audio Studio.");
+      c.gain_db = op.gain_db;
+      summary = `“${c.label}” now plays at ${op.gain_db > 0 ? "+" : ""}${op.gain_db} dB.`;
       break;
     }
     case "conform": {

@@ -79,7 +79,7 @@ export async function renderDeliverable(claim: RenderClaim, d: RenderDeps): Prom
   try {
     await report(1, "Starting", true);
     const secs = m.duration_frames / m.fps;
-    const needsSound = !!p.audio && (m.audio.length > 0 || (!!p.video && !!(m as { title_music?: unknown }).title_music));
+    const needsSound = !!p.audio && (m.audio.length > 0 || ((m as { music?: unknown[] }).music ?? []).length > 0 || (!!p.video && !!(m as { title_music?: unknown }).title_music));
     const pcm = new Map<string, { channels: Float32Array[] }>();
     if (needsSound) {
       const ids = Object.keys(m.assets);

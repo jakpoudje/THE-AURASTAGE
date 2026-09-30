@@ -53,6 +53,24 @@ describe("renderManifestEngine", () => {
     expect(renderManifestEngine(input("edit_decision_list")).manifest!.edl).toContain("FCM: NON-DROP FRAME");
     expect(renderManifestEngine(input("subtitles", { lines: {} })).missing).toContain("There is no dialogue in the locked cut to subtitle");
   });
+  it("1.7.0: an insert on V2 is the picture while it lasts (V1 carries on underneath); music on A2 plays at its level", () => {
+    const i = input("streaming_master", {});
+    (i.clips as any[]).push(
+      clip(13, { track: "V2", kind: "take", record_in: 12, duration: 12, source_in: 5, take_id: U(22), label: "Close on the sheet" }),
+      clip(14, { track: "A2", kind: "music", record_in: 0, duration: 96, source_frames: 240, asset_id: U(41), gain_db: -12, label: "Main theme" }),
+    );
+    (i.takes as any)[U(22)] = { storage_key: "k22", media_type: "image/png", capability: "image", duration_seconds: null };
+    (i.assets as any)[U(41)] = { storage_key: "k41", media_type: "audio/wav" };
+    const { manifest, missing } = renderManifestEngine(i);
+    expect(missing).toEqual([]);
+    expect(manifest!.picture.map((s) => [s.kind, s.record_in, s.duration, s.source_in, s.take_id])).toEqual([
+      ["take", 0, 12, 0, U(20)], ["take", 12, 12, 5, U(22)], ["take", 24, 24, 24, U(20)], ["black", 48, 24, 0, null], ["take", 72, 24, 0, U(21)],
+    ]);
+    expect(manifest!.music).toEqual([{ record_in: 0, duration: 96, source_in: 0, asset_id: U(41), gain_db: -12, label: "Main theme" }]);
+    expect(manifest!.sources.asset_ids).toContain(U(41));
+    (i.assets as any)[U(41)] = { storage_key: null, media_type: null };
+    expect(renderManifestEngine(i).missing).toContain("Main theme: the music file is missing");
+  });
   it("is deterministic", () => {
     expect(JSON.stringify(renderManifestEngine(input()))).toBe(JSON.stringify(renderManifestEngine(input())));
   });
@@ -84,7 +102,7 @@ describe("renderManifestEngine 1.5.0: on-screen text from Scene DNA", () => {
     // The scene's first stretch is 48 frames (2 s), shorter than 4 s, so the text stays for the whole stretch.
     expect(manifest!.overlays).toEqual([{ record_in: 0, duration: 48, text: "LAGOS — 1995", position: "lower_third", scene_id: U(90) }]);
     expect(manifest!.sources.scene_captions).toEqual([U(90)]);
-    expect(manifest!.engine_versions.manifest).toBe("1.6.0");
+    expect(manifest!.engine_versions.manifest).toBe("1.7.0");
   });
   it("moves with the opening title card; caps at 4 s on a long stretch; only video deliverables; no captions = no overlays", () => {
     const titles = { opening: { frames: 120, svg: "<svg>T</svg>" }, end_credits: null, engine_version: "1.0.0" };

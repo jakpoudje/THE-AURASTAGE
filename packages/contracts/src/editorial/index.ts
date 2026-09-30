@@ -7,12 +7,15 @@ import { z } from "zod";
 /** Project timebase. All timeline positions and lengths are whole frames. */
 export const TIMELINE_FPS = 24;
 
-/** V1 = picture, A1 = scene mixes (approved Audio Studio versions). */
-export const TimelineTrackSchema = z.enum(["V1", "A1"]);
+/**
+ * V1 = picture, V2 = inserts over the picture (an approved take shown instead of V1 while it lasts), A1 = scene mixes
+ * (approved Audio Studio versions), A2 = music that runs across scenes (an audio file from the Assets Library).
+ */
+export const TimelineTrackSchema = z.enum(["V1", "V2", "A1", "A2"]);
 export type TimelineTrack = z.infer<typeof TimelineTrackSchema>;
 
-/** take = an approved generated take; slug = offline placeholder (no media yet); audio_mix = an approved scene mix. */
-export const TimelineClipKindSchema = z.enum(["take", "slug", "audio_mix"]);
+/** take = an approved generated take; slug = offline placeholder (no media yet); audio_mix = an approved scene mix; music = an audio file (A2). */
+export const TimelineClipKindSchema = z.enum(["take", "slug", "audio_mix", "music"]);
 export type TimelineClipKind = z.infer<typeof TimelineClipKindSchema>;
 
 export const ClipGradeSchema = z
@@ -59,6 +62,10 @@ export const TimelineClipSchema = z.object({
   label: z.string().min(1).max(200),
   grade: ClipGradeSchema,
   transition: ClipTransitionSchema.default(NO_TRANSITION),
+  /** A2 music: the Assets Library file it plays (migration 0045). */
+  asset_id: z.string().uuid().nullable().default(null),
+  /** A2 music: its level under the scene mixes (dB). */
+  gain_db: z.number().min(-60).max(12).default(0),
 });
 export type TimelineClip = z.infer<typeof TimelineClipSchema>;
 
@@ -69,6 +76,10 @@ const at = frame;
 export const EditSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("shot"), shot_id: z.string().uuid() }).strict(),
   z.object({ kind: z.literal("scene_mix"), scene_id: z.string().uuid() }).strict(),
+  /** An approved shot shown over the picture on V2 (an insert or cutaway); never moves the cut. */
+  z.object({ kind: z.literal("insert_shot"), shot_id: z.string().uuid() }).strict(),
+  /** An audio file from the Assets Library on A2 (music across scenes); never moves the cut. */
+  z.object({ kind: z.literal("music"), asset_id: z.string().uuid(), gain_db: z.number().min(-60).max(12).optional() }).strict(),
 ]);
 export type EditSource = z.infer<typeof EditSourceSchema>;
 
@@ -86,6 +97,8 @@ export const EditOperationSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("move"), clip_id: clipId, record_in: at }).strict(),
   z.object({ op: z.literal("grade"), clip_id: clipId, grade: ClipGradeSchema }).strict(),
   z.object({ op: z.literal("transition"), clip_id: clipId, transition: ClipTransitionSchema }).strict(),
+  /** A music clip's level (A2). */
+  z.object({ op: z.literal("gain"), clip_id: clipId, gain_db: z.number().min(-60).max(12) }).strict(),
   /** Swap every clip's source for the currently approved take / scene mix, keeping the cut. */
   z.object({ op: z.literal("conform") }).strict(),
 ]);

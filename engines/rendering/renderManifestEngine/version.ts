@@ -1,6 +1,6 @@
 export const ENGINE_ID = "rendering.renderManifestEngine";
-/** 1.2.0: scene mixes carry their channel strips (fx) and session routing (mix). 1.3.0: timeline volume automation. 1.4.0: opening title card and end-credits roll on video deliverables. 1.5.0: on-screen text per scene (overlays). 1.6.0: transitions on takes (dissolve, fade from/to black). */
-export const ENGINE_VERSION = "1.6.0";
+/** 1.2.0: scene mixes carry their channel strips (fx) and session routing (mix). 1.3.0: timeline volume automation. 1.4.0: opening title card and end-credits roll on video deliverables. 1.5.0: on-screen text per scene (overlays). 1.6.0: transitions on takes (dissolve, fade from/to black). 1.7.0: inserts over the picture (V2) and music across scenes (A2). */
+export const ENGINE_VERSION = "1.7.0";
 /** Deterministic, immutable render specification (SRS §12 RenderManifest). */
 export const ENGINE_KIND = "deterministic" as const;
 export const MANIFEST_SCHEMA = "aurastage.render-manifest/1";

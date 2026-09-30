@@ -1,6 +1,6 @@
 "use client";
 
-// Multi-track timeline (V1 picture, A1 scene mixes). Drag behaviour depends on
+// Multi-track timeline (V2 inserts over the picture, V1 picture, A1 scene mixes, A2 music across scenes). Drag behaviour depends on
 // the chosen tool; nothing changes locally — each gesture becomes ONE edit
 // operation sent to the API (engines/editorial/editDecisionEngine).
 import { useRef, useState } from "react";
@@ -13,6 +13,13 @@ const HEADER = 96;
 const EDGE = 7;
 type Zone = "body" | "in" | "out";
 interface Drag { id: string; zone: Zone; x0: number; dx: number }
+
+const LANES: { track: TimelineTrack; name: string; note: string; h: string }[] = [
+  { track: "V2", name: "Inserts", note: "shown over the picture", h: "h-12" },
+  { track: "V1", name: "Picture", note: "approved takes, shot by shot", h: "h-20" },
+  { track: "A1", name: "Sound", note: "each scene's approved mix", h: "h-12" },
+  { track: "A2", name: "Music", note: "runs across scenes", h: "h-10" },
+];
 
 export function TimelineView({
   clips, fps, ppf, frame, length, selectedId, tool, issueIds, media, busy, onSeek, onSelect, onOp,
@@ -99,11 +106,11 @@ export function TimelineView({
             ))}
           </div>
         </div>
-        {(["V1", "A1"] as TimelineTrack[]).map((track) => (
-          <div key={track} role="group" aria-label={`Track ${track}`} className={`flex border-b border-aura-border/60 ${track === "V1" ? "h-20" : "h-12"}`}>
+        {LANES.map(({ track, name, note, h }) => (
+          <div key={track} role="group" aria-label={`Track ${track}`} className={`flex border-b border-aura-border/60 ${h}`}>
             <div style={{ width: HEADER }} className="flex shrink-0 flex-col justify-center border-r border-aura-border bg-aura-panel px-2 text-xs">
-              <span className="font-medium">{track === "V1" ? "Picture" : "Sound"} <span className="text-white/40">{track}</span></span>
-              <span className="text-[9px] leading-tight text-white/40">{track === "V1" ? "approved takes, shot by shot" : "each scene's approved mix"}</span>
+              <span className="font-medium">{name} <span className="text-white/40">{track}</span></span>
+              <span className="text-[9px] leading-tight text-white/40">{note}</span>
             </div>
             <div className="relative flex-1" onClick={(e) => e.target === e.currentTarget && (onSelect(null), onSeek(frameAt(e.clientX)))}>
               {onTrack(clips, track).map((c) => {
@@ -131,7 +138,11 @@ export function TimelineView({
                         ? "border-red-400/70 bg-[repeating-linear-gradient(45deg,#2a0d0d,#2a0d0d_6px,#1a0808_6px,#1a0808_12px)]"
                         : c.kind === "audio_mix"
                           ? "border-emerald-500/60 bg-emerald-900/40"
-                          : "border-sky-400/50 bg-sky-900/40"
+                          : c.kind === "music"
+                            ? "border-fuchsia-400/60 bg-fuchsia-900/40"
+                            : c.track === "V2"
+                              ? "border-amber-300/70 bg-amber-900/40"
+                              : "border-sky-400/50 bg-sky-900/40"
                     } ${issue ? "outline outline-2 outline-aura-gold" : ""} ${selectedId === c.id ? "ring-2 ring-white" : ""}`}
                     onPointerDown={(e) => {
                       e.stopPropagation();

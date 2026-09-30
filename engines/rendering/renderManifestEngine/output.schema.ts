@@ -34,6 +34,8 @@ export const RenderManifestSchema = z.object({
   /** Picture, gap-free: every frame is either an approved take or black. */
   picture: z.array(PictureSegmentSchema),
   audio: z.array(z.object({ record_in: z.number().int(), duration: z.number().int(), source_in: z.number().int(), mix_version_id: z.string(), label: z.string() })),
+  /** Music across scenes (A2, manifest ≥ 1.7.0): Assets Library files at their own level, under the scene mixes. */
+  music: z.array(z.object({ record_in: z.number().int(), duration: z.number().int(), source_in: z.number().int(), asset_id: z.string(), gain_db: z.number(), label: z.string() })).default([]),
   mixes: z.record(z.object({
     seconds: z.number(),
     tracks: z.array(z.object({ id: z.string(), family: AudioFamilySchema, gain_db: z.number(), pan: z.number(), mute: z.boolean(), solo: z.boolean(), fx: TrackFxSchema })),

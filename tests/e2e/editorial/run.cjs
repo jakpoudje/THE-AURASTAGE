@@ -174,6 +174,29 @@ async function approveTakeFor(shotId) {
     await v1Clips().first().click();
     if ((await page.getByLabel("Transition in").inputValue()) !== "dissolve" || (await page.getByLabel("Transition length in frames").inputValue()) !== "4") throw new Error("the AI transition wasn't kept after reload");
   });
+  await step("item 9: an approved shot laid over the picture (V2) and music across scenes (A2) — the cut doesn't move; music level set; kept after reload", async () => {
+    const before = (await api("GET", `/api/projects/${P}/editorial`)).clips.filter((c) => c.track === "V1").map((c) => [c.record_in, c.duration]);
+    await page.getByRole("button", { name: "Over picture" }).first().click();
+    await page.getByRole("group", { name: "Track V2" }).getByRole("button", { name: /^Clip / }).first().waitFor();
+    const up = await (await fetch(`${API}/api/projects/${P}/assets/audio?name=Main%20theme.wav&duration=3&sample_rate=48000&channels=1`, { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav(3) })).json();
+    if (!up.id) throw new Error("music upload failed");
+    await reload();
+    await page.getByRole("group", { name: "Music for the music track" }).getByText(/Main theme\.wav/).waitFor();
+    await page.getByRole("group", { name: "Music for the music track" }).getByRole("button", { name: "Place Main theme.wav on A2" }).click();
+    const music = page.getByRole("group", { name: "Track A2" }).getByRole("button", { name: /Clip Main theme\.wav/ });
+    await music.waitFor();
+    await music.click();
+    await page.getByLabel("Music level (dB)").fill("-12");
+    await page.getByRole("button", { name: "Set level" }).click();
+    await page.getByText(/now plays at -12 dB/).waitFor();
+    await reload();
+    const ws = await api("GET", `/api/projects/${P}/editorial`);
+    if (JSON.stringify(ws.clips.filter((c) => c.track === "V1").map((c) => [c.record_in, c.duration])) !== JSON.stringify(before)) throw new Error("the cut moved");
+    const m = ws.clips.find((c) => c.track === "A2");
+    if (!m || m.gain_db !== -12 || m.asset_id !== up.id) throw new Error("music not kept: " + JSON.stringify(m));
+    if (!ws.clips.some((c) => c.track === "V2" && c.kind === "take")) throw new Error("insert not kept");
+    await page.getByRole("group", { name: "Track A2" }).getByRole("button", { name: /Clip Main theme\.wav/ }).waitFor();
+  });
   await step("save a named version; kept after reload", async () => {
     await page.getByLabel("Version name").fill("Director's cut");
     await page.getByRole("button", { name: "Save version" }).click();

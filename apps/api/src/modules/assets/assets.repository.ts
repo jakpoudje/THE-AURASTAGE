@@ -60,6 +60,9 @@ export const versionCounts = (db: SupabaseClient, projectId: string) => rows(db.
 export const listLinks = (db: SupabaseClient, projectId: string) => rows(db.from("asset_links").select("asset_id, object_type, object_id").eq("project_id", projectId));
 export const listAssetClips = (db: SupabaseClient, projectId: string) =>
   rows(db.from("audio_clips").select("asset_id, session_id, label").eq("project_id", projectId).not("asset_id", "is", null));
+/** Music on the cut's A2 track (Editorial owns it; read-only here, migration 0045). */
+export const listTimelineMusic = (db: SupabaseClient, projectId: string) =>
+  rows(db.from("timeline_clips").select("asset_id, label, record_in").eq("project_id", projectId).not("asset_id", "is", null));
 export const listSessions = (db: SupabaseClient, projectId: string) => rows(db.from("audio_sessions").select("id, scene_id").eq("project_id", projectId));
 export const listScenes = (db: SupabaseClient, projectId: string) =>
   rows(db.from("scenes").select("id, number, heading").eq("project_id", projectId).order("number", { ascending: true }));
