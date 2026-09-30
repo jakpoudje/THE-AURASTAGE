@@ -560,6 +560,26 @@ await check("editorial: versions restore (current cut kept first) and the EDL ex
   assert(edl.status === 200 && text.includes("FCM: NON-DROP FRAME") && /^001  /m.test(text), `edl ${edl.status}`);
   return `${ws.versions.length} versions, EDL ${text.split("\n").length} lines`;
 });
+await check("editorial item 9: an approved shot laid over the picture (V2) and music across scenes (A2) — the cut doesn't move; level set; the recording can't be deleted while in use", async () => {
+  let ws = await edWs();
+  const v1Before = JSON.stringify(ws.clips.filter((c: any) => c.track === "V1").map((c: any) => [c.id, c.record_in, c.duration]));
+  const shot = ws.bin.flatMap((b: any) => b.shots).find((s: any) => s.take);
+  assert(shot && ws.music_library.some((m: any) => m.asset_id === assetId), "bin shot or music library missing");
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "overwrite", at: 6, source: { kind: "insert_shot", shot_id: shot.shot_id }, duration: 12 } });
+  ws = await edWs();
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "overwrite", at: 0, source: { kind: "music", asset_id: assetId, gain_db: -12 } } });
+  ws = await edWs();
+  const v2 = ws.clips.filter((c: any) => c.track === "V2"), a2 = ws.clips.filter((c: any) => c.track === "A2");
+  assert(v2.length === 1 && v2[0].record_in === 6 && v2[0].kind === "take", "insert on V2: " + JSON.stringify(v2));
+  assert(a2.length === 1 && a2[0].kind === "music" && a2[0].asset_id === assetId && Number(a2[0].gain_db) === -12, "music on A2: " + JSON.stringify(a2));
+  assert(JSON.stringify(ws.clips.filter((c: any) => c.track === "V1").map((c: any) => [c.id, c.record_in, c.duration])) === v1Before, "the picture moved");
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "gain", clip_id: a2[0].id, gain_db: -15 } });
+  ws = await edWs();
+  assert(Number(ws.clips.find((c: any) => c.id === a2[0].id).gain_db) === -15, "level not saved");
+  await api("POST", `/api/assets/${assetId}/delete`, { confirm: true }, [409]);
+  const edl = await (await fetch(`${API}/api/projects/${projectId}/editorial/edl`, { headers: { Authorization: `Bearer ${token}` } })).text();
+  return `insert at ${v2[0].record_in}f for ${v2[0].duration}f, music ${a2[0].duration}f at -15 dB; EDL ${/V2|A2/.test(edl) ? "lists them" : "—"}`;
+});
 // ---- Export & Deliver (Phase 10): real renders by the render worker ----
 const dvWs = () => api("GET", `/api/projects/${projectId}/delivery`);
 const renderIds: Record<string, string> = {};
