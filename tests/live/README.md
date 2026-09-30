@@ -47,3 +47,11 @@ exists; read `SUMMARY n/m passed` in its deploy logs; then clean up as above.
 `workers/image-worker` runs as the Railway service `generation-worker`
 (`RAILWAY_DOCKERFILE_PATH=workers/image-worker/Dockerfile`, restart ALWAYS). The live
 checks above need it running: a queued sketch take must finish within ~60 s.
+
+## Provider key check (`keycheck.ts`)
+
+Checks, without printing any key, whether the Claude, OpenAI and Kling keys on the API server and the generation
+worker are accepted and can actually generate (one tiny request each). Run it through `live-smoke`: set
+`SMOKE_FILE=keycheck.ts` and the reference variables `API_ANTHROPIC_API_KEY=${{THE-AURASTAGE.ANTHROPIC_API_KEY}}`,
+`WORKER_ANTHROPIC_API_KEY=${{generation-worker.ANTHROPIC_API_KEY}}` (likewise `*_OPENAI_API_KEY`,
+`*_KLING_ACCESS_KEY`, `*_KLING_SECRET_KEY`), read `KEYCHECK DONE` in the logs, then set `SMOKE_FILE=smoke.ts` again.
