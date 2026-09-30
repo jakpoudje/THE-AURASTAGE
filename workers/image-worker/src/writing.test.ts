@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { writingOnce, type WritingClaim, type WritingDeps } from "./writing";
+import { inFlight, releaseInFlight, writingOnce, type WritingClaim, type WritingDeps } from "./writing";
 
 function deps(job: WritingClaim | null, run: WritingDeps["run"]) {
   const log: string[] = [];
@@ -26,5 +26,19 @@ describe("AuraScript writing worker", () => {
     const d = deps({ id: "g2", kind: "outline", input: {}, output: null }, async () => { throw new Error("Claude declined this request."); });
     await writingOnce(d);
     expect(d.log_).toContain("fail g2 Claude declined this request.");
+  });
+  it("regression (2026-09-30): a restart hands the job being written back to the queue at once; finished jobs aren't touched", async () => {
+    let releasedDuringRun: string[] = [];
+    const released: string[] = [];
+    const d = deps({ id: "g3", kind: "write_script", input: {}, output: null }, async () => {
+      releasedDuringRun = [...inFlight];
+      await releaseInFlight({ release: async (id) => void released.push(id), log: () => {} });
+      return { output: { scenes: [] }, checks: [], provider: "anthropic", model: "m", test_output: false, usage: {} };
+    });
+    await writingOnce(d);
+    expect(releasedDuringRun).toEqual(["g3"]);
+    expect(released).toEqual(["g3"]);
+    expect(inFlight.size).toBe(0);
+    expect(await releaseInFlight({ release: async (id) => void released.push(id), log: () => {} })).toBe(0);
   });
 });

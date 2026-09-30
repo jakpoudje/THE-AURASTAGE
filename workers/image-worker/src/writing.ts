@@ -9,7 +9,21 @@ export interface WritingDeps {
   progress(id: string, progress: Record<string, unknown>, output: Record<string, unknown> | null): Promise<void>;
   complete(id: string, r: { output: unknown; checks: unknown[]; provider: string; model: string; test_output: boolean; usage: unknown }): Promise<void>;
   fail(id: string, error: string): Promise<void>;
+  /** Puts a running job back in the queue with what it has written so far (migration 0038). */
+  release?(id: string): Promise<void>;
   log(event: string, data: Record<string, unknown>): void;
+}
+
+/** Jobs this worker is writing right now (so a restart can hand them back instead of leaving them stuck). */
+export const inFlight = new Set<string>();
+
+/** On shutdown: every unfinished writing job goes back to the queue at once; another lane resumes it where it stopped. */
+export async function releaseInFlight(d: Pick<WritingDeps, "release" | "log">) {
+  if (!d.release) return 0;
+  const ids = [...inFlight];
+  await Promise.all(ids.map((id) => d.release!(id).catch((e) => d.log("writing.release_failed", { id, error: (e as Error).message }))));
+  if (ids.length) d.log("writing.released", { ids });
+  return ids.length;
 }
 
 export async function writingOnce(d: WritingDeps): Promise<boolean> {
@@ -17,6 +31,7 @@ export async function writingOnce(d: WritingDeps): Promise<boolean> {
   if (!job) return false;
   const t = Date.now();
   d.log("writing.claimed", { id: job.id, kind: job.kind });
+  inFlight.add(job.id);
   try {
     const r = await d.run(job, (p, o) => d.progress(job.id, p, o));
     await d.complete(job.id, r);
@@ -24,6 +39,8 @@ export async function writingOnce(d: WritingDeps): Promise<boolean> {
   } catch (e) {
     await d.fail(job.id, (e as Error).message);
     d.log("writing.failed", { id: job.id, kind: job.kind, error: (e as Error).message });
+  } finally {
+    inFlight.delete(job.id);
   }
   return true;
 }

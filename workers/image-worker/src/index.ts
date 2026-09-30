@@ -11,7 +11,7 @@ import { runOnce, type Claim } from "./worker";
 import { planOnce, type PlanClaim } from "./planner";
 import { audioOnce, type AudioClaim } from "./audio";
 import { refOnce, type RefClaim } from "./refs";
-import { writingOnce, type WritingClaim } from "./writing";
+import { releaseInFlight, writingOnce, type WritingClaim } from "./writing";
 import { runWritingJob } from "@aurastage/api/dist/modules/screenplay/screenplay.writingJob";
 
 const env = process.env;
@@ -91,11 +91,13 @@ const writingDeps = {
   complete: (id: string, r: { output: unknown; checks: unknown[]; provider: string; model: string; test_output: boolean; usage: unknown }) =>
     rpc<void>("worker_complete_script_generation", { p_token: token, p_id: id, p_output: r.output, p_checks: r.checks, p_provider: r.provider, p_model: r.model, p_test_output: r.test_output, p_usage: r.usage }),
   fail: (id: string, error: string) => rpc<void>("worker_fail_script_generation", { p_token: token, p_id: id, p_error: error }),
+  release: (id: string) => rpc<void>("worker_release_script_generation", { p_token: token, p_id: id }),
   log,
 };
 
 let stopping = false;
-process.on("SIGTERM", () => (stopping = true));
+// A restart (redeploy) hands unfinished writing back to the queue straight away, with everything written so far.
+process.on("SIGTERM", () => { stopping = true; void releaseInFlight(writingDeps); });
 process.on("SIGINT", () => (stopping = true));
 
 // Script writing runs in its own lane: a full script can take many minutes of model calls, and it must never hold up
