@@ -58,7 +58,7 @@ export type AssetLinkInput = z.infer<typeof AssetLinkInputSchema>;
 
 /** Where an asset is used, each with the evidence it came from. */
 export const AssetUsageSchema = z.object({
-  kind: z.enum(["audio_clip", "render", "link"]),
+  kind: z.enum(["audio_clip", "render", "link", "reference"]),
   scene_id: z.string().uuid().nullable(),
   label: z.string(),
   href: z.string().nullable(),

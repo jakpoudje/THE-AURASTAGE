@@ -65,9 +65,9 @@ export const listWorldItems = async (db: SupabaseClient, projectId: string) => (
 export const listSceneAppearances = (db: SupabaseClient, sceneId: string) =>
   rows(db.from("world_appearances").select("object_type, object_id").eq("scene_id", sceneId));
 export const listWorldRefs = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("world_reference_images").select("object_type, object_id, view_key, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").order("created_at", { ascending: false }));
+  rows(db.from("world_reference_images").select("object_type, object_id, view_key, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").not("asset_id", "is", null).order("created_at", { ascending: false }));
 export const listCharacterRefs = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("character_reference_images").select("character_id, look_id, age_state_id, angle, size, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").order("created_at", { ascending: false }));
+  rows(db.from("character_reference_images").select("character_id, look_id, age_state_id, angle, size, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").not("asset_id", "is", null).order("created_at", { ascending: false }));
 export const listPackages = (db: SupabaseClient, projectId: string) =>
   rows(db.from("generation_packages").select("*").eq("project_id", projectId).order("created_at", { ascending: false }));
 export const listTakes = (db: SupabaseClient, projectId: string) =>

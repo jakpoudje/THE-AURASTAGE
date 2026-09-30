@@ -78,7 +78,7 @@ export async function getWorldWorkspace(db: SupabaseClient, projectId: string) {
     many(db.from("locations").select("*").eq("project_id", projectId).order("created_at", { ascending: true })),
     many(db.from("props").select("*").eq("project_id", projectId).order("created_at", { ascending: true })),
     many(db.from("world_appearances").select("object_type, object_id, scene_id, scene_number, line, evidence, source").eq("project_id", projectId)),
-    many(db.from("world_reference_images").select("object_type, object_id, view_key, asset_id, completed_at").eq("project_id", projectId).eq("status", "succeeded").order("completed_at", { ascending: false }).limit(1000)),
+    many(db.from("world_reference_images").select("object_type, object_id, view_key, asset_id, completed_at").eq("project_id", projectId).eq("status", "succeeded").not("asset_id", "is", null).order("completed_at", { ascending: false }).limit(1000)),
     many(db.from("jobs").select("input_snapshot, output_refs, engine_version, completed_at").eq("project_id", projectId).eq("engine_id", "world.worldExtractionEngine").eq("status", "completed").order("completed_at", { ascending: false }).limit(1)),
     many(db.from("scripts").select("approved_version_id").eq("project_id", projectId).limit(1)),
   ]);
@@ -165,13 +165,13 @@ export async function getWorldLook(db: SupabaseClient, kindRaw: string, id: stri
     .eq("object_type", kind).eq("object_id", id).order("created_at", { ascending: false }).limit(300));
   const views = out.views.map((v) => {
     const hist = refs.filter((x) => x.view_key === v.key);
-    const latest = hist[0] ?? null, lastGood = hist.find((x) => x.status === "succeeded") ?? null;
+    const latest = hist[0] ?? null, lastGood = hist.find((x) => x.status === "succeeded" && x.asset_id) ?? null;
     return {
       ...v,
       latest: latest && { id: latest.id, status: latest.status, error: latest.error, provider: latest.provider, execution: latest.execution, created_at: latest.created_at },
       // Made from an older description / style: flagged for review, kept (rule 11).
       image: lastGood && { reference_id: lastGood.id, asset_id: lastGood.asset_id, provider: lastGood.provider, execution: lastGood.execution, created_at: lastGood.completed_at, stale: lastGood.identity_hash !== out.identity_hash },
-      versions: hist.filter((x) => x.status === "succeeded").length,
+      versions: hist.filter((x) => x.status === "succeeded" && x.asset_id).length,
     };
   });
   return {

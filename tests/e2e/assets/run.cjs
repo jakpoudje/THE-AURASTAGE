@@ -221,6 +221,30 @@ You came.
     await api("POST", "/__test/as", { role: "owner" });
   });
 
+  await step("delete (owner request 2026-09-30): a linked image warns exactly where it's used, then goes; an unused one says so; reload: both gone", async () => {
+    await page.goto(`${BASE}/projects/${P}/assets`);
+    const warn = () => detail().getByRole("alertdialog", { name: "Delete this asset" });
+    await card().click();
+    await detail().getByRole("button", { name: "Delete…" }).click();
+    const where = warn().getByRole("list", { name: "Where it is used" });
+    await where.getByText(/Scene 1/).waitFor();
+    await where.getByText(/Casting/).waitFor();
+    await warn().getByRole("button", { name: "Cancel" }).click();
+    if (await warn().count()) throw new Error("cancel should close the warning");
+    await detail().getByRole("button", { name: "Delete…" }).click();
+    await warn().getByRole("button", { name: "Delete anyway" }).click();
+    await page.getByRole("status").getByText("Deleted “Harbour at dawn”.").waitFor();
+    const take = () => page.getByRole("list", { name: "Assets" }).getByRole("button", { name: /Amara line take/ });
+    await take().click();
+    await detail().getByRole("button", { name: "Delete…" }).click();
+    await warn().getByText("It isn't used anywhere in this project.").waitFor();
+    await warn().getByRole("button", { name: "Delete permanently" }).click();
+    await page.getByRole("status").getByText("Deleted “Amara line take”.").waitFor();
+    await page.reload();
+    await page.getByLabel("Search assets").waitFor();
+    if ((await card().count()) || (await take().count())) throw new Error("deleted assets still listed after reload");
+  });
+
   await browser.close();
   if (errors.length) { console.log("ERRORS:", errors); failed++; }
   console.log(failed ? `${failed} FAILED` : "ALL PASSED");

@@ -106,6 +106,23 @@ export function useLibrary(projectId: string) {
     replace: (file: File, note: string) =>
       run("Saved as a new version. Earlier versions are kept.", async () => assetsApi.replace(selected!, file, { note, ...(await readFileSpecs(file)) })),
     update: (patch: Record<string, unknown>, label = "Saved.") => run(label, () => assetsApi.update(selected!, patch)),
+    remove: async (confirm: boolean) => {
+      const id = selected;
+      if (!id) return;
+      setBusy(true);
+      setError(null);
+      setNotice(null);
+      try {
+        const r = await assetsApi.remove(id, confirm);
+        selectAsset(null);
+        await load(filters);
+        setNotice(r.files_left ? `Deleted “${r.name}”. ${r.files_left} stored file(s) couldn't be removed yet — they're private and will be cleaned up.` : `Deleted “${r.name}”.`);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Something went wrong");
+      } finally {
+        setBusy(false);
+      }
+    },
     link: (type: "scene" | "character", id: string, linked: boolean) => run(linked ? "Linked." : "Link removed.", () => assetsApi.link(selected!, type, id, linked)),
     clearError: () => setError(null),
   };

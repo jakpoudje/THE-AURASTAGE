@@ -5,7 +5,7 @@
 // served back to project members through this API.
 import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getMedia, mediaConfigured, putMedia } from "../../storage/media";
+import { deleteMedia, getMedia, mediaConfigured, putMedia } from "../../storage/media";
 import { assertAssetAccess, assertProjectAccess } from "./assets.permissions";
 import * as repo from "./assets.repository";
 import { toAssetDTO } from "./assets.mapper";
@@ -60,7 +60,7 @@ export async function readAssetContent(db: SupabaseClient, assetId: string, env:
 // ---------------------------------------------------------------------------------
 // Assets Library (completion pass 12b)
 // ---------------------------------------------------------------------------------
-type Usage = { kind: "audio_clip" | "render" | "link"; scene_id: string | null; label: string; href: string | null };
+type Usage = { kind: "audio_clip" | "render" | "link" | "reference"; scene_id: string | null; label: string; href: string | null };
 
 const PROFILE_LABELS: Record<string, string> = {
   streaming_master: "Streaming Master", review_copy: "Review Copy", mezzanine_master: "Mezzanine Master", audio_package: "Audio Package",
@@ -69,9 +69,10 @@ const PROFILE_LABELS: Record<string, string> = {
 
 /** Where every asset is used, from the records themselves: Audio Studio clips, render manifests, and links people made. */
 async function usageIndex(db: SupabaseClient, projectId: string) {
-  const [clips, sessions, scenes, chars, links, renders, world] = await Promise.all([
+  const [clips, sessions, scenes, chars, links, renders, world, refs] = await Promise.all([
     repo.listAssetClips(db, projectId), repo.listSessions(db, projectId), repo.listScenes(db, projectId),
     repo.listCharacters(db, projectId), repo.listLinks(db, projectId), repo.listRenderSources(db, projectId), repo.listWorldNames(db, projectId),
+    repo.listReferenceUses(db, projectId),
   ]);
   const sceneLabel = (id: string) => {
     const s = scenes.find((x) => x.id === id);
@@ -96,6 +97,15 @@ async function usageIndex(db: SupabaseClient, projectId: string) {
       const ch = chars.find((x) => x.id === l.object_id);
       push(l.asset_id, { kind: "link", scene_id: null, label: `${ch?.name ?? "A character"} · Casting`, href: `/projects/${projectId}/casting` });
     }
+  }
+  // Reference views: the image a character's or place's look is built from (prompts send it to image providers).
+  for (const r of refs.characters) {
+    const ch = chars.find((x) => x.id === r.character_id);
+    push(r.asset_id, { kind: "reference", scene_id: null, label: `${ch?.name ?? "A character"} · Look & References (${String(r.angle).replace(/_/g, " ")} ${String(r.size).replace(/_/g, " ").toLowerCase()})`, href: `/projects/${projectId}/casting` });
+  }
+  for (const r of refs.world) {
+    const w = world.find((x) => x.id === r.object_id);
+    push(r.asset_id, { kind: "reference", scene_id: null, label: `${w?.name ?? (r.object_type === "location" ? "A location" : "A prop")} · Locations & Props (${String(r.view_key).replace(/[_:]/g, " ").toLowerCase()} view)`, href: `/projects/${projectId}/world` });
   }
   for (const r of renders) {
     for (const id of (Array.isArray(r.asset_ids) ? r.asset_ids : []) as string[]) {
@@ -214,6 +224,23 @@ export async function editAsset(db: SupabaseClient, assetId: string, payload: un
   if (!p.success) throw new AssetValidationError(p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
   await repo.updateAsset(db, assetId, p.data);
   return getAssetDetail(db, assetId);
+}
+
+/**
+ * Deletes an asset for good (owner request 2026-09-30). `confirm` is needed when it is in use anywhere (the detail view
+ * lists exactly where first); a recording on Audio Studio clips is refused with the scenes named. Then every version's
+ * file is removed from the private bucket; a file that can't be removed is reported, never silently kept as "deleted".
+ */
+export async function deleteAsset(db: SupabaseClient, assetId: string, payload: unknown, env: Env = process.env) {
+  await assertAssetAccess(db, assetId);
+  const confirm = !!(payload && typeof payload === "object" && (payload as Row).confirm === true);
+  const r = await repo.deleteAsset(db, assetId, confirm);
+  const paths = (r.storage_paths ?? []).filter(Boolean);
+  let left = 0;
+  if (paths.length && mediaConfigured(env)) {
+    for (const p of paths) await deleteMedia(p, env).catch(() => void left++);
+  }
+  return { deleted: true, name: r.name, files_removed: mediaConfigured(env) ? paths.length - left : 0, files_left: mediaConfigured(env) ? left : paths.length };
 }
 
 export async function linkAsset(db: SupabaseClient, assetId: string, payload: unknown) {

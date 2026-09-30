@@ -64,6 +64,11 @@ export const listSessions = (db: SupabaseClient, projectId: string) => rows(db.f
 export const listScenes = (db: SupabaseClient, projectId: string) =>
   rows(db.from("scenes").select("id, number, heading").eq("project_id", projectId).order("number", { ascending: true }));
 /** Location and prop names for usage labels (read-only; the Locations & Props domain owns them). */
+/** Reference views made into this library (Casting and Locations & Props), read-only here. */
+export const listReferenceUses = async (db: SupabaseClient, projectId: string) => ({
+  characters: await rows(db.from("character_reference_images").select("asset_id, character_id, angle, size").eq("project_id", projectId).eq("status", "succeeded").not("asset_id", "is", null)),
+  world: await rows(db.from("world_reference_images").select("asset_id, object_type, object_id, view_key").eq("project_id", projectId).eq("status", "succeeded").not("asset_id", "is", null)),
+});
 export const listWorldNames = async (db: SupabaseClient, projectId: string) => [
   ...(await rows(db.from("locations").select("id, name").eq("project_id", projectId))).map((r: any) => ({ ...r, kind: "location" as const })),
   ...(await rows(db.from("props").select("id, name").eq("project_id", projectId))).map((r: any) => ({ ...r, kind: "prop" as const })),
@@ -74,6 +79,8 @@ export const listRenderSources = (db: SupabaseClient, projectId: string) =>
   rows(db.from("renders").select("id, profile_id, lock_number, status, asset_ids:manifest->sources->asset_ids").eq("project_id", projectId).neq("status", "cancelled"));
 export const listHistory = (db: SupabaseClient, assetId: string) =>
   rows(db.from("audit_events").select("action, metadata, actor_id, created_at").eq("object_type", "Asset").eq("object_id", assetId).order("created_at", { ascending: false }).limit(50));
+export const deleteAsset = (db: SupabaseClient, id: string, confirm: boolean) =>
+  rpc<{ name: string; storage_paths: string[] }>(db, "delete_asset", { p_asset: id, p_confirm: confirm });
 export const updateAsset = (db: SupabaseClient, id: string, patch: Row) => rpc(db, "update_asset", { p_asset: id, p_patch: patch });
 export const addVersion = (db: SupabaseClient, a: { assetId: string; path: string; checksum: string; metadata: Row; note: string }) =>
   rpc(db, "add_asset_version", { p_asset: a.assetId, p_storage_path: a.path, p_checksum: a.checksum, p_metadata: a.metadata, p_note: a.note });

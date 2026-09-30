@@ -25,6 +25,8 @@ export const assetsApi = {
     apiUpload<AssetDetail>(`/api/projects/${projectId}/library?${meta(m)}`, file, contentTypeOf(file)),
   replace: (assetId: string, file: File, m: Record<string, string | number | null | undefined>) =>
     apiUpload<AssetDetail>(`/api/assets/${assetId}/versions?${meta(m)}`, file, contentTypeOf(file)),
+  remove: (assetId: string, confirm: boolean) =>
+    apiPost<{ deleted: true; name: string; files_removed: number; files_left: number }>(`/api/assets/${assetId}/delete`, { confirm }),
   update: (assetId: string, patch: Record<string, unknown>) => apiPatch<AssetDetail>(`/api/assets/${assetId}`, patch),
   link: (assetId: string, object_type: "scene" | "character", object_id: string, linked: boolean) =>
     apiPost<AssetDetail>(`/api/assets/${assetId}/links`, { object_type, object_id, linked }),

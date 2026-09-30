@@ -5,6 +5,7 @@ const stored: Record<string, Buffer> = {};
 vi.mock("../../../storage/media", () => ({
   mediaConfigured: (env: Record<string, string | undefined> = process.env) => !!env.MEDIA_BUCKET,
   putMedia: async (key: string, bytes: Buffer) => void (stored[key] = Buffer.from(bytes)),
+  deleteMedia: async (key: string) => void delete stored[key],
   getMedia: async (key: string) => ({ bytes: new Uint8Array(stored[key] ?? []), contentType: "application/octet-stream" }),
 }));
 import { registerAssetsRoutes } from "../assets.controller";
@@ -55,6 +56,13 @@ function app(rows: Record<string, any[]>, calls: any[]) {
           if (args.p_patch.name === "forbidden") return { data: null, error: { message: "AURA-COL-403: your role (Writer) can't edit in the Assets Library. Ask the project's producer for access.", code: "42501" } };
           Object.assign(rows.assets.find((x) => x.id === args.p_asset), args.p_patch);
           return { data: {}, error: null };
+        }
+        if (fn === "delete_asset") {
+          const a0 = rows.assets.find((x) => x.id === args.p_asset);
+          if (rows.audio_clips.some((c) => c.asset_id === a0.id)) return { data: null, error: { message: `AURA-AST-409: “${a0.name}” is placed on Audio Studio clips in Scene 1 — remove it from those clips first (or archive it to hide it)`, code: "P0409" } };
+          if (rows.character_reference_images?.some((r) => r.asset_id === a0.id) && !args.p_confirm) return { data: null, error: { message: `AURA-AST-409: “${a0.name}” is in use in this project — confirm to delete it anyway`, code: "P0409" } };
+          rows.assets = rows.assets.filter((x) => x !== a0);
+          return { data: { name: a0.name, storage_paths: rows.asset_versions.filter((v) => v.asset_id === a0.id).map((v) => v.storage_path) }, error: null };
         }
         if (fn === "set_asset_link") {
           rows.asset_links.push({ asset_id: args.p_asset, project_id: P, object_type: args.p_object_type, object_id: args.p_object_id });
@@ -158,5 +166,21 @@ describe("Assets Library routes", () => {
     const l = await a.inject({ method: "POST", url: `/api/assets/${WAV}/links`, payload: { object_type: "character", object_id: CH } });
     expect(l.json().links.map((x: any) => x.label)).toEqual(["Amara Bello · Casting"]);
     expect((await a.inject({ method: "POST", url: `/api/assets/${WAV}/links`, payload: { object_type: "planet", object_id: CH } })).statusCode).toBe(400);
+  });
+
+  it("delete (owner request 2026-09-30): a recording on Audio Studio clips is refused with the scene named; a reference view is listed as a use and needs confirmation; the files leave the bucket", async () => {
+    const a = app(rows, []);
+    await registerAssetsRoutes(a);
+    const refused = await a.inject({ method: "POST", url: `/api/assets/${WAV}/delete`, payload: { confirm: true } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.message).toMatch(/Audio Studio clips in Scene 1/);
+    rows.audio_clips = [];
+    rows.character_reference_images = [{ asset_id: WAV, character_id: CH, angle: "front", size: "FULL", project_id: P, status: "succeeded" }];
+    const d = (await a.inject({ method: "GET", url: `/api/assets/${WAV}` })).json();
+    expect(d.asset.usage.map((u: any) => u.label)).toContain("Amara Bello · Look & References (front full)");
+    expect((await a.inject({ method: "POST", url: `/api/assets/${WAV}/delete`, payload: {} })).statusCode).toBe(409);
+    const ok = await a.inject({ method: "POST", url: `/api/assets/${WAV}/delete`, payload: { confirm: true } });
+    expect(ok.json()).toEqual({ deleted: true, name: "Tunde line 1", files_removed: 1, files_left: 0 });
+    expect(stored["k/wav1.wav"]).toBeUndefined();
   });
 });

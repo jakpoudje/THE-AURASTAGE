@@ -35,6 +35,7 @@ function fakeDb(rows: Record<string, Row[]>, rpcImpl: (fn: string, args: Row) =>
     const q = {
       select: () => q,
       eq: (k: string, v: unknown) => (filters.push([k, v]), q),
+      not: () => q,
       order: () => q,
       maybeSingle: async () => ({ data: res()[0] ?? null, error: null }),
       then: (ok: (v: unknown) => void) => ok({ data: res(), error: null }),

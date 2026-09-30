@@ -1345,6 +1345,16 @@ http.createServer((req, res) => {
         return send(200, detailOf(a));
       }
     }
+    // Delete for good (mirrors migration 0043 delete_asset): refused while on Audio Studio clips; other uses need confirm.
+    if ((m = u.match(/^\/api\/assets\/([0-9a-f-]{36})\/delete$/)) && req.method === "POST") {
+      const a = assetById(m[1]); if (!a) return astErr(404, "Asset not found");
+      if (astGate("edit")) return;
+      const onClips = usageOf(a).filter((x) => x.kind === "audio_clip");
+      if (onClips.length) return astErr(409, `“${a.name}” is placed on Audio Studio clips in ${onClips.map((x) => x.label.split(" — ")[0]).join(", ")} — remove it from those clips first (or archive it to hide it)`);
+      if (usageOf(a).length && b.confirm !== true) return astErr(409, `“${a.name}” is in use in this project — confirm to delete it anyway`);
+      assets.splice(assets.indexOf(a), 1);
+      return send(200, { deleted: true, name: a.name, files_removed: a.versions.length, files_left: 0 });
+    }
     if ((m = u.match(/^\/api\/assets\/([0-9a-f-]{36})\/versions$/)) && req.method === "POST") {
       const a = assetById(m[1]); if (astGate("edit")) return;
       const k = sniffLib(req.headers["content-type"]); if (k.error) return astErr(400, k.error);

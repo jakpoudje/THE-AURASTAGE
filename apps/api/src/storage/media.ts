@@ -5,7 +5,7 @@
 // Env (Railway variable references to the "aurastage-media" bucket):
 //   MEDIA_BUCKET, MEDIA_ENDPOINT, MEDIA_REGION, MEDIA_ACCESS_KEY_ID, MEDIA_SECRET_ACCESS_KEY
 import { createReadStream, statSync } from "node:fs";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 type Env = Record<string, string | undefined>;
@@ -36,6 +36,11 @@ export async function putMediaFile(storageKey: string, filePath: string, content
   const size = statSync(filePath).size;
   await client(env).send(new PutObjectCommand({ Bucket: env.MEDIA_BUCKET, Key: storageKey, Body: createReadStream(filePath), ContentLength: size, ContentType: contentType }));
   return size;
+}
+
+/** Removes one object (a deleted asset's files). Missing objects are not an error. */
+export async function deleteMedia(storageKey: string, env: Env = process.env) {
+  await client(env).send(new DeleteObjectCommand({ Bucket: env.MEDIA_BUCKET, Key: storageKey }));
 }
 
 export async function getMedia(storageKey: string, env: Env = process.env): Promise<{ bytes: Uint8Array; contentType: string }> {

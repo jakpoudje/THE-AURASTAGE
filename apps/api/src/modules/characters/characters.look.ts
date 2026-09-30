@@ -62,14 +62,15 @@ export async function getCharacterLook(db: SupabaseClient, characterId: string, 
   const views = out.views.map((v) => {
     const hist = mine.filter((r) => `${r.angle}:${r.size}` === v.key);
     const latest = hist[0] ?? null;
-    const lastGood = hist.find((r) => r.status === "succeeded") ?? null;
+    // A view whose image was deleted from the Assets Library counts as missing (asset_id is cleared then).
+    const lastGood = hist.find((r) => r.status === "succeeded" && r.asset_id) ?? null;
     return {
       ...v, in_default_set: characterLook.DEFAULT_VIEWS.some(([a, s]) => `${a}:${s}` === v.key),
       latest: latest && { id: latest.id, status: latest.status, error: latest.error, provider: latest.provider, execution: latest.execution, created_at: latest.created_at },
       image: lastGood && { reference_id: lastGood.id, asset_id: lastGood.asset_id, provider: lastGood.provider, execution: lastGood.execution, created_at: lastGood.completed_at,
         // Made from an older profile / wardrobe / style: flagged for review, kept (rule 11).
         stale: lastGood.identity_hash !== out.identity_hash },
-      versions: hist.filter((r) => r.status === "succeeded").length,
+      versions: hist.filter((r) => r.status === "succeeded" && r.asset_id).length,
     };
   });
   return {

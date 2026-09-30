@@ -455,6 +455,19 @@ await check("assets: upload an image (fake refused), set details, link to a scen
   assert(detail.history.map((h: any) => h.action).includes("AssetRestored") && detail.versions.length === 1, "history");
   return `${detail.history.length} history entries`;
 });
+await check("assets: delete (migration 0043) — a recording in the mix is refused with its scene named; a linked image needs confirmation, then it and its files are gone", async () => {
+  const blocked = await api("POST", `/api/assets/${assetId}/delete`, { confirm: true }, [409]);
+  assert(/Audio Studio clips in Scene 1/.test(JSON.stringify(blocked)), "the refusal should name the scene: " + JSON.stringify(blocked));
+  const detail = await api("GET", `/api/assets/${imageId}`);
+  assert(detail.asset.usage.length === 2, "usage shown before deleting: " + JSON.stringify(detail.asset.usage));
+  await api("POST", `/api/assets/${imageId}/delete`, {}, [409]);
+  const r = await api("POST", `/api/assets/${imageId}/delete`, { confirm: true });
+  assert(r.deleted === true && r.files_left === 0, "delete " + JSON.stringify(r));
+  await api("GET", `/api/assets/${imageId}`, undefined, [403, 404]);
+  const lib = await api("GET", `/api/projects/${projectId}/library`);
+  assert(!lib.assets.some((a: any) => a.id === imageId), "still listed");
+  return `${r.files_removed} file(s) removed`;
+});
 // ---- Editorial & Timeline (Phase 9) ----
 let edRev = "";
 const edWs = () => api("GET", `/api/projects/${projectId}/editorial`);

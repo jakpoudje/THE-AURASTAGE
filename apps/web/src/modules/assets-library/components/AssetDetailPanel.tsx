@@ -19,11 +19,12 @@ async function download(assetId: string, name: string, version: number) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, onReplace, onLink, onClose }: {
+export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, onReplace, onLink, onDelete, onClose }: {
   d: AssetDetail; lib: Library; projectId: string; canEdit: boolean; busy: boolean;
   onUpdate: (patch: Record<string, unknown>, label?: string) => void; onReplace: (f: File, note: string) => void;
-  onLink: (type: "scene" | "character", id: string, linked: boolean) => void; onClose: () => void;
+  onLink: (type: "scene" | "character", id: string, linked: boolean) => void; onDelete: (confirm: boolean) => void; onClose: () => void;
 }) {
+  const [deleting, setDeleting] = useState(false);
   const a = d.asset;
   const [tab, setTab] = useState<(typeof TABS)[number]>("Overview");
   const [draft, setDraft] = useState({ name: a.name, category: a.category, description: a.description, tags: a.tags.join(", ") });
@@ -73,7 +74,52 @@ export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, o
           <button onClick={() => onUpdate({ archived: !a.archived }, a.archived ? "Restored." : "Archived. It's kept, with every version.")} disabled={busy}
             className="rounded-md border border-aura-border px-3 py-1.5 text-xs text-white/60">{a.archived ? "Restore" : "Archive"}</button>
         )}
+        {canEdit && (
+          <button onClick={() => setDeleting(true)} disabled={busy} className="rounded-md border border-red-500/50 px-3 py-1.5 text-xs text-red-300">Delete…</button>
+        )}
       </div>
+      {deleting && (() => {
+        // Owner request 2026-09-30: say exactly where it is used before deleting. A recording on Audio Studio clips can't go
+        // (the mix would lose it); anything else can, after this warning.
+        const clips = a.usage.filter((u) => u.kind === "audio_clip");
+        const others = a.usage.filter((u) => u.kind !== "audio_clip");
+        return (
+          <div role="alertdialog" aria-label="Delete this asset" className="mt-3 rounded-md border border-red-500/40 bg-red-500/5 p-3 text-sm">
+            <p className="font-medium text-red-200">Delete “{a.name}” for good?</p>
+            <p className="mt-1 text-xs text-white/60">All {d.versions.length} version{d.versions.length === 1 ? "" : "s"} and the file{d.versions.length === 1 ? "" : "s"} are removed. This can't be undone — Archive hides it instead and keeps everything.</p>
+            {clips.length > 0 ? (
+              <>
+                <p className="mt-2 text-xs text-red-200">It can't be deleted while it is placed in Audio Studio:</p>
+                <ul aria-label="Blocking uses" className="mt-1 list-disc pl-5 text-xs text-white/70">
+                  {clips.map((u) => <li key={u.label}>{u.href ? <Link href={u.href} className="underline">{u.label}</Link> : u.label}</li>)}
+                </ul>
+                <p className="mt-1 text-xs text-white/50">Remove it from those clips first, or archive it.</p>
+              </>
+            ) : others.length > 0 ? (
+              <>
+                <p className="mt-2 text-xs text-aura-gold">It is used in this project:</p>
+                <ul aria-label="Where it is used" className="mt-1 list-disc pl-5 text-xs text-white/70">
+                  {others.map((u) => <li key={u.label}>{u.href ? <Link href={u.href} className="underline">{u.label}</Link> : u.label}</li>)}
+                </ul>
+                <p className="mt-1 text-xs text-white/50">
+                  {others.some((u) => u.kind === "reference") && "Reference views made from it will show as missing and can be made again. "}
+                  {others.some((u) => u.kind === "render") && "Deliverables already made keep their own copy; a new render will need a replacement. "}
+                  {others.some((u) => u.kind === "link") && "Its links to scenes and characters are removed."}
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-xs text-white/60">It isn't used anywhere in this project.</p>
+            )}
+            <div className="mt-3 flex gap-2">
+              {clips.length === 0 && (
+                <button onClick={() => { onDelete(others.length > 0); setDeleting(false); }} disabled={busy}
+                  className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white">{others.length ? "Delete anyway" : "Delete permanently"}</button>
+              )}
+              <button onClick={() => setDeleting(false)} className="rounded-md border border-aura-border px-3 py-1.5 text-xs">Cancel</button>
+            </div>
+          </div>
+        );
+      })()}
       {canEdit && !a.archived && (
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the next version (optional)" aria-label="Version note" className={`${input} mt-2 text-xs`} />
       )}
@@ -109,7 +155,7 @@ export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, o
               {a.usage.map((u, i) => (
                 <li key={`${u.kind}-${i}`} className="flex items-center justify-between gap-2">
                   <span>{u.href ? <Link href={u.href} className="underline decoration-white/20">{u.label}</Link> : u.label}</span>
-                  <span className="text-[10px] uppercase text-white/40">{u.kind === "audio_clip" ? "in the mix" : u.kind === "render" ? "rendered" : "linked"}</span>
+                  <span className="text-[10px] uppercase text-white/40">{u.kind === "audio_clip" ? "in the mix" : u.kind === "render" ? "rendered" : u.kind === "reference" ? "reference view" : "linked"}</span>
                 </li>
               ))}
             </ul>

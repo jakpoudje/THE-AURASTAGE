@@ -45,3 +45,11 @@ identical file / archived · AURA-AST-412 media storage not configured · AURA-A
 ## Known gaps
 Thumbnails/proxies are not generated (images are previewed from the file itself); no vector/multimodal search; rights
 metadata fields are not modelled yet; deleting an org/project does not yet remove its files from the bucket.
+
+## Deleting an asset (migration 0043, owner request 2026-09-30)
+`POST /api/assets/:id/delete {confirm?}` → `delete_asset` (gate `assets:edit`, audited `AssetDeleted`).
+- A recording placed on Audio Studio clips is refused (409) with the scenes named — remove it from those clips first, or archive it.
+- Any other use (links to scenes/characters/places, reference views in Casting or Locations & Props, deliverables already
+  made) needs `confirm: true`; the detail view lists exactly where it is used first (`usage`, which now includes
+  `reference` views). Reference views then count as missing and can be made again; delivered files keep their own copy.
+- Every version's file is then removed from the private bucket; any file that couldn't be removed is reported (`files_left`).

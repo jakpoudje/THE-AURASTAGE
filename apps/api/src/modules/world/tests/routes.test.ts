@@ -18,7 +18,7 @@ function fakeDb(rows: Record<string, Row[]>, rpcResult: (fn: string, args: Row) 
   const from = (t: string) => {
     const f: [string, unknown][] = [];
     const res = () => (rows[t] ?? []).filter((r) => f.every(([k, v]) => r[k] === v));
-    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), order: () => q, limit: () => q, in: () => q,
+    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), order: () => q, limit: () => q, in: () => q, not: () => q,
       maybeSingle: async () => ({ data: res()[0] ?? null, error: null }), then: (ok: any) => ok({ data: res(), error: null }) };
     return q;
   };
