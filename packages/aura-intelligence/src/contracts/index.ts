@@ -19,6 +19,8 @@ export const BUILTIN_TASKS = [
   "develop_character", "develop_cast", "annotate_scene", "fill_scene_overview", "fill_visual_sound", "fill_continuity", "fill_scene", "describe_world",
   // Whole film (downstream pages): every scene's DNA, every spoken line — in batches of up to 250 changes.
   "fill_all_scene_dna", "annotate_all_lines",
+  // Every other page: the story setup (Scriptwriter), Project Settings, every location and prop.
+  "fill_story", "fill_settings", "describe_all_world",
 ] as const;
 export type BuiltinTask = (typeof BUILTIN_TASKS)[number];
 

@@ -12,6 +12,7 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ApiError } from "@/lib/apiClient";
 import { clearDraft, readDraft, writeDraft, type LocalDraft } from "@/lib/localDraft";
 import { scriptwriterApi } from "../api/scriptwriterApi";
+import { useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 import type { ScriptWorkspace } from "../types";
 
 export function useScriptwriter(projectId: string) {
@@ -61,6 +62,8 @@ export function useScriptwriter(projectId: string) {
     }
     ready.current = true;
   }, [projectId, draftScope]);
+  // A story setup filled in Ask AuraStage (free, built in) shows here at once; unsaved script typing stays a draft.
+  useAssistantChanges(async () => setProject(await scriptwriterApi.getProject(projectId)));
 
   useEffect(() => {
     let cancelled = false;

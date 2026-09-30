@@ -9,6 +9,7 @@ import { useParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { can, useProjectAccess } from "@/lib/useProjectAccess";
 import { useSettings } from "./hooks/useSettings";
+import { askAuraStage } from "@/modules/ask-aurastage/askBus";
 import { DeliveryPanel, GenerationPanel, ProductionPanel, StoryPanel, StylePanel, TechnicalPanel } from "./components/Panels";
 
 export default function ProjectSettingsPage() {
@@ -59,6 +60,13 @@ export default function ProjectSettingsPage() {
               <button onClick={s.save} disabled={s.busy || !s.impact.changed.length} className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">Save settings</button>
               <button onClick={s.discard} className="rounded-md border border-aura-border px-4 py-2 text-sm">Discard changes</button>
             </div>
+          </div>
+        )}
+        {canEdit && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-aura-border bg-aura-panel p-3 text-sm">
+            <button onClick={() => askAuraStage("Fill the project settings from the story: only empty fields.", { task: "fill_settings" })}
+              className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold">Fill from the story (free)</button>
+            <span className="text-[11px] text-white/40">The look and palette from the genre and tone, the country from where it&apos;s set, this year. Names for the credits stay yours.</span>
           </div>
         )}
         <div className="grid gap-4 xl:grid-cols-2">

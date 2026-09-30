@@ -245,7 +245,7 @@ describe("Ask AuraStage", () => {
     expect(capabilities({}).planner).toEqual({ id: "aurastage-test", name: "AuraStage test planner", test_output: true });
     expect(capabilities({ ANTHROPIC_API_KEY: "k" }).planner).toMatchObject({ id: "anthropic", test_output: false });
     expect(capabilities({ AURA_TEST_PROVIDER: "off" }).planner).toBeNull();
-    expect(capabilities({}).tools.map((t) => t.name)).toEqual(["updateStory", "updateCharacter", "changeWardrobe", "modifyDialogue", "updateSceneDNA", "modifyShot", "updateLocationOrProp", "updateSettings", "adjustAudioTrack", "setClipTransition", "updateAssetDetails"]);
+    expect(capabilities({}).tools.map((t) => t.name)).toEqual(["updateStory", "updateCharacter", "changeWardrobe", "modifyDialogue", "updateSceneDNA", "assignSceneWardrobe", "modifyShot", "updateLocationOrProp", "updateSettings", "adjustAudioTrack", "setClipTransition", "updateAssetDetails"]);
   });
 
   it("describes a location through Locations & Props (owner: AI helps on every page), with its revision; undo puts it back", async () => {
@@ -460,5 +460,53 @@ describe("Ask AuraStage", () => {
     expect(dna.find((c: Row) => c.object.label === "Scene 2").after.mood).toBeUndefined(); // already written
     expect(dna.every((c: Row) => c.allowed && !c.stale && c.after.lighting_intent)).toBe(true);
     expect(p.preview.can_apply).toBe(true);
+  });
+
+  it("built-in: the story setup and Project Settings are read from the script (only empty fields; never names for the credits)", async () => {
+    tables.scenes[1] = { ...tables.scenes[1], int_ext: "EXT", location: "LAGOS HARBOUR", heading: "EXT. LAGOS HARBOUR - NIGHT", element_start: 0, element_end: 5 };
+    tables.script_elements = [{ index: 1, type: "action", text: "The police arrest a smuggler at the Lagos harbour. A gun. Another body in 1995." }];
+    const a = await app(fakeDb());
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "script", text: "Fill the story setup from the script.", task: "fill_story" } });
+    await plan();
+    let p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    const story = p.preview.calls.find((c: Row) => c.tool === "updateStory");
+    // genre and tone are already written on this project; only the empty ones are filled.
+    expect(story.after).toEqual({ setting: "Lagos, Nigeria", time_period: "1995" });
+    tables.ai_proposals = [];
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "settings", text: "Fill the project settings from the story.", task: "fill_settings" } });
+    await plan();
+    p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    const st = p.preview.calls.find((c: Row) => c.tool === "updateSettings");
+    expect(st.after["style.look"]).toMatch(/Tense in feel/);
+    expect(st.after["style.palette"]).toHaveLength(5);
+    expect(st.after["production.country"]).toBe("Nigeria");
+    expect(Object.keys(st.after).some((k) => /director|producer|writer|composer|company/.test(k))).toBe(false);
+    expect(p.plan.not_possible.join(" ")).toMatch(/never invents people/);
+  });
+
+  it("built-in: every location and prop described in one click; Scene DNA chooses each on-screen character's wardrobe look", async () => {
+    tables.props = [{ id: "55555555-5555-4555-8555-555555555556", project_id: P, name: "Result sheet", description: null, category: "prop", status: "detected", archived_at: null, revision: 1, updated_at: "2026-09-04T00:00:00+00:00" }];
+    const a = await app(fakeDb());
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "Describe every location and prop from the script.", task: "describe_all_world" } });
+    await plan();
+    let p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview.calls.map((c: Row) => c.object.label).sort()).toEqual(["HARBOUR", "Result sheet"]);
+    tables.ai_proposals = [];
+    tables.wardrobe_looks = [{ id: "44444444-4444-4444-8444-444444444441", project_id: P, character_id: AMARA, name: "Rain jacket", description: "Soaked denim jacket", updated_at: "x" }];
+    tables.character_appearances = [{ character_id: AMARA, scene_id: S2, scene_number: 2 }];
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "Fill Visual & Sound", task: "fill_visual_sound", object: { type: "scene", id: S2 } } });
+    await plan();
+    p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    const w = p.preview.calls.find((c: Row) => c.tool === "assignSceneWardrobe");
+    expect(w.after).toEqual({ wardrobe: { [AMARA]: "44444444-4444-4444-8444-444444444441" } });
+  });
+
+  it("regression (live 2026-09-30): the built-in planner understands 'Turn the music down by 6 dB in scene 2' — only the music, by exactly 6 dB", async () => {
+    const a = await app(fakeDb());
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "audio", text: "Turn the music down by 6 dB in scene 2." } });
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview.calls).toHaveLength(1);
+    expect(p.preview.calls[0]).toMatchObject({ tool: "adjustAudioTrack", object: { id: MUSIC }, before: { gain_db: -4 }, after: { gain_db: -10 } });
   });
 });

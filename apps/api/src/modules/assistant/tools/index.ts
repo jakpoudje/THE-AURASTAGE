@@ -181,6 +181,41 @@ const updateSceneDNA: ToolImpl<{ scene_id: string; changes: Row }> = {
   },
 };
 
+/**
+ * Which wardrobe look each character wears in a scene (Scene DNA), from the looks Casting already has — the built-in
+ * story intelligence chooses one per on-screen character. Never creates or edits a look.
+ */
+const assignSceneWardrobe: ToolImpl<{ scene_id: string; wardrobe: Record<string, string> }> = {
+  def: {
+    name: "assignSceneWardrobe", module: "scene_dna", action: "edit", target: "scene",
+    description: "Choose which existing wardrobe look (Casting) each character wears in a scene: wardrobe is {character_id: look_id}. Only looks that belong to that character.",
+    input: z.object({ scene_id: z.string().uuid(), wardrobe: z.record(z.string().uuid(), z.string().uuid()).refine((w) => Object.keys(w).length > 0, "Nothing to change") }).strict(),
+    impact: ["Scene DNA (a locked scene is unlocked for review)", "Storyboard & Visual Generation prompts (the look worn)"], undo: "inverse",
+  },
+  target: (i) => ({ type: "scene", id: i.scene_id }),
+  async before(db, input) {
+    const s = await one(db, "scenes", "id, number", input.scene_id);
+    const d = (await db.from("scene_dna").select("wardrobe").eq("scene_id", input.scene_id).maybeSingle()).data as Row | null;
+    const w = (d?.wardrobe ?? {}) as Row;
+    return { object: { type: "scene", id: s.id, label: `Scene ${s.number}` }, fields: { wardrobe: Object.fromEntries(Object.keys(input.wardrobe).map((k) => [k, w[k] ?? null])) } };
+  },
+  async apply(db, input, ctx) {
+    const looks = (await db.from("wardrobe_looks").select("id, character_id").in("id", Object.values(input.wardrobe))).data as Row[] | null;
+    for (const [c, l] of Object.entries(input.wardrobe)) if (!looks?.some((x) => x.id === l && x.character_id === c)) throw new Error("A look was given to a character it doesn't belong to.");
+    const d = (await db.from("scene_dna").select("wardrobe").eq("scene_id", input.scene_id).maybeSingle()).data as Row | null;
+    await updateSceneDna(db, ctx.projectId, input.scene_id, { wardrobe: { ...((d?.wardrobe ?? {}) as Row), ...input.wardrobe } });
+    return this.before(db, input, ctx);
+  },
+  after: (i) => ({ wardrobe: i.wardrobe }),
+  async undo(db, i, b, _a, ctx) {
+    const d = (await db.from("scene_dna").select("wardrobe").eq("scene_id", i.scene_id).maybeSingle()).data as Row | null;
+    const w: Row = { ...((d?.wardrobe ?? {}) as Row) };
+    for (const [k, v] of Object.entries((b.fields.wardrobe ?? {}) as Row)) { if (v) w[k] = v; else delete w[k]; }
+    await updateSceneDna(db, ctx.projectId, i.scene_id, { wardrobe: w });
+    return this.before(db, i, ctx);
+  },
+};
+
 const ShotChanges = UpdateShotInputSchema.pick({ size: true, angle: true, movement: true, support: true, focus: true, lens_mm: true, duration_seconds: true, description: true, composition: true, lighting: true, transition_in: true, notes: true })
   .strict().refine((c) => Object.keys(c).length > 0, "Nothing to change");
 const modifyShot: ToolImpl<{ shot_id: string; changes: Row }> = {
@@ -342,6 +377,6 @@ const updateAssetDetails: ToolImpl<{ asset_id: string; changes: Row }> = {
   },
 };
 
-const IMPLS: ToolImpl<any>[] = [updateStory, updateCharacter, changeWardrobe, modifyDialogue, updateSceneDNA, modifyShot, updateLocationOrProp, updateSettings, adjustAudioTrack, setClipTransition, updateAssetDetails];
+const IMPLS: ToolImpl<any>[] = [updateStory, updateCharacter, changeWardrobe, modifyDialogue, updateSceneDNA, assignSceneWardrobe, modifyShot, updateLocationOrProp, updateSettings, adjustAudioTrack, setClipTransition, updateAssetDetails];
 export const toolRegistry = IMPLS.reduce((r, t) => r.register(t.def), new ToolRegistry());
 export const toolImpl = (name: string) => IMPLS.find((t) => t.def.name === name);

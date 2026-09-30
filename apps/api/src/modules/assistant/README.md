@@ -31,7 +31,8 @@ via `/estimate`, shown in the panel as "Refine with Claude").
 - `builtin/index.ts` (planner 1.0.0, provider `aurastage`, model `story-intelligence-1.0.0`): one-click fills given as
   `task` — `develop_character`, `develop_cast`, `annotate_scene`, `fill_scene_overview`, `fill_visual_sound`,
   `fill_continuity`, `fill_scene`, `describe_world`, and for the whole film `fill_all_scene_dna` / `annotate_all_lines`
-  (scene by scene until a batch of up to 250 changes is full; press again for the rest) — run `characterProfileEngine` (+ `wardrobeSuggestionEngine` for a
+  (scene by scene until a batch of up to 250 changes is full; press again for the rest), `fill_story`, `fill_settings`
+  (storySetupEngine; credit names are never invented) and `describe_all_world` — run `characterProfileEngine` (+ `wardrobeSuggestionEngine` for a
   first look), `dialoguePerformanceEngine`, `sceneDnaFillEngine` and `worldDescribeEngine` on evidence read with the
   user's own access (`builtin/evidence.ts`: the approved script's action lines, every scene and spoken line, Casting's
   introductions and story accents). They fill only EMPTY fields; gender is never guessed (only from the script's words).
@@ -48,7 +49,8 @@ come from the approved script), `updateSceneDNA`, `modifyShot`, `updateLocationO
 description, prop category, confirm — through the world module's own save with its revision; gated `scene_dna:edit`;
 views made from the old description are flagged, never replaced).
 
-`updateSettings` (Project Settings: format, visual style, deliverables, credit names, titles & credits — never the
+`assignSceneWardrobe` (which existing Casting look each character wears in a scene, through Scene DNA's save; only
+that character's own looks; undo restores the previous choice), `updateSettings` (Project Settings: format, visual style, deliverables, credit names, titles & credits — never the
 spending section; through the settings module's save with the current revision, so each change is a new settings
 version), `adjustAudioTrack` (a scene's track level, pan, mute, solo through Audio Studio; the mix then needs a fresh
 measurement before approval), `setClipTransition` (a picture clip's dissolve / fade from black / fade to black

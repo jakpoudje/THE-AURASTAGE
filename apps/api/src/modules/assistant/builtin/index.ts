@@ -6,7 +6,7 @@
 // checks, apply and undo as any other suggestion. It only fills EMPTY fields, and it is free: no provider is called.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssistantRequest, BuiltinTask, ContextBundle, Plan } from "@aurastage/aura-intelligence";
-import { characterProfileEngine, dialoguePerformanceEngine, sceneDnaFillEngine, wardrobeSuggestionEngine, worldDescribeEngine } from "@aurastage/engines";
+import { characterProfileEngine, dialoguePerformanceEngine, sceneDnaFillEngine, storySetupEngine, wardrobeSuggestionEngine, worldDescribeEngine } from "@aurastage/engines";
 import { loadEvidence, mentionsOf, type Evidence } from "./evidence";
 export { buildEvidence } from "./evidence";
 import { phrasePlan } from "./phrases";
@@ -38,6 +38,9 @@ export function taskOf(req: Pick<AssistantRequest, "text" | "object"> & { task?:
   if (/\bfill the Performance\b|\bannotate\b|\bone pass\b|\bevery (?:spoken )?line\b/i.test(t)) return "annotate_scene";
   if (/\bcontinuity notes\b/i.test(t)) return "fill_continuity";
   if (/\bdescribe\s+the\s+(location|prop)\s+["“]/i.test(t)) return "describe_world";
+  if (/\bdescribe every (?:location|place)\b/i.test(t)) return "describe_all_world";
+  if (/\bfill (?:the )?story setup\b/i.test(t)) return "fill_story";
+  if (/\bfill (?:the )?(?:project )?settings\b/i.test(t)) return "fill_settings";
   return null;
 }
 
@@ -86,6 +89,45 @@ export function planFromEvidence(ev: Evidence, req: AssistantRequest, context: C
       else describeWorld(ev, kind, it, out);
       break;
     }
+    case "describe_all_world": {
+      for (const kind of ["location", "prop"] as const) for (const it of byType(kind)) {
+        if (!blank((it.data as Row).description) || out.calls.length >= 240) continue;
+        describeWorld(ev, kind, it, { ...out, done: [] });
+      }
+      if (out.calls.length) out.done.push(`describe ${out.calls.length} location(s) and prop(s) from what the script says about them`);
+      else out.not_possible.push("Every location and prop already has a description.");
+      break;
+    }
+    case "fill_story": {
+      const project = byType("project")[0];
+      const d = (project?.data ?? {}) as Row;
+      const s = storyFrom(ev, items);
+      const changes: Row = {};
+      for (const k of ["genre", "tone", "setting", "time_period", "logline"] as const) if (blank(d[k]) && s.story[k]) changes[k] = s.story[k];
+      if (Object.keys(changes).length) {
+        out.calls.push(call("updateStory", { changes }, `Story setup: ${Object.keys(changes).join(", ")} — from ${Object.keys(changes).map((k) => s.evidence[k]).filter(Boolean).slice(0, 2).join("; ")}`));
+        out.done.push(`fill the story setup (${Object.keys(changes).join(", ").replace(/_/g, " ")}) from the script`);
+      } else out.not_possible.push("The story setup is already filled in.");
+      if (blank(d.logline) && !changes.logline) out.not_possible.push("A logline needs the lead's motivation — develop the cast in Casting first, then fill this again.");
+      break;
+    }
+    case "fill_settings": {
+      const st = (byType("settings")[0]?.data ?? {}) as Row;
+      const s = storyFrom(ev, items);
+      const ch: Record<string, Row> = {};
+      const put = (sec: string, k: string, v: unknown) => ((ch[sec] ??= {})[k] = v);
+      if (blank(st.style?.look) && s.settings.look) put("style", "look", s.settings.look);
+      if (blank(st.style?.palette) && s.settings.palette) put("style", "palette", s.settings.palette);
+      if (blank(st.production?.country) && s.settings.country) put("production", "country", s.settings.country);
+      if (st.production?.year == null && s.settings.year) put("production", "year", s.settings.year);
+      if (blank(st.titles?.opening_subtitle) && s.settings.opening_subtitle) put("titles", "opening_subtitle", s.settings.opening_subtitle);
+      if (Object.keys(ch).length) {
+        out.calls.push(call("updateSettings", { changes: ch }, `Project Settings from the story: ${Object.entries(ch).flatMap(([a, f]) => Object.keys(f).map((k) => `${a}.${k}`)).join(", ")}`));
+        out.done.push(`fill Project Settings from the story (${Object.values(ch).flatMap((f) => Object.keys(f)).join(", ").replace(/_/g, " ")})`);
+      } else out.not_possible.push("Project Settings are already filled in from the story.");
+      out.not_possible.push("Names for the credits (director, producer, company, writer, composer) are yours to enter — AuraStage never invents people.");
+      break;
+    }
     case "fill_all_scene_dna":
     case "annotate_all_lines": {
       // The whole film, scene by scene, until the batch is full; press again for the rest (only empty fields each time).
@@ -118,9 +160,25 @@ export function planFromEvidence(ev: Evidence, req: AssistantRequest, context: C
   const calls = out.calls.slice(0, 250);
   return {
     summary: (calls.length ? `I'd ${out.done.join("; ")}. Built in and free — from the script, nothing invented.` : "There's nothing empty left for the built-in engines to fill here.").slice(0, 600),
-    operation: calls[0] ? ({ updateSceneDNA: "MODIFY_SCENE", updateCharacter: "MODIFY_CHARACTER", changeWardrobe: "CHANGE_WARDROBE", modifyDialogue: "MODIFY_DIALOGUE", updateLocationOrProp: "MODIFY_WORLD" } as Record<string, Plan["operation"]>)[calls[0].tool] ?? "UNSUPPORTED" : "UNSUPPORTED",
+    operation: calls[0] ? ({ updateSceneDNA: "MODIFY_SCENE", assignSceneWardrobe: "MODIFY_SCENE", updateCharacter: "MODIFY_CHARACTER", changeWardrobe: "CHANGE_WARDROBE", modifyDialogue: "MODIFY_DIALOGUE", updateLocationOrProp: "MODIFY_WORLD", updateStory: "UPDATE_STORY", updateSettings: "UPDATE_SETTINGS" } as Record<string, Plan["operation"]>)[calls[0].tool] ?? "UNSUPPORTED" : "UNSUPPORTED",
     calls, not_possible: out.not_possible.slice(0, 10).map((x) => x.slice(0, 300)), questions: out.questions.slice(0, 5).map((x) => x.slice(0, 300)),
   };
+}
+
+function storyFrom(ev: Evidence, items: ContextBundle["items"]) {
+  const d = (items.find((i) => i.ref.type === "project")?.data ?? {}) as Row;
+  const count = new Map<string, number>();
+  for (const l of ev.lines) if (l.character_id) count.set(l.character_id, (count.get(l.character_id) ?? 0) + 1);
+  const chars = items.filter((i) => i.ref.type === "character");
+  const leads = chars.map((c) => ({ c, n: count.get(c.ref.id) ?? 0, lead: (c.data as Row).role === "lead" }))
+    .sort((a, b) => Number(b.lead) - Number(a.lead) || b.n - a.n).slice(0, 3)
+    .map(({ c }) => ({ name: c.ref.label, occupation: ((c.data as Row).occupation ?? null) as string | null, motivation: ((c.data as Row).motivation ?? null) as string | null }));
+  const reads = performance(ev);
+  return storySetupEngine({
+    title: d.title ?? null, headings: ev.scenes.map((x) => String(x.heading ?? "")).slice(0, 2000), action: ev.action.map((a) => a.text.slice(0, 4000)).slice(0, 20000),
+    emotions: ev.lines.map((l) => String(l.emotion ?? reads.get(l.id)?.emotion ?? "")).slice(0, 50000), leads,
+    existing: { genre: d.genre ?? null, tone: d.tone ?? null, setting: d.setting ?? null, time_period: d.time_period ?? null }, year_now: new Date().getUTCFullYear(),
+  });
 }
 
 function focusScene(context: ContextBundle, req: AssistantRequest) {
@@ -234,6 +292,24 @@ function fillDna(ev: Evidence, scene: ContextBundle["items"][number], fields: re
     project: { title: ev.project.title ?? null, logline: ev.project.logline ?? null, genre: ev.project.genre ?? null, tone: ev.project.tone ?? null, setting: ev.project.setting ?? null, time_period: ev.project.time_period ?? null },
   });
   const dna = ((scene.data as Row).dna ?? {}) as Row;
+  // Visual: which look each on-screen character wears here, from the looks Casting has (only where none is chosen).
+  if (fields.includes("lighting_intent") && dna.wardrobe !== undefined) {
+    const worn = (dna.wardrobe ?? {}) as Row;
+    const onScreen = [...new Set([...ev.appearances.filter((a) => a.scene_id === s.id).map((a) => a.character_id as string), ...ev.lines.filter((l) => l.scene_id === s.id).map((l) => l.character_id as string)])].filter(Boolean);
+    const words = `${s.heading} ${ev.actionOf(s.id).join(" ")}`.toLowerCase();
+    const pick: Record<string, string> = {};
+    for (const cid of onScreen) {
+      if (worn[cid]) continue;
+      const looks = ev.looks.filter((l) => l.character_id === cid);
+      if (!looks.length) continue;
+      const score = (l: Row) => String(`${l.name} ${l.description ?? ""}`).toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 3 && words.includes(w)).length;
+      pick[cid] = [...looks].sort((a, b) => score(b) - score(a))[0].id;
+    }
+    if (Object.keys(pick).length) {
+      out.calls.push(call("assignSceneWardrobe", { scene_id: scene.ref.id, wardrobe: pick }, `${scene.ref.label}: the look each on-screen character wears (${Object.keys(pick).length}) — from Casting's looks and the scene's words`));
+      out.done.push(`choose the wardrobe look for ${Object.keys(pick).length} character(s) in ${scene.ref.label}`);
+    }
+  }
   const changes: Row = {};
   for (const k of fields) if (blank(dna[k])) changes[k] = (f.fields as Row)[k];
   if (!Object.keys(changes).length) return;

@@ -1207,6 +1207,11 @@ http.createServer((req, res) => {
         target: (i) => { const W0 = globalThis.__world || { location: [], prop: [] }; const r = (W0[i.kind] || []).find((x) => x.id === i.id); return r && { label: r.name, get: () => r, set: (ch) => Object.assign(r, ch, { revision: r.revision + 1, updated_at: now() }) }; } },
       setClipTransition: { module: "editorial", impact: ["Editorial & Timeline (a new edit; a locked picture refuses it until the lock is broken)", "Export & Deliver (renders made from the next Picture Lock)"],
         target: (i) => { const c = tclips.find((x) => x.id === i.clip_id); return c && { label: c.label, get: () => ({ transition: c.transition || { in: "cut", out: "cut", frames: 12 } }), set: (ch) => { c.transition = ch.transition; timeline.revision = crypto.randomUUID(); } }; } },
+      assignSceneWardrobe: { module: "scene_dna", impact: ["Scene DNA (a locked scene is unlocked for review)", "Storyboard & Visual Generation prompts (the look worn)"],
+        target: (i) => { const sc = scenes.find((x) => x.id === i.scene_id); if (!sc) return null;
+          const rec = () => { let r = sdna.find((x) => x.scene_id === sc.id); if (!r) { r = { id: crypto.randomUUID(), project_id: P, scene_id: sc.id, mood: [], wardrobe: {}, ages: {}, status: "draft", review_state: "current", approved_version_id: null, drift: [] }; sdna.push(r); } return r; };
+          return { label: `Scene ${sc.number}`, get: () => ({ wardrobe: Object.fromEntries(Object.keys(i.wardrobe).map((k) => [k, ((sdna.find((x) => x.scene_id === sc.id) || {}).wardrobe || {})[k] ?? null])) }),
+            set: (ch) => { const r = rec(); const w = { ...(r.wardrobe || {}) }; for (const [k, v] of Object.entries(ch.wardrobe || {})) { if (v) w[k] = v; else delete w[k]; } Object.assign(r, { wardrobe: w, status: "draft", updated_at: now() }); } }; } },
       changeWardrobe: { module: "casting", impact: ["Scene DNA (the look worn in scenes)", "Visual Generation prompts"],
         target: (i) => { const c = chars.find((x) => x.id === i.character_id); return c && { label: c.name, get: () => ({ look: i._look ? looks.find((l) => l.id === i._look) || null : null }),
           set: (ch) => { if (ch.look) { const l = { id: crypto.randomUUID(), project_id: P, character_id: c.id, name: ch.look.name, description: ch.look.description, created_at: now(), updated_at: now() }; looks.push(l); i._look = l.id; }
@@ -1214,7 +1219,7 @@ http.createServer((req, res) => {
       updateAssetDetails: { module: "assets", impact: ["Assets Library (the file's details; its versions and where it is used are unchanged)"],
         target: (i) => { const a = assets.find((x) => x.id === i.asset_id); return a && { label: a.name, get: () => a, set: (ch) => Object.assign(a, ch, { updated_at: now() }) }; } } };
     // A tool's changed fields ({changes} for most tools; setClipTransition changes the clip's transition).
-    const chg = (input) => input.changes ?? (input.transition ? { transition: input.transition } : { look: { name: input.name, description: input.description } });
+    const chg = (input) => input.changes ?? (input.transition ? { transition: input.transition } : input.wardrobe ? { wardrobe: input.wardrobe } : { look: { name: input.name, description: input.description } });
     const aiPreview = (x) => {
       const acc = teamAccess().modules;
       const calls = (x.plan?.calls ?? []).map((c, index) => {
@@ -1276,11 +1281,12 @@ http.createServer((req, res) => {
           const act = scenes.filter((y) => y.status === "active").sort((a1, a2) => a1.number - a2.number);
           const sc = (b.object && b.object.type === "scene" && act.find((y) => y.id === b.object.id)) || fs || null;
           const whole = task === "fill_all_scene_dna" || task === "annotate_all_lines";
-          const dnaOf = (id) => { const d = sdna.find((y) => y.scene_id === id) || {}; return { purpose: d.purpose ?? null, stakes: d.stakes ?? null, story_time: d.story_time ?? null, mood: d.mood || [], weather: d.weather ?? null, atmosphere: d.atmosphere ?? null, lighting_intent: d.lighting_intent ?? null, sound_intent: d.sound_intent ?? null, camera_energy: d.camera_energy ?? null, continuity_notes: d.continuity_notes ?? null }; };
+          const dnaOf = (id) => { const d = sdna.find((y) => y.scene_id === id) || {}; return { purpose: d.purpose ?? null, stakes: d.stakes ?? null, story_time: d.story_time ?? null, mood: d.mood || [], weather: d.weather ?? null, atmosphere: d.atmosphere ?? null, lighting_intent: d.lighting_intent ?? null, sound_intent: d.sound_intent ?? null, camera_energy: d.camera_energy ?? null, continuity_notes: d.continuity_notes ?? null, wardrobe: d.wardrobe || {} }; };
           const W0 = globalThis.__world || { location: [], prop: [] };
           const PF = ["role", "age", "gender", "nationality", "accent", "languages", "occupation", "description", "personality", "backstory", "motivation", "fears", "strengths", "weaknesses", "arc"];
           const full = [
-            { ref: { type: "project", id: P, version: project.updated_at, label: project.title }, data: {} },
+            { ref: { type: "project", id: P, version: project.updated_at, label: project.title }, data: Object.fromEntries(STORY.map((k) => [k, project[k] ?? null])) },
+            (() => { const { generation: _g, ...editable } = ST.settings; return { ref: { type: "settings", id: P, version: ST.updated_at, label: "Project Settings" }, data: editable }; })(),
             // The whole film (fill_all_scene_dna / annotate_all_lines): every scene and every line, as assistant.context does.
             ...((whole ? act : sc ? [sc] : []).map((y) => ({ ref: { type: "scene", id: y.id, version: (sdna.find((z) => z.scene_id === y.id) || {}).updated_at || null, label: `Scene ${y.number}` }, data: { number: y.number, heading: y.heading, time_of_day: y.time_of_day, dna: dnaOf(y.id) } }))),
             ...chars.filter((c) => !c.merged_into).map((c) => ({ ref: { type: "character", id: c.id, version: c.updated_at || null, label: c.name }, data: { ...Object.fromEntries(PF.map((k) => [k, c[k] ?? null])), looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })) } })),

@@ -130,6 +130,8 @@ export default function LocationsPropsPage() {
             </div>
             <div className="flex items-center gap-2 p-3 text-xs">
               <button onClick={() => setAdding({ name: "", category: "prop" })} disabled={!canEdit} className="rounded bg-aura-gold px-2 py-1 font-medium text-black disabled:opacity-40">+ Add {tab === "location" ? "location" : "prop"}</button>
+              <button onClick={() => askAuraStage("Describe every location and prop from the script: only empty descriptions.", { task: "describe_all_world" })} disabled={!canEdit}
+                className="rounded border border-aura-gold/60 px-2 py-1 text-aura-gold disabled:opacity-40">Describe every place and prop (free)</button>
               <label className="ml-auto flex items-center gap-1 text-white/50"><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Show archived</label>
             </div>
             {adding && (

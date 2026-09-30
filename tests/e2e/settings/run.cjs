@@ -114,6 +114,23 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
     if (!(await page.getByRole("group", { name: "Titles and credits" }).getByLabel("End credits").isChecked())) throw new Error("end credits not back on after undo");
     await ask.getByRole("button", { name: "Close" }).click();
   });
+  await step("fill from the story (owner, 2026-09-30: free, built in): the look and palette from the story; apply; reload: kept", async () => {
+    const before = await api("GET", `/api/projects/${P}/settings`);
+    await page.getByRole("button", { name: "Fill from the story (free)" }).click();
+    const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
+    await panel.getByTestId("proposal-status").getByText(/Suggested/).waitFor();
+    await panel.getByTestId("proposal-provider").getByText(/built in · free/).waitFor();
+    if (await panel.getByRole("button", { name: "Apply" }).isEnabled()) {
+      await panel.getByRole("button", { name: "Apply" }).click();
+      await panel.getByTestId("proposal-status").getByText("Applied").waitFor();
+    }
+    await panel.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    const after = await api("GET", `/api/projects/${P}/settings`);
+    if (!after.settings.style.look) throw new Error("no look after the fill");
+    if (before.settings.style.look && after.settings.style.look !== before.settings.style.look) throw new Error("a written look was replaced");
+    if (after.settings.production.composer !== before.settings.production.composer) throw new Error("a credit name was touched");
+  });
   await step("a Reviewer sees the settings but can't change them", async () => {
     await api("POST", "/__test/as", { role: "reviewer" });
     await page.goto(`${BASE}/projects/${P}/settings`);

@@ -222,7 +222,10 @@ export function phrasePlan(snap: Snapshot) {
       [/\b(effects|sfx|sound effects)\b/i, ["FX"]], [/\b(dialogue|voices?)\b/i, ["DX"]], [/\b(crowd|walla)\b/i, ["WALLA"]]];
     const fams = FAM.filter(([re]) => re.test(text)).flatMap(([, f]) => f);
     const change: Record<string, unknown> | null = /\bunmute\b/i.test(text) ? { mute: false } : /\bmute\b/i.test(text) ? { mute: true } : null;
-    const delta = /\b(quieter|softer|lower|turn (?:it |them )?down)\b/i.test(text) ? (/\bmuch\b/i.test(text) ? -10 : -6) : /\b(louder|raise|turn (?:it |them )?up)\b/i.test(text) ? 3 : 0;
+    // "Turn the music down by 6 dB", "make the ambience quieter", "raise the dialogue 3 dB".
+    const db = Number(text.match(/\b(\d+(?:\.\d+)?)\s*db\b/i)?.[1] ?? NaN);
+    const down = /\b(quieter|softer|lower|reduce|turn\b[^.]*?\bdown|bring\b[^.]*?\bdown)\b/i.test(text), up = /\b(louder|raise|boost|turn\b[^.]*?\bup|bring\b[^.]*?\bup)\b/i.test(text);
+    const delta = down ? -(Number.isFinite(db) ? db : /\bmuch\b/i.test(text) ? 10 : 6) : up ? (Number.isFinite(db) ? db : 3) : 0;
     for (const t of tracks.filter((x) => fams.includes(String(x.data.family)))) {
       const ch = change ?? (delta ? { gain_db: Math.max(-60, Math.min(12, Number(t.data.gain_db ?? 0) + delta)) } : null);
       if (ch) { add("adjustAudioTrack", { track_id: t.ref.id, changes: ch }, `${t.ref.label}: ${Object.entries(ch).map(([k, v]) => `${k} ${v}`).join(", ")}`); done.push(`change the ${t.ref.label} (${Object.entries(ch).map(([k, v]) => `${k.replace("_db", "")} ${v}`).join(", ")})`); }

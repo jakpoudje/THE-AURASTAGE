@@ -15,3 +15,5 @@ export * as continuityCheck from "./continuityCheckEngine";
 export { continuityCheckEngine } from "./continuityCheckEngine";
 export * as characterRename from "./characterRenameEngine";
 export { renameCharacter } from "./characterRenameEngine";
+export * as storySetup from "./storySetupEngine";
+export { storySetupEngine } from "./storySetupEngine";

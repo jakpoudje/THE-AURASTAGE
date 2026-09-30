@@ -84,7 +84,7 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
       ...(s === focusScene && action ? { action } : {}),
       ...(focusScene && s !== focusScene ? { relation: scenes.indexOf(s) < fi ? "previous scene" : "next scene" } : {}),
       dna: d ? { purpose: d.purpose, stakes: d.stakes, mood: d.mood, weather: d.weather, atmosphere: d.atmosphere, lighting_intent: d.lighting_intent, sound_intent: d.sound_intent, story_time: d.story_time,
-        camera_energy: d.camera_energy, notes: d.notes, continuity_notes: d.continuity_notes, on_screen_text: d.on_screen_text, status: d.status } : null }));
+        camera_energy: d.camera_energy, notes: d.notes, continuity_notes: d.continuity_notes, on_screen_text: d.on_screen_text, status: d.status, ...(opts.full ? { wardrobe: d.wardrobe ?? {} } : {}) } : null }));
   }
   for (const c of chars) {
     items.push(item("character", c, c.name, { name: c.name, role: c.role, age: c.age, gender: c.gender, nationality: c.nationality, accent: c.accent, languages: c.languages, occupation: c.occupation, description: c.description,

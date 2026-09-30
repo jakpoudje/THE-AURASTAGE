@@ -16,6 +16,7 @@ const TYPES: { value: ProjectType; label: string }[] = [
 
 const input =
   "w-full rounded-md border border-aura-border bg-black/40 px-3 py-2 text-sm outline-none focus:border-aura-gold";
+import { askAuraStage } from "@/modules/ask-aurastage/askBus";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -156,9 +157,14 @@ export function ProjectSetupForm({
           <input placeholder="Open-ended" maxLength={100} {...text("ending_style")} />
         </Field>
       </div>
-      <button type="submit" disabled={busy} className="rounded-md bg-aura-gold px-5 py-2 text-sm font-medium text-black disabled:opacity-50">
-        {busy ? "Saving…" : "Save story setup"}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="submit" disabled={busy} className="rounded-md bg-aura-gold px-5 py-2 text-sm font-medium text-black disabled:opacity-50">
+          {busy ? "Saving…" : "Save story setup"}
+        </button>
+        {/* Free: AuraStage's own engines read genre, tone, setting, period and a logline from the approved script. */}
+        <button type="button" onClick={() => askAuraStage("Fill the story setup from the script: only empty fields.", { task: "fill_story" })}
+          className="rounded-md border border-aura-gold/60 px-4 py-2 text-sm text-aura-gold">Fill from the script (free)</button>
+      </div>
     </form>
   );
 }
