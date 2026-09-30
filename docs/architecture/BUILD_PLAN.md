@@ -244,7 +244,7 @@ Everything not yet done, in build order. When an item is finished it moves up in
 | 13 | PDF import, version compare, beat board, social cut-downs, trailer assistant | Each works end to end |
 | 14 | Upload an actor's photos as the reference (with consent record) | Photos replace generated views for that character |
 | 16 | ✅ Casting whole-cast buttons and "Save & next" (2026-09-30); remaining: the same "save & continue + what's next" on every other stage (item 17) | Owner request 2026-09-30 |
-| 17 | Save and continue everywhere: every stage saves what the person typed and points to the next logical step (a guided "what's next") | Owner request 2026-09-30 |
+| 17 | ✅ "What's next" on every stage: the stage's next step and progress from the production overview (never a made-up percentage), updated after every save; "Continue to …" once the stage is done, "Skip ahead" otherwise — 2026-09-30 | Owner request 2026-09-30 |
 | 18 | ✅ Delete any asset, with a warning that lists exactly where it is used (migration 0043, 2026-09-30) | Owner request 2026-09-30 |
 | 19 | ✅ Characters named twice: pointed out, merged in one click or kept apart (migration 0042, 2026-09-30) | Owner request 2026-09-30 |
 | 21 | ✅ Scene DNA in four sections (Scene Overview, Visual & Sound, Performance, Continuity) each with "Fill … with AI from the script"; Continuity notes (migration 0044) — 2026-09-30 | Owner request 2026-09-30 |

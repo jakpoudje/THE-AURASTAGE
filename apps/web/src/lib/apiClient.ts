@@ -28,7 +28,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const payload = await res.json().catch(() => ({}));
     throw new ApiError(payload?.error?.message ?? `${method} ${path} failed: ${res.status}`, res.status, payload?.error?.code, payload?.error?.issues);
   }
+  if (method !== "GET") announceSaved();
   return res.json();
+}
+
+/** Something was saved: guides like "What's next" re-read the project (they never guess what changed). */
+export const SAVED_EVENT = "aura:saved";
+function announceSaved() {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(SAVED_EVENT));
 }
 
 export const apiGet = <T>(path: string) => request<T>("GET", path);
@@ -44,6 +51,7 @@ export async function apiUpload<T>(path: string, body: Blob, contentType: string
     const payload = await res.json().catch(() => ({}));
     throw new ApiError(payload?.error?.message ?? `Upload failed: ${res.status}`, res.status, payload?.error?.code);
   }
+  announceSaved();
   return res.json();
 }
 

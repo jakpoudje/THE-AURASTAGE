@@ -546,6 +546,17 @@ await check("mixer presets: phone-call channel preset (low-pass 3.4 kHz) and the
   await page.getByRole("button", { name: /^Channel strip DX/ }).first().getByText(/LPF/).waitFor();
   return "phone call on DX, horror template";
 });
+await check("What's next: every stage shows its next step from the project's records and links on to the next stage", async () => {
+  const seen = [];
+  for (const [path, next] of [["casting", /Locations & Props →/], ["scene-dna", /Storyboard & Shots →/], ["editorial", /Export & Deliver →/]]) {
+    await page.goto(projectUrl + "/" + path);
+    const bar = page.getByRole("region", { name: "What's next" });
+    await bar.getByRole("link", { name: next }).waitFor({ timeout: 30000 });
+    await page.waitForFunction(() => !/Checking this project/.test(document.querySelector('[data-testid="next-step"]')?.textContent ?? ""), null, { timeout: 30000 });
+    seen.push(`${path}: ${(await bar.innerText()).replace(/\s+/g, " ").slice(0, 90)}`);
+  }
+  return seen.join(" | ");
+});
 await check("AI & Generation page: every generator's state with proof from this project; reload: same", async () => {
   await page.goto(projectUrl + "/scriptwriter");
   await page.getByRole("link", { name: "AI & Generation" }).click();

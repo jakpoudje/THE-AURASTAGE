@@ -368,6 +368,20 @@ async function api(method, path, body) {
     await panel.getByTestId("proposal-status").waitFor();
     await panel.getByRole("button", { name: "Close" }).click();
   });
+  await step("What's next (owner request 2026-09-30): every stage says what to do next from the project's records, and updates by itself after a save", async () => {
+    await page.goto(`${BASE}/projects/${P}/casting`);
+    const bar = page.getByRole("region", { name: "What's next" });
+    await bar.getByRole("link", { name: /Locations & Props →/ }).waitFor();
+    await bar.getByText(/\d+\/\d+ characters approved/).waitFor();
+    const before = await bar.innerText();
+    const draft = (await api("GET", `/api/projects/${P}/characters`)).characters.find((c) => !c.merged_into && c.status !== "approved");
+    if (!draft) return;
+    await page.getByRole("button", { name: new RegExp(draft.name) }).first().click();
+    await page.getByRole("button", { name: "Approve character" }).click();
+    await page.getByText("Character saved.").waitFor();
+    for (let i = 0; i < 40 && (await bar.innerText()) === before; i++) await page.waitForTimeout(250);
+    if ((await bar.innerText()) === before) throw new Error("the guide didn't update after the save: " + before);
+  });
   await step("Save & next: saves what was typed and opens the next character that still needs work; reload keeps the save", async () => {
     await page.goto(`${BASE}/projects/${P}/casting`);
     const first = (await page.getByRole("heading", { level: 2 }).filter({ hasNotText: /Characters|Same person|Profiles/ }).first().textContent()).trim();

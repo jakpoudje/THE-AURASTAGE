@@ -6,6 +6,7 @@
 // module passes in the project and the active stage. Stages that aren't built
 // yet are shown but not clickable, so nothing pretends to work.
 
+import { NextStepBar } from "./NextStepBar";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { PermissionModule, Project } from "@aurastage/contracts";
@@ -220,6 +221,7 @@ export function AppShell({
             View only — as {role} you can look around and comment here, but not change things. Ask the project&apos;s producer if you need more access.
           </div>
         )}
+        {project && <NextStepBar projectId={project.id} active={active} order={STAGES.map((s) => ({ key: s.key, label: s.label, path: s.path }))} />}
         <main>{children}</main>
         {askOpen && project && <AskAuraStage projectId={project.id} module={assistantModule} request={askRequest} onClose={() => (setAskOpen(false), setAskRequest(null))} />}
         {commentsOpen && commentContext && project && (
