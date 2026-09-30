@@ -19,6 +19,7 @@ import { CharacterProfile } from "./components/CharacterProfile";
 import { ConsistencyChecklist } from "./components/ConsistencyChecklist";
 import { PendingCandidates } from "./components/PendingCandidates";
 import { SyncBanner } from "./components/SyncBanner";
+import { CastLooksBar } from "./components/CastLooksBar";
 
 export default function CastingCharactersPage() {
   const { id } = useParams<{ id: string }>();
@@ -83,6 +84,8 @@ export default function CastingCharactersPage() {
             {c.error ?? c.notice}
           </div>
         )}
+
+        {active.length > 0 && <CastLooksBar projectId={id} firstCharacterId={active[0].id} count={active.length} />}
 
         {active.length === 0 ? (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">

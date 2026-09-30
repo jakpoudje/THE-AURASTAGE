@@ -269,6 +269,18 @@ async function api(method, path, body) {
     await panel.getByLabel("Age for these views").selectOption({ label: "As in the profile" });
     await panel.getByText("8 of 16 made · 8 need a refresh").waitFor();
   });
+  await step("one click makes the looks for the whole cast; a second click only fills gaps; the views appear in each character's Look panel (owner request 2026-09-30)", async () => {
+    const bar = page.getByTestId("cast-looks");
+    await bar.getByRole("button", { name: "Generate all character looks" }).click();
+    await bar.getByText(/^Making \d+ views? for \d+ characters? \(.*Tunde Okafor.*\) with AuraStage Sketch/).waitFor();
+    await bar.getByRole("button", { name: "Generate all character looks" }).click();
+    await bar.getByText(/^Nothing new to make/).waitFor();
+    await page.reload();
+    await page.getByRole("button", { name: "Look & References" }).click();
+    const panel = page.getByRole("region", { name: "Look and references" });
+    await panel.getByText("8 of 16 made").waitFor({ timeout: 15000 });
+    await panel.getByTestId("look-front:CU").locator("img").waitFor();
+  });
   await step("Voice DNA: the voice comes from the saved profile, says why, and changes when the profile does", async () => {
     await page.getByRole("button", { name: "Voice DNA" }).click();
     const d = page.getByTestId("voice-description");

@@ -275,6 +275,24 @@ http.createServer((req, res) => {
       for (const r of globalThis.__refs || []) if (r.age_state_id === m[1]) r.age_state_id = null;
       return send(200, { deleted: true });
     }
+    // Whole cast in one click (mirrors generateAllCharacterLooks): default views, as in each profile, only where missing/outdated unless redo.
+    if (u === `/api/projects/${P}/characters/looks/generate` && req.method === "POST") {
+      if (!castEdit()) return send(403, { error: { code: "AURA-COL-403", message: "your role can't edit in Casting & Characters. Ask the project's producer for access." } });
+      const LK = eng.characterLook, refs = globalThis.__refs || (globalThis.__refs = []);
+      const style = ((globalThis.__settings || {}).settings || {}).style?.look || null;
+      const out = [];
+      for (const c of chars.filter((x) => !x.merged_into)) {
+        const eo = LK.characterLookEngine({ character: { name: c.name, age: c.age ?? null, gender: c.gender ?? null, nationality: c.nationality ?? null, occupation: c.occupation ?? null, description: c.description ?? null }, wardrobe: null, style, age_state: null });
+        const appearance = eng.characterAppearanceEngine({ name: c.name, age: c.age ?? null, gender: c.gender ?? null, description: c.description ?? null, wardrobe: null, age_state: null });
+        const mine = refs.filter((r) => r.character_id === c.id && !r.look_id && !r.age_state_id);
+        const todo = eo.views.filter((v) => { const h = mine.filter((r) => `${r.angle}:${r.size}` === v.key); if (h[0] && (h[0].status === "queued" || h[0].status === "running")) return false; const g = h.find((r) => r.status === "succeeded"); return b.redo || !g || g.identity_hash !== eo.identity_hash; });
+        for (const v of todo) refs.unshift({ id: crypto.randomUUID(), character_id: c.id, look_id: null, age_state_id: null, angle: v.angle, size: v.size, aspect_ratio: v.aspect_ratio, prompt: v.prompt, identity_hash: eo.identity_hash,
+          provider: "aurastage-sketch", model: "sketch-v1", execution: "native", status: "queued", asset_id: null, error: null, created_at: now(), completed_at: null, _polls: 0,
+          sketch: { title: c.name, subtitle: v.label, angle: v.angle, size: v.size, lines: [eo.identity], appearance } });
+        out.push(todo.length ? { id: c.id, name: c.name, requested: todo.length } : { id: c.id, name: c.name, requested: 0, note: "Already made from the current profile" });
+      }
+      return send(200, { characters: out, requested: out.reduce((a, c) => a + c.requested, 0), provider: out.some((c) => c.requested) ? "aurastage-sketch" : null });
+    }
     if ((m = u.match(/^\/api\/characters\/([^/]+)\/look(\/generate)?$/))) {
       const LK = eng.characterLook, sk = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/sketch/sketchAdapter.js"));
       const refs = globalThis.__refs || (globalThis.__refs = []);

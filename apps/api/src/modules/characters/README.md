@@ -68,6 +68,9 @@ when it was made from an older identity (never replaced automatically, rule 11).
 (free, labelled "not AI"); a paid image provider only when chosen and connected. Requests are gated `casting:edit`;
 the generation worker makes each still through the Provider Gateway (`generateStill`), and the Assets domain registers
 it under Characters, linked to the character, with provenance (provider, model, engine version, identity hash, view).
+Whole cast in one click (2026-09-30): `POST /api/projects/:id/characters/looks/generate { provider?, redo? }` runs the
+same request for every non-merged character's default views as in the profile, skipping views already made from the
+current identity or still being made (unless `redo`); it returns per-character counts. Same gate, same worker queue.
 Tests: `tests/look.test.ts`, `tests/integration/char_refs_db.sql`, `tests/e2e/casting/run.cjs`.
 
 ## Ages (migration 0035)

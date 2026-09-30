@@ -112,3 +112,35 @@ export async function generateCharacterLook(db: SupabaseClient, characterId: str
   }
   return { requested, provider: b.id, identity_hash: out.identity_hash };
 }
+
+const GenerateAllInput = z.object({
+  provider: z.string().max(60).optional(),
+  /** Also remake views that are already made from the current profile (default: only missing, failed or outdated ones). */
+  redo: z.boolean().default(false),
+}).strict();
+
+/** One click for the whole cast (owner request 2026-09-30): the standard reference views for every character in the
+ *  project, as in their profile. Each character goes through generateCharacterLook (same permission gate, same
+ *  worker queue); views already made from the current profile, or already being made, are left alone unless `redo`. */
+export async function generateAllCharacterLooks(db: SupabaseClient, projectId: string, body: unknown, env: Env = process.env) {
+  if (!UUID.test(projectId)) throw new CharacterNotFoundError("Project not found");
+  const p = GenerateAllInput.safeParse(body ?? {});
+  if (!p.success) throw new CharacterValidationError(p.error.issues, p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
+  const cast = (await many(db.from("characters").select("id, name, merged_into, created_at").eq("project_id", projectId).order("created_at", { ascending: true })))
+    .filter((c) => !c.merged_into);
+  const characters: Row[] = [];
+  let provider: string | null = null;
+  for (const c of cast) {
+    const look = await getCharacterLook(db, c.id, null, env);
+    const todo = look.views.filter((v) => v.in_default_set).filter((v) => {
+      const working = v.latest && (v.latest.status === "queued" || v.latest.status === "running");
+      if (working) return false;
+      return p.data.redo || !v.image || v.image.stale;
+    }).map((v) => v.key);
+    if (!todo.length) { characters.push({ id: c.id, name: c.name, requested: 0, note: "Already made from the current profile" }); continue; }
+    const r = await generateCharacterLook(db, c.id, { views: todo, ...(p.data.provider ? { provider: p.data.provider } : {}) }, env);
+    provider = r.provider;
+    characters.push({ id: c.id, name: c.name, requested: r.requested.length });
+  }
+  return { characters, requested: characters.reduce((a, c) => a + c.requested, 0), provider };
+}

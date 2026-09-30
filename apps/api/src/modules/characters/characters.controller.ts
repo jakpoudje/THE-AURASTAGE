@@ -2,7 +2,7 @@
 // HTTP/API transport only; validation/auth context; no business logic.
 // Domain: Casting & Characters
 
-import { generateCharacterLook, getCharacterLook } from "./characters.look";
+import { generateAllCharacterLooks, generateCharacterLook, getCharacterLook } from "./characters.look";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   addCharacterAlias,
@@ -63,6 +63,7 @@ export async function registerCharactersRoutes(app: FastifyInstance) {
   app.post("/api/projects/:id/relationships", route(({ params, body, db }) => setRelationship(db, params.id, body)));
   app.delete("/api/relationships/:id", route(({ params, db }) => deleteRelationship(db, params.id)));
   app.get("/api/characters/:id/look", route(({ params, db, query }) => getCharacterLook(db, params.id, query.look_id || null, process.env, query.age_state_id || null)));
+  app.post("/api/projects/:id/characters/looks/generate", route(({ params, body, db }) => generateAllCharacterLooks(db, params.id, body)));
   app.post("/api/characters/:id/look/generate", route(({ params, body, db }) => generateCharacterLook(db, params.id, body)));
   app.post("/api/characters/:id/looks", route(({ params, body, db }) => saveLook(db, params.id, body)));
   app.delete("/api/looks/:id", route(({ params, db }) => deleteLook(db, params.id)));

@@ -731,6 +731,25 @@ await check("casting look: 8 reference views from the profile (one identity), re
   assert(after.views.filter((v: any) => v.image).every((v: any) => v.image.stale), "a profile change should mark the views");
   return `${made.length} views · identity ${lk.identity_hash} · age ${age}`;
 });
+// ---- Whole cast in one click (owner request 2026-09-30) ----
+await check("casting: one click makes the looks for the whole cast (only missing or outdated views); the worker makes them", async () => {
+  const r = await api("POST", `/api/projects/${projectId}/characters/looks/generate`, {});
+  const amara = r.characters.find((c: any) => c.id === amaraId);
+  // Amara's views were made before her profile changed above, so all 8 are outdated and remade.
+  assert(amara?.requested === 8 && r.provider === "aurastage-sketch", JSON.stringify(r).slice(0, 300));
+  const others = r.characters.filter((c: any) => c.id !== amaraId && c.requested > 0);
+  const again = await api("POST", `/api/projects/${projectId}/characters/looks/generate`, {});
+  assert(again.requested === 0, `a second click should only fill gaps, asked for ${again.requested}`);
+  let lk: any;
+  for (let i = 0; i < 60; i++) {
+    lk = await api("GET", `/api/characters/${amaraId}/look`);
+    if (lk.views.filter((v: any) => v.in_default_set).every((v: any) => v.latest && ["succeeded", "failed"].includes(v.latest.status))) break;
+    await Bun.sleep(1500);
+  }
+  const fresh = lk.views.filter((v: any) => v.in_default_set && v.image && !v.image.stale);
+  assert(fresh.length === 8, `fresh views for Amara: ${fresh.length}`);
+  return `${r.requested} views for ${r.characters.filter((c: any) => c.requested).length} characters (${[amara, ...others].map((c: any) => c.name).join(", ")}); second click: 0`;
+});
 // ---- Accent and languages (migration 0037): suggested from the story, never a name; saved; Voice DNA follows ----
 await check("casting accent: suggested from where the character's scenes are set (with why); saved with languages; re-read keeps them", async () => {
   const ws = await api("GET", `/api/projects/${projectId}/characters`);

@@ -57,4 +57,26 @@ describe("character look panel API", () => {
     expect((await a.inject({ method: "POST", url: `/api/characters/${C}/look/generate`, payload: { views: ["sideways:CU"] } })).statusCode).toBe(400);
     expect((await a.inject({ method: "GET", url: `/api/characters/${C}/look?look_id=44444444-4444-4444-8444-444444444444` })).statusCode).toBe(400);
   });
+  it("one click makes the standard views for the whole cast, skipping merged characters and views already made from the current profile (owner request 2026-09-30)", async () => {
+    const C2 = "55555555-5555-4555-8555-555555555555", C3 = "66666666-6666-4666-8666-666666666666";
+    const base = rows();
+    base.characters.push({ id: C2, project_id: P, name: "Tunde Okafor", age: "35", gender: "Man", description: "Tall", merged_into: null } as Row,
+      { id: C3, project_id: P, name: "Tunde", age: null, gender: null, description: null, merged_into: C2 } as Row);
+    const hash = (await (await app(fakeDb(base))).inject({ method: "GET", url: `/api/characters/${C}/look` })).json().identity_hash;
+    // Amara already has every default view from her current profile; Tunde has none.
+    const done = (await (await app(fakeDb(base))).inject({ method: "GET", url: `/api/characters/${C}/look` })).json().views.filter((v: Row) => v.in_default_set).map((v: Row) => v.key);
+    expect(done).toHaveLength(8);
+    base.character_reference_images = done.map((k: string, i: number) => ({ id: `g${i}`, character_id: C, look_id: null, age_state_id: null, angle: k.split(":")[0], size: k.split(":")[1], status: "succeeded", asset_id: `a${i}`, identity_hash: hash, provider: "aurastage-sketch", execution: "native", created_at: "2026-09-01", completed_at: "2026-09-01" }));
+    const fake = fakeDb(base);
+    const r = (await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/characters/looks/generate`, payload: {} })).json();
+    expect(r.characters).toEqual([
+      { id: C, name: "Amara Bello", requested: 0, note: "Already made from the current profile" },
+      { id: C2, name: "Tunde Okafor", requested: 8 },
+    ]);
+    expect(r.requested).toBe(8);
+    expect(fake.calls.every((c) => c.args.p_character === C2)).toBe(true);
+    // "Remake all" redoes the made ones too.
+    const again = (await (await app(fakeDb(base))).inject({ method: "POST", url: `/api/projects/${P}/characters/looks/generate`, payload: { redo: true } })).json();
+    expect(again.requested).toBe(16);
+  });
 });
