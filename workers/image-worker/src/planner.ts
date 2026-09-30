@@ -21,6 +21,20 @@ export interface PlannerDeps {
 export async function planOnce(d: PlannerDeps): Promise<boolean> {
   const job = await d.claim();
   if (!job) return false;
+  // Built-in story intelligence: the API's engines already planned it (free, deterministic). Validate and record it —
+  // no provider is called and nothing is billed.
+  const built = job.snapshot.planner === "builtin" ? PlanSchema.safeParse(job.snapshot.builtin_plan) : null;
+  if (built) {
+    if (!built.success) {
+      await d.fail(job.id, "The built-in plan isn't in the expected shape (bug).");
+      d.log("plan.failed", { id: job.id, reason: "builtin_invalid" });
+      return true;
+    }
+    const provider = String(job.snapshot.provider ?? "aurastage"), model = String(job.snapshot.model ?? "story-intelligence");
+    await d.complete(job.id, built.data, provider, model, false, null);
+    d.log("plan.completed", { id: job.id, provider, model, test_output: false, calls: built.data.calls.length, tokens: 0 });
+    return true;
+  }
   const r = d.reasoner();
   if (!r) {
     await d.fail(job.id, "No reasoning backend is connected. Add ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY on the server.");

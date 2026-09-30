@@ -7,3 +7,6 @@ export { dialogueBalanceEngine } from "./dialogueBalanceEngine";
 export type { ExtractedLine } from "./dialogueExtractionEngine";
 export type { Voiceprint } from "./dialogueVoiceprintEngine";
 export type { SceneBalance } from "./dialogueBalanceEngine";
+export * as dialoguePerformance from "./dialoguePerformanceEngine";
+export { dialoguePerformanceEngine } from "./dialoguePerformanceEngine";
+export type { LineRead } from "./dialoguePerformanceEngine";

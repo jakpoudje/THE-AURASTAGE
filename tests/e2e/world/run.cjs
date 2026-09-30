@@ -81,23 +81,22 @@ async function api(method, path, body) {
     if ((await page.getByLabel("Description").inputValue()) !== "Rusting cranes, stacked containers, oily water") throw new Error("description not kept");
     await page.getByTestId("world-identity").getByText("Lagos Harbour — exterior. Rusting cranes, stacked containers, oily water.").waitFor();
   });
-  await step("Describe with AI (owner: AI helps on every page): Ask AuraStage suggests a description from the script; applying shows it at once; reload: kept; undo restores it", async () => {
+  await step("Describe from the script (free, built in): Ask AuraStage suggests a description from the script; applying shows it at once; reload: kept; undo restores it", async () => {
     await list("Locations").getByRole("button", { name: /Tunde's Flat/ }).click();
     if ((await page.getByLabel("Description").inputValue()) !== "") throw new Error("expected an empty description");
-    await page.getByRole("button", { name: "Describe with AI" }).click();
+    await page.getByRole("button", { name: "Describe from the script (free)" }).click();
     const ask = page.getByRole("complementary", { name: "Ask AuraStage" });
     await ask.getByText(/Describe the location "Tunde's Flat"/).first().waitFor();
-    await ask.getByText(/DEVELOPMENT \/ TEST OUTPUT|test output/i).first().waitFor({ timeout: 15000 });
-    await ask.getByText(/needs a connected writer/).first().waitFor();
+    await ask.getByTestId("proposal-provider").getByText(/built in · free/).waitFor({ timeout: 15000 });
     await ask.getByRole("button", { name: /^Apply/ }).click();
     await ask.getByText("Applied", { exact: true }).first().waitFor();
     // The page underneath re-reads at once — no manual reload.
-    await page.waitForFunction(() => document.querySelector('textarea[aria-label="Description"]')?.value.includes("from the script"));
+    await page.waitForFunction(() => document.querySelector('textarea[aria-label="Description"]')?.value.includes("Tunde's Flat: interior"));
     const d = await page.getByLabel("Description").inputValue();
-    if (!/^Tunde's Flat — interior; seen at .*(night|day).*areas: Kitchen \(from the script\)\.$/i.test(d)) throw new Error(`description: ${d}`);
+    if (!/^Tunde's Flat: interior.*Seen at .*(night|day).*Areas: Kitchen\./i.test(d)) throw new Error(`description: ${d}`);
     await reload();
     await list("Locations").getByRole("button", { name: /Tunde's Flat/ }).click();
-    if (!(await page.getByLabel("Description").inputValue()).includes("from the script")) throw new Error("not kept after reload");
+    if (!(await page.getByLabel("Description").inputValue()).includes("Tunde's Flat: interior")) throw new Error("not kept after reload");
     await page.getByRole("button", { name: "Ask AuraStage" }).click();
     await ask.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Describe the location "Tunde's Flat"/ }).click();
     await ask.getByRole("button", { name: "Undo", exact: true }).click();

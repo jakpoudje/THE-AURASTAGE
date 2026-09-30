@@ -124,7 +124,8 @@ export function CharacterProfile({
   const mine = appearances.filter((a) => a.character_id === character.id);
   // Every field developed: what's still empty, and one request to develop the rest (reviewed before anything changes).
   const empty = ([...PROFILE_FIELDS, ...STORY_FIELDS] as Field[]).filter((k) => k !== "name" && !form[k].trim());
-  const develop = () => askAuraStage(`Develop ${character.name}'s profile in one pass: fill every empty field (${empty.map((k) => LABELS[k].toLowerCase()).join(", ")}) from the script and the story — including the accent and languages the story suggests. Keep what is already written.`);
+  // Free: AuraStage's own engines fill the empty fields from the script (owner, 2026-09-30).
+  const develop = () => askAuraStage(`Develop ${character.name}'s profile: fill the empty fields from the script and the story.`, { task: "develop_character", object: { type: "character", id: character.id, label: character.name } });
   const sug = accent?.suggestion ?? null;
   const myAliases = aliases.filter((a) => a.character_id === character.id && a.source !== "name");
   const mergedIntoMe = characters.filter((c) => c.merged_into === character.id);
@@ -248,8 +249,9 @@ export function CharacterProfile({
                 <>
                   <span className="text-white/60">Still empty ({empty.length}): {empty.map((k) => LABELS[k]).join(", ")}</span>
                   <button type="button" onClick={develop} className="rounded border border-aura-gold/60 px-2 py-0.5 text-aura-gold">
-                    Develop the rest with AI
+                    Develop the rest (free)
                   </button>
+                  <span className="text-white/35">From the script and the story — you see every change before it&apos;s saved.</span>
                 </>
               )}
             </div>

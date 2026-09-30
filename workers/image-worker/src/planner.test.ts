@@ -32,6 +32,14 @@ describe("assistant planner", () => {
     expect(d.seen()).toMatchObject({ prompt: "PROMPT", task: { kind: "plan", snapshot: job.snapshot } });
     expect(d.log_[0]).toBe("complete p1 aurastage-test m1 true Make scene 3 night.");
   });
+  it("records a built-in plan at once — no provider is called, nothing is billed, not labelled test output", async () => {
+    const built: PlanClaim = { ...job, snapshot: { planner: "builtin", provider: "aurastage", model: "story-intelligence-1.0.0", builtin_plan: plan } };
+    let called = false;
+    const d = deps(built, () => ({ id: "anthropic", complete: async () => { called = true; throw new Error("must not be called"); } }));
+    expect(await planOnce(d)).toBe(true);
+    expect(called).toBe(false);
+    expect(d.log_[0]).toBe("complete p1 aurastage story-intelligence-1.0.0 false Make scene 3 night.");
+  });
   it("fails the request plainly when no backend is connected (never invents a plan)", async () => {
     const d = deps(job, () => null);
     await planOnce(d);

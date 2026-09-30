@@ -3,8 +3,11 @@
 import { useEffect, useRef } from "react";
 
 export const ASK_EVENT = "aura:ask";
-export function askAuraStage(text: string) {
-  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: { text } }));
+/** A page's one-click fill: the built-in engines know exactly what to fill (free; owner, 2026-09-30). */
+export type BuiltinTask = "develop_character" | "develop_cast" | "annotate_scene" | "fill_scene_overview" | "fill_visual_sound" | "fill_continuity" | "fill_scene" | "describe_world";
+export interface AskRequest { text: string; task?: BuiltinTask; object?: { type: string; id: string; version?: string | null; label?: string } }
+export function askAuraStage(text: string, opts: Omit<AskRequest, "text"> = {}) {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: { text, ...opts } }));
 }
 
 // After a suggestion is applied or undone, the page underneath re-reads what is stored, so the change shows at once

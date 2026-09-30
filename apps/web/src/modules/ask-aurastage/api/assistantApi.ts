@@ -1,5 +1,6 @@
 // Ask AuraStage API (apps/api/src/modules/assistant). The browser never talks to a model directly.
 import { apiGet, apiPost } from "@/lib/apiClient";
+import type { BuiltinTask } from "../askBus";
 
 export type AssistantModule = "script" | "casting" | "dialogue" | "scene_dna" | "shots" | "generation" | "audio" | "editorial" | "delivery" | "assets" | "settings";
 export type ProposalStatus = "queued" | "planning" | "proposed" | "applying" | "applied" | "rejected" | "failed" | "undone";
@@ -17,11 +18,17 @@ export interface Proposal {
   preview?: { calls: PreviewCall[]; issues: { tool: string; problem: string }[]; impact: string[]; can_apply: boolean } | null;
 }
 
+export interface AskBody {
+  module: AssistantModule; text: string; planner?: "builtin" | "writer"; task?: BuiltinTask | null;
+  object?: { type: string; id: string; version?: string | null; label?: string } | null;
+}
+
 export const assistantApi = {
   /** What asking would cost, from the exact prompt (nothing is sent to the AI). */
-  estimate: (projectId: string, body: { module: AssistantModule; text: string }) =>
+  estimate: (projectId: string, body: AskBody) =>
     apiPost<{ provider: string; model: string | null; input_chars: number; output_chars: number }>(`/api/projects/${projectId}/assistant/estimate`, body),
-  ask: (projectId: string, body: { module: AssistantModule; text: string }) => apiPost<Proposal>(`/api/projects/${projectId}/assistant`, body),
+  /** planner "builtin" (default): AuraStage's own engines, free. "writer": a connected paid model, only when chosen. */
+  ask: (projectId: string, body: AskBody) => apiPost<Proposal>(`/api/projects/${projectId}/assistant`, body),
   list: (projectId: string) => apiGet<{ proposals: Proposal[] }>(`/api/projects/${projectId}/assistant`),
   get: (id: string) => apiGet<Proposal>(`/api/assistant/proposals/${id}`),
   apply: (id: string) => apiPost<Proposal>(`/api/assistant/proposals/${id}/apply`, {}),

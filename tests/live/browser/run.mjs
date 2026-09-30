@@ -145,31 +145,36 @@ await check("locations & props: find them in the script, describe one, make its 
   await page.getByRole("list", { name: "Props" }).getByRole("button", { name: /Laptop/ }).waitFor();
   return "harbour: 3 views; props include Laptop";
 });
-await check("locations & props: Describe with AI — Ask AuraStage suggests, apply shows it at once; reload: kept; undo: back", async () => {
+await check("locations & props: Describe from the script (free, built in) — Ask AuraStage suggests, apply shows it at once; reload: kept; undo: back", async () => {
   await page.goto(projectUrl + "/world");
   await page.getByRole("list", { name: "Locations" }).getByRole("button", { name: /Lagos Harbour/ }).click();
-  const before = await page.getByLabel("Description").inputValue();
-  await page.getByRole("button", { name: "Describe with AI" }).click();
+  const original = await page.getByLabel("Description").inputValue();
+  // The built-in engines only fill EMPTY fields: clear it first (and put it back at the end).
+  const save = async (text) => {
+    await page.getByLabel("Description").fill(text);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText("Saved.").first().waitFor({ timeout: 15000 });
+  };
+  if (original) await save("");
+  await page.getByRole("button", { name: "Describe from the script (free)" }).click();
   const ask = page.getByRole("complementary", { name: "Ask AuraStage" });
-  // With a paid AI connected the request waits, with its cost shown, until Ask is pressed (owner: cost before spending).
-  await ask.getByTestId("cost-note").waitFor({ timeout: 30000 });
-  const cost = await ask.getByTestId("cost-total").textContent();
-  if (await ask.getByText("Check the cost below, then press Ask.").count()) await ask.getByRole("button", { name: "Ask", exact: true }).click();
-  await ask.getByRole("button", { name: /^Apply/ }).waitFor({ timeout: 120000 });
+  await ask.getByTestId("proposal-provider").getByText(/built in · free/).waitFor({ timeout: 90000 });
   await ask.getByRole("button", { name: /^Apply/ }).click();
   await ask.getByText("Applied", { exact: true }).first().waitFor({ timeout: 60000 });
   // The page re-reads by itself: the new description shows without a reload.
-  await page.waitForFunction((b) => { const t = document.querySelector('textarea[aria-label="Description"]'); return t && t.value !== b && t.value.length > 0; }, before, { timeout: 15000 });
+  await page.waitForFunction(() => { const t = document.querySelector('textarea[aria-label="Description"]'); return t && t.value.length > 0; }, undefined, { timeout: 15000 });
   const after = await page.getByLabel("Description").inputValue();
+  if (!/^Lagos Harbour: /.test(after)) throw new Error("unexpected description: " + after.slice(0, 120));
   await page.reload();
   await page.getByRole("list", { name: "Locations" }).getByRole("button", { name: /Lagos Harbour/ }).click();
-  if ((await page.getByLabel("Description").inputValue()) !== after) throw new Error("AI description lost after reload");
+  if ((await page.getByLabel("Description").inputValue()) !== after) throw new Error("description lost after reload");
   await page.getByRole("button", { name: "Ask AuraStage" }).click();
   await ask.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Describe the location "Lagos Harbour"/ }).first().click();
   await ask.getByRole("button", { name: "Undo", exact: true }).click();
-  await page.waitForFunction((b) => document.querySelector('textarea[aria-label="Description"]')?.value === b, before, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('textarea[aria-label="Description"]')?.value === "", undefined, { timeout: 15000 });
   await ask.getByRole("button", { name: "Close" }).click();
-  return `cost shown before asking: ${cost} · ${after.slice(0, 80)}`;
+  if (original) await save(original);
+  return `free · ${after.slice(0, 90)}`;
 });
 await check("dialogue: bring in + approve scene, reload: still approved", async () => {
   await page.goto(projectUrl + "/dialogue");
@@ -472,13 +477,13 @@ await check("ask AuraStage: suggest a tone change, see before → after, apply; 
   const story = page.getByRole("region", { name: "Story & Creative Summary" });
   await page.getByRole("button", { name: "Ask AuraStage" }).click();
   await panel.getByLabel("What would you like to change?").fill("Change the tone to Tense and brooding");
-  // The cost of asking is shown before anything is sent (owner request 2026-09-30).
-  await panel.getByTestId("cost-note").waitFor({ timeout: 20000 });
+  // Asking is free: AuraStage's built-in story intelligence answers (owner, 2026-09-30).
+  await panel.getByTestId("ask-free").waitFor({ timeout: 20000 });
   await panel.getByRole("button", { name: "Ask", exact: true }).click();
   // Planned by the generation worker; allow for its poll interval.
   await panel.getByTestId("proposal-status").getByText("Suggested").waitFor({ timeout: 90000 });
   await panel.getByTestId("change").getByRole("cell", { name: "Tense and brooding" }).waitFor();
-  const label = (await panel.getByTestId("test-output").count()) ? "test output" : "AI";
+  const label = await panel.getByTestId("proposal-provider").textContent();
   await panel.getByRole("button", { name: "Apply" }).click();
   await panel.getByTestId("proposal-status").getByText("Applied").waitFor();
   await page.goto(projectUrl + "/settings");

@@ -19,6 +19,20 @@ import type { ProposedShot, ShotPlanningOutput } from "./output.schema";
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
+/**
+ * A shot's text fields hold at most 500 characters (ShotEditableSchema, the shots table). Scene DNA text can be longer
+ * (a detailed lighting intent), so it is shortened at a sentence — or word — boundary instead of being refused (1.1.1).
+ */
+export function fitText(text: string, max = 500): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const sentence = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  if (sentence > max * 0.5) return cut.slice(0, sentence + 1);
+  const word = cut.lastIndexOf(" ");
+  return `${cut.slice(0, word > max * 0.5 ? word : max - 1).replace(/[\s,;:—-]+$/, "")}…`;
+}
+
 /** Story time Tₛ the plan lays out: the locked duration, stretched if the dialogue needs longer. */
 export function planStoryTime(durationSeconds: number, lineSeconds: number[]): number {
   const dialogue = lineSeconds.reduce((s, x) => s + x + LINE_PAD_SECONDS, 0);
@@ -36,7 +50,7 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
   const onScreen = participants.filter((p) => p.presence === "on_screen");
   const name = new Map(participants.map((p) => [p.character_id, p.name]));
   const onScreenIds = new Set(onScreen.map((p) => p.character_id));
-  const lighting = dna.lighting_intent;
+  const lighting = dna.lighting_intent ? fitText(dna.lighting_intent) : dna.lighting_intent;
   const shots: ProposedShot[] = [];
   const base = {
     angle: "eye" as const,
@@ -179,5 +193,6 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
     });
   }
 
-  return { shots, scene_seconds: T, engine_version: ENGINE_VERSION };
+  const fitted = shots.map((x) => ({ ...x, description: fitText(x.description), character_ids: x.character_ids.slice(0, 20), dialogue_line_ids: x.dialogue_line_ids.slice(0, 50) }));
+  return { shots: fitted, scene_seconds: T, engine_version: ENGINE_VERSION };
 }

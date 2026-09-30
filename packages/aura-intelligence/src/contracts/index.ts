@@ -14,6 +14,12 @@ export const ObjectRefSchema = z.object({
 });
 export type ObjectRef = z.infer<typeof ObjectRefSchema>;
 
+/** One-click fills the built-in story intelligence does for free (only EMPTY fields; a suggestion to review, undoable). */
+export const BUILTIN_TASKS = [
+  "develop_character", "develop_cast", "annotate_scene", "fill_scene_overview", "fill_visual_sound", "fill_continuity", "fill_scene", "describe_world",
+] as const;
+export type BuiltinTask = (typeof BUILTIN_TASKS)[number];
+
 export const AssistantRequestSchema = z.object({
   project_id: z.string().uuid(),
   module: AssistantModuleSchema,
@@ -21,6 +27,13 @@ export const AssistantRequestSchema = z.object({
   text: z.string().trim().min(3, "Tell AuraStage what you'd like to change").max(4000),
   /** assist = explain/answer, suggest = propose changes (default), generate = also queue generation. */
   mode: z.enum(["assist", "suggest", "generate"]).default("suggest"),
+  /**
+   * Who plans it (owner, 2026-09-30: "only generation through a third party should cost money"): "builtin" = AuraStage's
+   * own story-intelligence engines, free (the default); "writer" = a connected paid model (Claude…), only when asked.
+   */
+  planner: z.enum(["builtin", "writer"]).default("builtin"),
+  /** A page's one-click fill, so the built-in engines know exactly what to fill (no guessing from the words). */
+  task: z.enum(BUILTIN_TASKS).nullable().default(null),
 }).strict();
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 
@@ -51,7 +64,8 @@ export const ContextBundleSchema = z.object({
   project: z.object({ id: z.string().uuid(), title: z.string(), genre: z.string().nullable(), tone: z.string().nullable() }),
   module: AssistantModuleSchema,
   focus: ObjectRefSchema.nullable(),
-  items: z.array(ContextItemSchema).max(60),
+  // A paid model sees at most CONTEXT_LIMITS.items; the built-in engines read the whole cast or scene.
+  items: z.array(ContextItemSchema).max(600),
 });
 export type ContextBundle = z.infer<typeof ContextBundleSchema>;
 
@@ -68,7 +82,8 @@ export const PlanSchema = z.object({
   summary: z.string().max(600),
   operation: OperationSchema,
   /** Up to 40 changes, so a whole scene (every line + its Scene DNA) can be annotated in one pass. */
-  calls: z.array(PlannedCallSchema).max(40),
+  // A paid model is asked for up to 40 calls; the built-in engines can fill a whole cast or scene in one plan.
+  calls: z.array(PlannedCallSchema).max(250),
   /** Parts of the request no tool can do yet — shown, never silently dropped. */
   not_possible: z.array(z.string().max(300)).max(10),
   /** Questions for the user when the request is ambiguous. */

@@ -78,6 +78,21 @@ async function api(method, path, body) {
     await page.getByText("Subtext: He is afraid they'll bury him too.").waitFor();
     await page.getByText(/1 of 3 lines annotated/).waitFor();
   });
+  await step("fill every line's performance (owner, 2026-09-30: free, built in): only empty fields; the line written by hand keeps its words; apply shows at once; reload keeps it", async () => {
+    await page.getByRole("button", { name: "Fill every line's performance (free)" }).click();
+    const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
+    await panel.getByTestId("proposal-status").getByText("Suggested").waitFor();
+    await panel.getByTestId("proposal-provider").getByText(/built in · free/).waitFor();
+    const mine = panel.getByTestId("change").filter({ hasText: /They buried it|line 1/ }).first();
+    if (await mine.getByRole("cell", { name: "subtext" }).count()) throw new Error("the hand-written subtext would be replaced");
+    await panel.getByRole("button", { name: "Apply" }).click();
+    await panel.getByTestId("proposal-status").getByText("Applied").waitFor();
+    await panel.getByRole("button", { name: "Close" }).click();
+    await page.getByText(/3 of 3 lines annotated/).waitFor();
+    await page.reload();
+    await page.getByText(/3 of 3 lines annotated/).waitFor();
+    await page.getByText("Subtext: He is afraid they'll bury him too.").waitFor();
+  });
   await step("quality checks and voice panel are computed from the lines", async () => {
     await page.getByText("Dialogue quality check").waitFor();
     await page.getByText("Share of this scene's words").waitFor();

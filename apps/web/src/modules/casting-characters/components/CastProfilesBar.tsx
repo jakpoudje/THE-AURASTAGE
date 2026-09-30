@@ -13,10 +13,9 @@ export function CastProfilesBar({ projectId, characters, busy, onApplySuggestion
   const incomplete = characters.filter((c) => emptyFields(c as never).length > 0);
   const drafts = characters.filter((c) => c.status !== "approved");
   const done = characters.length > 0 && characters.every(isComplete);
-  const develop = () =>
-    askAuraStage(
-      `Develop every character's profile in one pass: for ${incomplete.map((c) => `${c.name} (${emptyFields(c as never).map((k) => LABELS[k].toLowerCase()).join(", ")})`).join("; ")} — fill only the empty fields, from the script and the story, including the accent and languages the story suggests. Keep everything already written.`,
-    );
+  // One short request whatever the cast size (regression: a long list of names broke the 4000-character limit); the
+  // built-in engines read every character themselves — free (owner, 2026-09-30).
+  const develop = () => askAuraStage("Develop every character's profile: fill the empty fields from the script and the story.", { task: "develop_cast" });
   return (
     <section aria-label="Whole cast profiles" className="rounded-xl border border-aura-border bg-aura-panel p-4">
       {done ? (
@@ -41,9 +40,9 @@ export function CastProfilesBar({ projectId, characters, busy, onApplySuggestion
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button onClick={develop} disabled={busy || !incomplete.length}
               className="rounded-md bg-aura-gold px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40">
-              Develop the rest of every profile with AI
+              Develop the rest of every profile
             </button>
-            <span className="text-[11px] text-white/40">Uses AI writing. You see every change before it's saved, and can undo it.</span>
+            <span className="text-[11px] text-white/40">Free — personality, motivation, fears, arc, wardrobe and more from the script. You see every change before it&apos;s saved, and can undo it.</span>
           </div>
         </>
       )}

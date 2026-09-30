@@ -15,3 +15,7 @@ export type { StoryAccentOutput, AccentSuggestion } from "./storyAccentEngine";
 export * as characterDuplicate from "./characterDuplicateEngine";
 export { characterDuplicateEngine } from "./characterDuplicateEngine";
 export type { DuplicatePair, CharacterDuplicateOutput } from "./characterDuplicateEngine";
+export * as characterProfile from "./characterProfileEngine";
+export { characterProfileEngine } from "./characterProfileEngine";
+export * as wardrobeSuggestion from "./wardrobeSuggestionEngine";
+export { wardrobeSuggestionEngine } from "./wardrobeSuggestionEngine";

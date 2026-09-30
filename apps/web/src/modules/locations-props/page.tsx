@@ -209,8 +209,8 @@ export default function LocationsPropsPage() {
                   disabled={!canEdit || busy || !dirty || !draft.name.trim()} className="rounded-md bg-aura-gold px-4 py-1.5 text-sm font-medium text-black disabled:opacity-40">Save</button>
                 {dirty && <button onClick={() => setDraft({ name: sel.name, description: sel.description, category: sel.category ?? "prop" })} className="rounded-md border border-aura-border px-3 py-1.5 text-sm">Discard</button>}
                 {!dirty && (
-                  <button onClick={() => askAuraStage(`Describe the ${sel.kind} "${sel.name}" for its reference views: what it looks like (materials, age, colour, condition, light) as the script and the story suggest.${sel.description ? " Keep what is already written and add to it." : ""}`)}
-                    disabled={!canEdit} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">Describe with AI</button>
+                  <button onClick={() => askAuraStage(`Describe the ${sel.kind} "${sel.name}" for its reference views, from the script.`, { task: "describe_world", object: { type: sel.kind, id: sel.id, label: sel.name } })}
+                    disabled={!canEdit} title="Free — from what the script says about it" className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">Describe from the script (free)</button>
                 )}
               </div>
 

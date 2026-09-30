@@ -8,7 +8,7 @@ Turns a plain-language request made in any workspace into a proposal the user re
 1. `POST /api/projects/:id/assistant` — validates the request, classifies the intent, builds the context (only the
    relevant objects, each with its canonical id and the version it was read at), freezes intent + context + planner
    prompt into the proposal and queues an `assistant.plan` job (`request_ai_proposal`, migration 0025).
-2. The generation worker (`workers/image-worker/src/planner.ts`) plans it with the reasoning gateway
+2. Built-in requests are already planned (see below). For a paid writer, the generation worker (`workers/image-worker/src/planner.ts`, its own plan lane) plans it with the reasoning gateway
    (`apps/api/src/providers/reasoning`): Claude when `ANTHROPIC_API_KEY` is set, otherwise the built-in test planner,
    whose output is stored with `test_output = true` and labelled DEVELOPMENT / TEST OUTPUT (rule 12).
    `AURA_TEST_PROVIDER=off` disables the test planner.
@@ -23,6 +23,22 @@ Turns a plain-language request made in any workspace into a proposal the user re
 
 Also: `GET /api/projects/:id/assistant` (recent requests), `GET /api/assistant/capabilities` (planner, tools, media
 providers — from configured keys, never guessed).
+
+## Built-in story intelligence — free (owner, 2026-09-30)
+"Only generation through a third party should cost money." Every request is planned by AuraStage's own engines unless
+the person chooses a paid writer: `planner: "builtin"` (the default) or `"writer"` (Claude/OpenAI/Gemini, priced first
+via `/estimate`, shown in the panel as "Refine with Claude").
+- `builtin/index.ts` (planner 1.0.0, provider `aurastage`, model `story-intelligence-1.0.0`): one-click fills given as
+  `task` — `develop_character`, `develop_cast`, `annotate_scene`, `fill_scene_overview`, `fill_visual_sound`,
+  `fill_continuity`, `fill_scene`, `describe_world` — run `characterProfileEngine` (+ `wardrobeSuggestionEngine` for a
+  first look), `dialoguePerformanceEngine`, `sceneDnaFillEngine` and `worldDescribeEngine` on evidence read with the
+  user's own access (`builtin/evidence.ts`: the approved script's action lines, every scene and spoken line, Casting's
+  introductions and story accents). They fill only EMPTY fields; gender is never guessed (only from the script's words).
+  Anything else goes to the phrase planner (`builtin/phrases.ts`, moved from the test adapter).
+- The API plans it inline (deterministic, milliseconds) and freezes the plan into the proposal (`snapshot.builtin_plan`,
+  with the context's ids and versions but not its text); the worker's plan lane records it at once without calling any
+  provider (`test_output = false`). Preview, permissions, staleness, apply, rollback and undo are exactly as below.
+- A built-in plan may hold up to 250 calls (a whole cast or scene); a paid writer is asked for up to 40.
 
 ## Tools (`tools/index.ts`)
 `updateStory` (projects service), `updateCharacter` (profile fields; never renames or approves), `changeWardrobe`
@@ -50,7 +66,7 @@ unsaved edits there), Audio Studio, Editorial and the Assets Library re-read at 
 `useAssistantChanges`), so the change shows without a manual reload.
 
 ## One pass over a scene (task 36)
-In Dialogue Intelligence and Scene DNA the panel offers "Annotate scene in one pass": one request that proposes every
+In Dialogue Intelligence and Scene DNA the panel offers "Fill scene in one pass (free)" (task `fill_scene`): one request that proposes every
 spoken line's intention, subtext, emotion and intensity (modifyDialogue per line) and the scene's DNA (updateSceneDNA)
 as a single suggestion, reviewed and applied (or undone) together. The context gives a focus scene its action text from
 the approved script, all its lines and shots and the characters who speak in it first (up to 60 items); a plan may hold

@@ -3,11 +3,13 @@
 // Ask AuraStage (INTELLIGENCE_PLAN.md §4.6): a plain-language request in any workspace becomes a proposal —
 // field-level before → after, what it may flag downstream, what it can't do — and changes nothing until you apply it.
 // Applied changes can be undone. Output from the built-in test planner is labelled DEVELOPMENT / TEST OUTPUT (rule 12).
+// Owner, 2026-09-30: "only generation through a third party should cost money". Every request is answered first by
+// AuraStage's own story-intelligence engines, free; a paid writer (Claude) is an optional "refine", priced before use.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/apiClient";
-import { announceAssistantChange } from "../askBus";
-import { CostNote, estimateCost } from "@/components/CostNote";
+import { announceAssistantChange, type AskRequest } from "../askBus";
+import { CostNote } from "@/components/CostNote";
 import { assistantApi, type AssistantModule, type Proposal } from "../api/assistantApi";
 
 const FIELD = (k: string) => k.replace(/_/g, " ");
@@ -25,19 +27,25 @@ const EXAMPLES: Partial<Record<AssistantModule, string>> = {
   script: "Change the tone to Tense and brooding",
 };
 
-export function AskAuraStage({ projectId, module, request, onClose }: { projectId: string; module: AssistantModule; request?: { text: string; n: number } | null; onClose: () => void }) {
+const BUILT_IN = new Set(["aurastage", "aurastage-test"]);
+const providerLabel = (p: string, m: string | null) => (p === "aurastage" ? "AuraStage story intelligence · built in · free" : p === "aurastage-test" ? "Built-in test planner" : `${p} · ${m ?? ""}`);
+
+export function AskAuraStage({ projectId, module, request, onClose }: { projectId: string; module: AssistantModule; request?: (AskRequest & { n: number }) | null; onClose: () => void }) {
   const [text, setText] = useState("");
   const [current, setCurrent] = useState<Proposal | null>(null);
   const [recent, setRecent] = useState<Proposal[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // What asking will cost (owner request 2026-09-30): priced from the exact prompt, refreshed as the request is typed.
+  // What refining with a paid writer would cost (only shown for that option; asking AuraStage itself is free).
   const [cost, setCost] = useState<{ provider: string; model: string | null; input_chars: number; output_chars: number } | null>(null);
+  const [lastAsk, setLastAsk] = useState<{ text: string; task: AskRequest["task"] | null; object: AskRequest["object"] | null } | null>(null);
+  const costText = text.trim().length >= 3 ? text : lastAsk?.text ?? "";
   useEffect(() => {
-    if (text.trim().length < 3) return setCost(null);
-    const t = setTimeout(() => assistantApi.estimate(projectId, { module, text }).then(setCost).catch(() => setCost(null)), 500);
+    if (costText.trim().length < 3) return setCost(null);
+    const t = setTimeout(() => assistantApi.estimate(projectId, { module, text: costText, planner: "writer" }).then(setCost).catch(() => setCost(null)), 500);
     return () => clearTimeout(t);
-  }, [projectId, module, text]);
+  }, [projectId, module, costText]);
+  const writer = cost && !BUILT_IN.has(cost.provider) ? cost : null;
   const poll = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadRecent = useCallback(() => assistantApi.list(projectId).then((r) => setRecent(r.proposals)).catch(() => null), [projectId]);
@@ -69,33 +77,26 @@ export function AskAuraStage({ projectId, module, request, onClose }: { projectI
     }
   }
 
-  const ask = (request = text) => run(async () => {
-    const p = await assistantApi.ask(projectId, { module, text: request });
+  const ask = (request = text, opts: { planner?: "builtin" | "writer"; task?: AskRequest["task"] | null; object?: AskRequest["object"] | null } = {}) => run(async () => {
+    const p = await assistantApi.ask(projectId, { module, text: request, planner: opts.planner ?? "builtin", task: opts.task ?? null, object: opts.object ?? null });
+    setLastAsk({ text: request, task: opts.task ?? null, object: opts.object ?? null });
     setText("");
     await open(p.id);
   });
+  /** The same request, answered by the connected paid writer instead (Claude…), after its cost is shown. */
+  const refine = () => lastAsk && ask(lastAsk.text, { planner: "writer", object: lastAsk.object });
   // One pass over a whole scene: every spoken line's performance and the scene's DNA, as one suggestion to review.
   const [passScene, setPassScene] = useState("1");
-  // A page asked on the user's behalf (e.g. "Develop this character's profile"). With a paid AI connected the request is
-  // filled in with its cost and waits for "Ask" (owner: the cost is shown before anything is spent); the free built-in
-  // planner asks straight away.
+  // A page asked on the user's behalf (e.g. "Develop the whole cast"): the built-in engines answer straight away — free.
   const asked = useRef<number | null>(null);
-  const [waiting, setWaiting] = useState(false);
   useEffect(() => {
     if (!request || asked.current === request.n) return;
     asked.current = request.n;
-    setText(request.text);
-    assistantApi.estimate(projectId, { module, text: request.text })
-      .then((c) => {
-        const free = estimateCost([{ provider: c.provider, model: c.model, input_chars: c.input_chars, output_chars: c.output_chars }]).free;
-        if (free) ask(request.text);
-        else setWaiting(true);
-      })
-      .catch(() => ask(request.text));
+    ask(request.text, { task: request.task ?? null, object: request.object ?? null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request?.n]);
   const onePass = module === "dialogue" || module === "scene_dna";
-  const annotateScene = () => ask(`Annotate scene ${passScene} in one pass: every line's intention, subtext, emotion and intensity, and the scene's Scene DNA (purpose, stakes, mood, atmosphere, lighting, sound and camera energy). Fill what is empty; keep what is already written.`);
+  const annotateScene = () => ask(`Fill scene ${passScene} from the script: every line's emotion, intensity, intention, subtext and delivery, and its Scene DNA. Only empty fields.`, { task: "fill_scene" });
   const act = (fn: (id: string) => Promise<Proposal>) => current && run(async () => {
     await fn(current.id);
     await open(current.id);
@@ -119,11 +120,13 @@ export function AskAuraStage({ projectId, module, request, onClose }: { projectI
           <textarea id="ask-text" value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={4000}
             placeholder={EXAMPLES[module] ?? "e.g. Make scene 2 night and rainy"}
             className="w-full rounded-md border border-aura-border bg-black/30 px-3 py-2" />
-          <button type="submit" disabled={busy || text.trim().length < 3} className="rounded-md bg-aura-gold px-4 py-2 font-medium text-black disabled:opacity-40">
-            Ask
-          </button>
-          {waiting && !current && <p className="text-xs text-aura-gold">Check the cost below, then press Ask.</p>}
-          {cost && <CostNote label="Cost of asking" items={[{ provider: cost.provider, model: cost.model, input_chars: cost.input_chars, output_chars: cost.output_chars }]} />}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="submit" disabled={busy || text.trim().length < 3} className="rounded-md bg-aura-gold px-4 py-2 font-medium text-black disabled:opacity-40">
+              Ask
+            </button>
+            <span data-testid="ask-free" className="text-[11px] text-emerald-300/80">Free — AuraStage&apos;s built-in story intelligence</span>
+          </div>
+          <p className="text-[11px] text-white/40">Filling and describing is always free. Only generating images, video or sound with an outside service costs money.</p>
         </form>
         {onePass && (
           <div className="rounded-md border border-aura-border bg-black/20 p-3" aria-label="One pass for a scene" role="group">
@@ -132,7 +135,7 @@ export function AskAuraStage({ projectId, module, request, onClose }: { projectI
               <label htmlFor="pass-scene" className="text-xs text-white/60">Scene</label>
               <input id="pass-scene" type="number" min={1} value={passScene} onChange={(e) => setPassScene(e.target.value)} className="w-16 rounded-md border border-aura-border bg-black/30 px-2 py-1" />
               <button type="button" disabled={busy || !(Number(passScene) >= 1)} onClick={annotateScene} className="rounded-md border border-aura-gold/60 px-3 py-1 text-aura-gold disabled:opacity-40">
-                Annotate scene in one pass
+                Fill scene in one pass (free)
               </button>
             </div>
           </div>
@@ -149,7 +152,7 @@ export function AskAuraStage({ projectId, module, request, onClose }: { projectI
                   DEVELOPMENT / TEST OUTPUT
                 </span>
               )}
-              {p.provider && <span className="text-[11px] text-white/40">{p.provider === "aurastage-test" ? "Built-in test planner" : p.provider} · {p.model}</span>}
+              {p.provider && <span data-testid="proposal-provider" className="text-[11px] text-white/40">{providerLabel(p.provider, p.model)}</span>}
             </div>
             <p className="text-white/60">&ldquo;{p.request}&rdquo;</p>
             {p.status === "failed" && <p className="text-red-300">{p.error}</p>}
@@ -218,6 +221,13 @@ export function AskAuraStage({ projectId, module, request, onClose }: { projectI
                 </>
               )}
             </div>
+            {writer && p.provider && BUILT_IN.has(p.provider) && lastAsk && ["proposed", "rejected", "undone", "failed"].includes(p.status) && (
+              <div className="rounded-md border border-aura-border bg-black/20 p-3 text-xs" data-testid="refine">
+                <p className="mb-2 text-white/60">Want a writer&apos;s touch? {writer.provider === "anthropic" ? "Claude" : writer.provider} can rewrite this suggestion — optional, and it costs money.</p>
+                <CostNote label="Refine with AI" items={[{ provider: writer.provider, model: writer.model, input_chars: writer.input_chars, output_chars: writer.output_chars }]} />
+                <button onClick={refine} disabled={busy} className="mt-2 rounded-md border border-aura-gold/60 px-3 py-1 text-aura-gold disabled:opacity-40">Refine with {writer.provider === "anthropic" ? "Claude" : "AI"}</button>
+              </div>
+            )}
           </section>
         )}
 

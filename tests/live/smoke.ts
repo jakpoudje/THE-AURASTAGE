@@ -985,7 +985,8 @@ await check("assistant: ask in Casting; the worker plans it; the preview shows b
   aiId = q.id;
   const p = await planned(token, aiId);
   assert(p.status === "proposed", `${p.status} ${p.error ?? ""}`);
-  assert(p.test_output === (aiPlanner === "aurastage-test"), "test label mismatch");
+  // Built-in story intelligence answers by default (owner, 2026-09-30): free, not test output, no provider called.
+  assert(p.provider === "aurastage" && p.test_output === false, `planner ${p.provider} test=${p.test_output}`);
   const call = p.preview.calls.find((c: any) => c.tool === "updateCharacter" && c.object.id === amaraId);
   assert(call && String(call.after.age).includes("45") && call.allowed && !call.stale, JSON.stringify(p.preview));
   assert(p.preview.can_apply, "can't apply: " + JSON.stringify(p.preview.issues));
@@ -1018,7 +1019,7 @@ await check("assistant: a discarded suggestion changes nothing; recent requests 
 await check("assistant: on Locations & Props, describe a location; apply saves it through Locations & Props (revision bumps); undo restores it", async () => {
   const w0 = await api("GET", `/api/projects/${projectId}/world`);
   const h0 = w0.locations.find((l: any) => l.name === "Lagos Harbour");
-  const q = await api("POST", `/api/projects/${projectId}/assistant`, { module: "scene_dna", text: 'Describe the location "Lagos Harbour" for its reference views: what it looks like (materials, age, colour, condition, light) as the script and the story suggest. Keep what is already written and add to it.' });
+  const q = await api("POST", `/api/projects/${projectId}/assistant`, { module: "scene_dna", text: 'Describe the location "Lagos Harbour" for its reference views: what it looks like (materials, age, colour, condition, light) as the script and the story suggest. Keep what is already written and add to it.', planner: "writer" });
   assert(q.context_refs.some((r: any) => r.id === h0.id), "the location wasn't in the context");
   const p = await planned(token, q.id);
   assert(p.status === "proposed", `${p.status} ${p.error ?? ""}`);
@@ -1033,6 +1034,39 @@ await check("assistant: on Locations & Props, describe a location; apply saves i
   const h2 = (await api("GET", `/api/projects/${projectId}/world`)).locations.find((l: any) => l.id === h0.id);
   assert(h2.description === h0.description, `undo: ${h2.description}`);
   return `${p.provider} · "${String(call.after.description).slice(0, 90)}…"`;
+});
+// ---- Built-in story intelligence (owner, 2026-09-30: "only generation through a third party should cost money") ----
+await check("built-in intelligence: filling is free — the estimate is Free and no paid provider plans it", async () => {
+  const e = await api("POST", `/api/projects/${projectId}/assistant/estimate`, { module: "casting", text: "Develop every character's profile", task: "develop_cast" });
+  assert(e.provider === "aurastage" && e.estimate.free === true, JSON.stringify(e));
+  return "free";
+});
+await check("built-in intelligence: develop the whole cast from the script in one click — only empty fields; apply; re-read keeps it; undo restores it", async () => {
+  const before = (await api("GET", `/api/projects/${projectId}/characters`)).characters.filter((c: any) => !c.merged_into);
+  const q = await api("POST", `/api/projects/${projectId}/assistant`, { module: "casting", text: "Develop every character's profile: fill the empty fields from the script and the story.", task: "develop_cast" });
+  const p = await planned(token, q.id);
+  assert(p.status === "proposed" && p.provider === "aurastage" && !p.test_output, `${p.status} ${p.provider} ${p.error ?? ""}`);
+  const upd = p.preview.calls.filter((c: any) => c.tool === "updateCharacter");
+  assert(upd.length >= 1 && p.preview.can_apply, JSON.stringify(p.preview).slice(0, 500));
+  // Nothing already written is in the plan.
+  for (const c of upd) { const b = before.find((x: any) => x.id === c.object.id); for (const k of Object.keys(c.after)) assert(!String(b[k] ?? "").trim(), `${b.name}.${k} was already written`); }
+  await api("POST", `/api/assistant/proposals/${q.id}/apply`, {});
+  const after = (await api("GET", `/api/projects/${projectId}/characters`)).characters;
+  const one = upd[0], got = after.find((c: any) => c.id === one.object.id);
+  for (const [k, v] of Object.entries(one.after)) assert(got[k] === v, `${k} not saved`);
+  const u = await api("POST", `/api/assistant/proposals/${q.id}/undo`, {});
+  assert(u.status === "undone", u.status);
+  const back = (await api("GET", `/api/projects/${projectId}/characters`)).characters.find((c: any) => c.id === one.object.id);
+  for (const k of Object.keys(one.after)) assert((back[k] ?? null) === (before.find((x: any) => x.id === one.object.id)[k] ?? null), `undo: ${k}`);
+  return `${upd.length} character(s): ${Object.keys(one.after).join(", ")} · ${p.plan.not_possible.length} note(s)`;
+});
+await check("built-in intelligence: a whole scene (every line's performance + Scene DNA) is proposed from the script, free — previewed, then discarded", async () => {
+  const q = await api("POST", `/api/projects/${projectId}/assistant`, { module: "scene_dna", text: "Fill scene 1 from the script", task: "fill_scene", object: { type: "scene", id: s1 } });
+  const p = await planned(token, q.id);
+  assert(p.status === "proposed" && p.provider === "aurastage", `${p.status} ${p.error ?? ""}`);
+  assert(p.preview.calls.every((c: any) => c.allowed && !c.stale && !c.problem), JSON.stringify(p.preview.calls).slice(0, 400));
+  await api("POST", `/api/assistant/proposals/${q.id}/reject`, {});
+  return `${p.preview.calls.length} change(s): ${[...new Set(p.preview.calls.map((c: any) => c.tool))].join(", ")}`;
 });
 // ---- AI on every page (task 40): Project Settings and Audio Studio ----
 await check("assistant: on Project Settings, turn on the end credits and set who composed the music; a new settings version; undo restores; spending is never offered", async () => {

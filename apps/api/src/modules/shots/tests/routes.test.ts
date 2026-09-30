@@ -157,7 +157,7 @@ describe("Storyboard & Shots routes", () => {
     expect(res.json().style).toBe("simple");
     const shots = fake.calls[0].args.p_shots as Row[];
     expect(shots.some((s) => s.purpose === "reaction")).toBe(false);
-    expect(fake.calls[0].args.p_engine_version).toBe("1.1.0");
+    expect(fake.calls[0].args.p_engine_version).toBe("1.1.1");
     expect((await app.inject({ method: "POST", url: `/api/projects/${P}/storyboard/scenes/${S1}/generate`, payload: { style: "wild" } })).statusCode).toBe(400);
   });
 

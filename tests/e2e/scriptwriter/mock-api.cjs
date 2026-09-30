@@ -1207,10 +1207,14 @@ http.createServer((req, res) => {
         target: (i) => { const W0 = globalThis.__world || { location: [], prop: [] }; const r = (W0[i.kind] || []).find((x) => x.id === i.id); return r && { label: r.name, get: () => r, set: (ch) => Object.assign(r, ch, { revision: r.revision + 1, updated_at: now() }) }; } },
       setClipTransition: { module: "editorial", impact: ["Editorial & Timeline (a new edit; a locked picture refuses it until the lock is broken)", "Export & Deliver (renders made from the next Picture Lock)"],
         target: (i) => { const c = tclips.find((x) => x.id === i.clip_id); return c && { label: c.label, get: () => ({ transition: c.transition || { in: "cut", out: "cut", frames: 12 } }), set: (ch) => { c.transition = ch.transition; timeline.revision = crypto.randomUUID(); } }; } },
+      changeWardrobe: { module: "casting", impact: ["Scene DNA (the look worn in scenes)", "Visual Generation prompts"],
+        target: (i) => { const c = chars.find((x) => x.id === i.character_id); return c && { label: c.name, get: () => ({ look: i._look ? looks.find((l) => l.id === i._look) || null : null }),
+          set: (ch) => { if (ch.look) { const l = { id: crypto.randomUUID(), project_id: P, character_id: c.id, name: ch.look.name, description: ch.look.description, created_at: now(), updated_at: now() }; looks.push(l); i._look = l.id; }
+            else if (i._look) { const k = looks.findIndex((l) => l.id === i._look); if (k >= 0) looks.splice(k, 1); } } }; } },
       updateAssetDetails: { module: "assets", impact: ["Assets Library (the file's details; its versions and where it is used are unchanged)"],
         target: (i) => { const a = assets.find((x) => x.id === i.asset_id); return a && { label: a.name, get: () => a, set: (ch) => Object.assign(a, ch, { updated_at: now() }) }; } } };
     // A tool's changed fields ({changes} for most tools; setClipTransition changes the clip's transition).
-    const chg = (input) => input.changes ?? { transition: input.transition };
+    const chg = (input) => input.changes ?? (input.transition ? { transition: input.transition } : { look: { name: input.name, description: input.description } });
     const aiPreview = (x) => {
       const acc = teamAccess().modules;
       const calls = (x.plan?.calls ?? []).map((c, index) => {
@@ -1222,7 +1226,9 @@ http.createServer((req, res) => {
     };
     const aiView = (x) => ({ ...x, snapshot: undefined, preview: x.status === "proposed" ? aiPreview(x) : null });
     // Mirrors assistant.service estimate: the built-in test planner is free.
-    if (u === `/api/projects/${P}/assistant/estimate` && req.method === "POST") return send(200, { provider: "aurastage-test", model: null, input_chars: 4000 + (b.text || "").length, output_chars: 3000 });
+    // The built-in story intelligence is free; a "writer" (paid model) isn't connected offline, so the test planner answers.
+    if (u === `/api/projects/${P}/assistant/estimate` && req.method === "POST") return send(200, b.planner === "writer" ? { provider: "aurastage-test", model: null, input_chars: 4000 + (b.text || "").length, output_chars: 3000 } : { provider: "aurastage", model: "story-intelligence", input_chars: 0, output_chars: 0 });
+    const builtin = require(require("path").resolve(__dirname, "../../../apps/api/dist/modules/assistant/builtin/index.js"));
     if (u === `/api/projects/${P}/assistant` && req.method === "POST") {
       if (!b.text || b.text.trim().length < 3) return send(400, { error: { code: "AURA-AI-400", message: "Tell AuraStage what you'd like to change" } });
       const intent = aiLib.classifyIntent({ module: b.module, text: b.text });
@@ -1260,6 +1266,36 @@ http.createServer((req, res) => {
         for (const a of assets.filter((x) => !x.archived_at)) items.push({ ref: { type: "asset", id: a.id, version: null, label: a.name }, data: { name: a.name, type: a.type, category: a.category ?? null, description: a.description ?? "", tags: a.tags ?? [] } });
       const x = { id: crypto.randomUUID(), module: b.module, request: b.text.trim(), mode: "suggest", intent, status: "queued", provider: null, model: null, test_output: false, plan: null, results: null, error: null, created_at: now(), polls: 0,
         snapshot: { request: { text: b.text, module: b.module, object: null }, context: { items, focus: fs ? { type: "scene", id: fs.id } : null }, tools: Object.keys(aiTools) } };
+      // Built-in story intelligence (the default; free): the REAL engine planner, on the mock's own records.
+      if ((b.planner || "builtin") === "builtin") {
+        const reqB = { project_id: P, module: b.module, text: b.text, object: b.object || null, mode: "suggest", planner: "builtin", task: b.task || null };
+        const task = builtin.taskOf(reqB);
+        let plan;
+        if (!task) plan = builtin.phraseBuiltin(reqB, x.snapshot.context, Object.keys(aiTools));
+        else {
+          const act = scenes.filter((y) => y.status === "active").sort((a1, a2) => a1.number - a2.number);
+          const sc = (b.object && b.object.type === "scene" && act.find((y) => y.id === b.object.id)) || fs || null;
+          const dnaOf = (id) => { const d = sdna.find((y) => y.scene_id === id) || {}; return { purpose: d.purpose ?? null, stakes: d.stakes ?? null, story_time: d.story_time ?? null, mood: d.mood || [], weather: d.weather ?? null, atmosphere: d.atmosphere ?? null, lighting_intent: d.lighting_intent ?? null, sound_intent: d.sound_intent ?? null, camera_energy: d.camera_energy ?? null, continuity_notes: d.continuity_notes ?? null }; };
+          const W0 = globalThis.__world || { location: [], prop: [] };
+          const PF = ["role", "age", "gender", "nationality", "accent", "languages", "occupation", "description", "personality", "backstory", "motivation", "fears", "strengths", "weaknesses", "arc"];
+          const full = [
+            { ref: { type: "project", id: P, version: project.updated_at, label: project.title }, data: {} },
+            ...(sc ? [{ ref: { type: "scene", id: sc.id, version: (sdna.find((y) => y.scene_id === sc.id) || {}).updated_at || null, label: `Scene ${sc.number}` }, data: { number: sc.number, heading: sc.heading, time_of_day: sc.time_of_day, dna: dnaOf(sc.id) } }] : []),
+            ...chars.filter((c) => !c.merged_into).map((c) => ({ ref: { type: "character", id: c.id, version: c.updated_at || null, label: c.name }, data: { ...Object.fromEntries(PF.map((k) => [k, c[k] ?? null])), looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })) } })),
+            ...(sc ? dlines.filter((l) => l.scene_id === sc.id && l.status === "active").map((l) => ({ ref: { type: "dialogue_line", id: l.id, version: l.updated_at || null, label: `${l.speaker_name} line ${l.ordinal}` }, data: {} })) : []),
+            ...W0.location.filter((r) => !r.archived_at).map((r) => ({ ref: { type: "location", id: r.id, version: r.updated_at || null, label: r.name }, data: { name: r.name, description: r.description, int_ext: r.int_ext || [], times_of_day: r.times_of_day || [], areas: r.areas || [] } })),
+            ...W0.prop.filter((r) => !r.archived_at).map((r) => ({ ref: { type: "prop", id: r.id, version: r.updated_at || null, label: r.name }, data: { name: r.name, description: r.description, category: r.category || "prop" } })),
+          ];
+          const rs = resolve(); const cand = new Map((rs ? rs.rs : []).filter((y) => y.decision === "match").map((y) => [y.character_id, y.candidate]));
+          const ev = builtin.buildEvidence({ project, scenes: act, lines: dlines.filter((l) => l.status === "active"), elements: (approved() || { elements: [] }).elements, appearances: apps, relationships: rels, looks,
+            characters: Object.fromEntries(chars.filter((c) => !c.merged_into).map((c) => { const cd = cand.get(c.id);
+              const sug = eng.storyAccentEngine({ character: { nationality: c.nationality ?? null, description: c.description ?? null, backstory: c.backstory ?? null },
+                scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => (scenes.find((y) => y.id === a.scene_id) || {}).location).filter(Boolean), project: { setting: project.setting ?? null, logline: project.logline ?? null } }).suggestion;
+              return [c.id, { introduction: cd?.introduction ?? null, age: cd?.age ? String(cd.age) : null, accent: sug }]; })) });
+          plan = builtin.planFromEvidence(ev, reqB, { project: { id: P, title: project.title, genre: null, tone: null }, module: b.module, focus: sc ? { type: "scene", id: sc.id, version: null, label: `Scene ${sc.number}` } : b.object || null, items: full }, task);
+        }
+        x.snapshot = { planner: "builtin", builtin_plan: plan };
+      }
       AI.list.unshift(x);
       return send(200, aiView(x));
     }
@@ -1268,7 +1304,11 @@ http.createServer((req, res) => {
       const x = AI.list.find((y) => y.id === m[1]); if (!x) return send(404, { error: { code: "AURA-AI-404", message: "That request wasn't found" } });
       if (!m[2]) {
         // The worker plans on the second look, so the panel's "Thinking…" state is exercised.
-        if (x.status === "queued" && ++x.polls >= 2) {
+        if (x.status === "queued" && ++x.polls >= 2 && x.snapshot.planner === "builtin") {
+          Object.assign(x, { status: "proposed", plan: aiLib.PlanSchema.parse(x.snapshot.builtin_plan), provider: "aurastage", model: "story-intelligence-1.0.0", test_output: false });
+          return send(200, aiView(x));
+        }
+        if (x.status === "queued" && x.polls >= 2) {
           return void testPlanner.complete({ system: "", prompt: "", schema: aiLib.PlanSchema, task: { kind: "plan", snapshot: x.snapshot } }).then((r) => {
             Object.assign(x, { status: "proposed", plan: r.data, provider: testPlanner.id, model: r.model, test_output: r.test_output });
             send(200, aiView(x));

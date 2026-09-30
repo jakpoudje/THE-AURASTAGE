@@ -19,6 +19,7 @@ import { IntentSuggestions, LineCard } from "./components/LineCard";
 import { EmotionArc } from "./components/EmotionArc";
 import { VoicePanel } from "./components/VoicePanel";
 import { QualityChecks } from "./components/QualityChecks";
+import { askAuraStage } from "@/modules/ask-aurastage/askBus";
 
 export default function DialogueIntelligencePage() {
   const { id } = useParams<{ id: string }>();
@@ -126,6 +127,15 @@ export default function DialogueIntelligencePage() {
                       <p className="text-[11px] uppercase tracking-widest text-white/40">Scene {scene.number}</p>
                       <h2 className="truncate font-display text-xl">{scene.heading}</h2>
                     </div>
+                    {activeLines.length > 0 && (
+                      <button
+                        onClick={() => askAuraStage(`Fill the performance of every line in scene ${scene.number} from the script: emotion, intensity, intention, subtext and delivery.`, { task: "annotate_scene", object: { type: "scene", id: scene.id, label: `Scene ${scene.number}` } })}
+                        title="Free — AuraStage reads every line and the scene. Only empty fields; you see every change before it's saved."
+                        className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold"
+                      >
+                        Fill every line&apos;s performance (free)
+                      </button>
+                    )}
                     <button
                       onClick={() => d.approveScene(scene.id)}
                       disabled={d.busy !== null || activeLines.length === 0 || allApproved}

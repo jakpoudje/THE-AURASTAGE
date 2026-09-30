@@ -9,6 +9,7 @@ import type { Project, UpdateDialogueLineInput } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet } from "@/lib/apiClient";
 import { dialogueApi } from "../api/dialogueApi";
+import { useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 import type { DialogueWorkspace } from "../types";
 
 type Busy = null | "sync" | "line" | "scene";
@@ -23,6 +24,8 @@ export function useDialogue(projectId: string) {
   const [notice, setNotice] = useState<string | null>(null);
 
   const reload = useCallback(async () => setWs(await dialogueApi.getWorkspace(projectId)), [projectId]);
+  // A suggestion applied (or undone) in Ask AuraStage shows here at once.
+  useAssistantChanges(reload);
 
   useEffect(() => {
     let cancelled = false;

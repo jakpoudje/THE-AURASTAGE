@@ -8,18 +8,19 @@ import { useEffect, useMemo, useState } from "react";
 import type { CameraEnergy, SceneDnaEditable, UpdateSceneDnaInput } from "@aurastage/contracts";
 import type { SceneDnaEntry } from "../types";
 import { clearSceneDraft, readSceneDraft, writeSceneDraft } from "../state/sceneDraft";
-import { askAuraStage } from "@/modules/ask-aurastage/askBus";
+import { askAuraStage, type BuiltinTask } from "@/modules/ask-aurastage/askBus";
 
 const TABS = ["Scene Overview", "Visual & Sound", "Performance", "Continuity", "Notes"] as const;
 
 // AI help per section (owner request 2026-09-30), from the script context: the scene's action and dialogue, the cast and
 // the scenes around it. Each is one Ask AuraStage request, shown before → after; nothing is written until applied.
 const keep = "Use the scene's action and dialogue in the script. Fill what is empty; keep what is already written.";
-const SECTION_AI: Record<Exclude<(typeof TABS)[number], "Notes">, { what: string; ask: (n: number) => string }> = {
-  "Scene Overview": { what: "Purpose, stakes, story time and mood.", ask: (n) => `For scene ${n}, fill the Scene Overview in Scene DNA: purpose, stakes, story time and mood. ${keep}` },
-  "Visual & Sound": { what: "Weather, atmosphere, lighting, sound and camera energy.", ask: (n) => `For scene ${n}, fill Visual & Sound in Scene DNA: weather, atmosphere, lighting intent, sound intent and camera energy. ${keep}` },
-  Performance: { what: "Every spoken line's intention, subtext, emotion and intensity.", ask: (n) => `For scene ${n}, fill the Performance: annotate every spoken line's intention, subtext, emotion and intensity in one pass, from how the scene plays. ${keep}` },
-  Continuity: { what: "What must match the scenes before and after.", ask: (n) => `For scene ${n}, write its continuity notes in Scene DNA: what must match the previous and next scenes (wardrobe, props, injuries, weather, time of day), from the script. ${keep}` },
+// One click per section, filled by AuraStage's own engines from the script — free (owner, 2026-09-30).
+const SECTION_AI: Record<Exclude<(typeof TABS)[number], "Notes">, { what: string; task: BuiltinTask; ask: (n: number) => string }> = {
+  "Scene Overview": { what: "Purpose, stakes, story time and mood.", task: "fill_scene_overview", ask: (n) => `For scene ${n}, fill the Scene Overview in Scene DNA: purpose, stakes, story time and mood. ${keep}` },
+  "Visual & Sound": { what: "Weather, atmosphere, lighting, sound and camera energy.", task: "fill_visual_sound", ask: (n) => `For scene ${n}, fill Visual & Sound in Scene DNA: weather, atmosphere, lighting intent, sound intent and camera energy. ${keep}` },
+  Performance: { what: "Every spoken line's intention, subtext, emotion and intensity.", task: "annotate_scene", ask: (n) => `For scene ${n}, fill the Performance: annotate every spoken line's intention, subtext, emotion and intensity in one pass, from how the scene plays. ${keep}` },
+  Continuity: { what: "What must match the scenes before and after.", task: "fill_continuity", ask: (n) => `For scene ${n}, write its continuity notes in Scene DNA: what must match the previous and next scenes (wardrobe, props, injuries, weather, time of day), from the script. ${keep}` },
 };
 type Tab = (typeof TABS)[number];
 let lastTab: Tab = "Scene Overview";
@@ -156,11 +157,11 @@ export function SceneEditor({
         {tab !== "Notes" && (
           <div data-testid="section-ai" className="flex flex-wrap items-center gap-2 rounded-md border border-aura-border bg-black/20 px-3 py-2 text-xs">
             <span className="text-white/60">{SECTION_AI[tab].what}</span>
-            <button type="button" onClick={() => askAuraStage(SECTION_AI[tab].ask(entry.scene.number))}
+            <button type="button" onClick={() => askAuraStage(SECTION_AI[tab].ask(entry.scene.number), { task: SECTION_AI[tab].task, object: { type: "scene", id: entry.scene.id, label: `Scene ${entry.scene.number}` } })}
               className="rounded border border-aura-gold/60 px-2 py-0.5 text-aura-gold">
-              Fill {tab} with AI from the script
+              Fill {tab} from the script
             </button>
-            <span className="text-white/35">You see every change before it&apos;s saved.</span>
+            <span className="text-white/35">Free. You see every change before it&apos;s saved.</span>
           </div>
         )}
         {tab === "Scene Overview" && (

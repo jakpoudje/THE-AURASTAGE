@@ -6,6 +6,7 @@ import { AssistantRequestSchema, PLANNER_SYSTEM, PLANNER_VERSION, PlanSchema, bu
 import { providerStatuses, reasoningModel, reasoningStatuses } from "../../providers";
 import { costEstimateEngine } from "@aurastage/engines";
 import { buildContext, currentVersion } from "./assistant.context";
+import { BUILTIN_MODEL, BUILTIN_PLANNER_VERSION, BUILTIN_PROVIDER, builtinPlan } from "./builtin";
 import { toolImpl, toolRegistry, type Snapshot, type ToolCtx, type ToolImpl } from "./tools";
 import * as repo from "./assistant.repository";
 import { AssistantError, notFound } from "./assistant.errors";
@@ -46,9 +47,25 @@ export async function ask(db: SupabaseClient, projectId: string, body: unknown) 
   const project = await repo.getProject(db, projectId);
   if (!project) throw notFound("Project not found");
   const intent = classifyIntent(req);
-  const context = await buildContext(db, req, intent);
   const tools = toolRegistry.list();
+  if (req.planner === "builtin") {
+    // Built-in story intelligence (owner, 2026-09-30): the engines plan it here, deterministically and for free; the
+    // worker only records it (it holds the proposal's lifecycle). The frozen context keeps each object's id and the
+    // version it was read at — what the preview's staleness check needs — without the full text.
+    const context = await buildContext(db, req, intent, { full: true });
+    const plan = await builtinPlan(db, req, context, tools.map((t) => t.name));
+    const snapshot = {
+      planner: "builtin", planner_version: BUILTIN_PLANNER_VERSION, provider: BUILTIN_PROVIDER, model: BUILTIN_MODEL,
+      request: { text: req.text, module: req.module, object: req.object, mode: req.mode, task: req.task },
+      intent, context: { ...context, items: context.items.map((i) => ({ ref: i.ref, data: {} })) }, tools: tools.map((t) => t.name),
+      builtin_plan: plan,
+    };
+    const row = await repo.request(db, { project: projectId, module: req.module, object: req.object, text: req.text, mode: req.mode, intent, snapshot, engineVersion: BUILTIN_PLANNER_VERSION });
+    return toDTO(row);
+  }
+  const context = await buildContext(db, req, intent);
   const snapshot = {
+    planner: "writer",
     planner_version: PLANNER_VERSION,
     request: { text: req.text, module: req.module, object: req.object, mode: req.mode },
     intent, context, tools: tools.map((t) => t.name),
@@ -73,6 +90,8 @@ export async function estimate(db: SupabaseClient, projectId: string, body: unkn
     if ((e as Error)?.name === "ZodError") throw new AssistantError(400, "AURA-AI-400", (e as { issues: { message: string }[] }).issues[0]?.message ?? "Invalid request");
     throw e;
   }
+  // The built-in engines are free: filling fields never costs money (owner, 2026-09-30).
+  if (req.planner === "builtin") return { provider: BUILTIN_PROVIDER, model: BUILTIN_MODEL, input_chars: 0, output_chars: 0, estimate: costEstimateEngine({ items: [{ provider: BUILTIN_PROVIDER, model: null, input_chars: 0, output_chars: 0 }] }) };
   const intent = classifyIntent(req);
   const context = await buildContext(db, req, intent);
   const prompt = buildPlannerPrompt(req, intent, context, toolRegistry.list());
@@ -225,6 +244,10 @@ export function capabilities(env: Env = process.env) {
   const real = reasoning.find((r) => r.execution !== "test" && r.state === "configured");
   return {
     reasoning,
+    /** Always available and free: the built-in story intelligence that fills fields from the script. */
+    builtin: { id: BUILTIN_PROVIDER, name: "AuraStage story intelligence (built in)", model: BUILTIN_MODEL, free: true },
+    /** The paid writer, only used when someone chooses it ("Refine with Claude"). */
+    writer: real ? { id: real.id, name: real.name, model: reasoningModel(real.id, env) } : null,
     planner: real ? { id: real.id, name: real.name, model: reasoningModel(real.id, env), test_output: false } : testProviderAllowed(env) ? { id: "aurastage-test", name: "AuraStage test planner", test_output: true } : null,
     tools: toolRegistry.list().map((t) => ({ name: t.name, module: t.module, action: t.action, description: t.description, impact: t.impact })),
     media: providerStatuses(env).map((p) => ({ id: p.id, name: p.name, capabilities: p.capabilities, state: p.state })),

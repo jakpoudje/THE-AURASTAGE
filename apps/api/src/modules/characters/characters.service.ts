@@ -113,6 +113,31 @@ export async function applySuggestedProfiles(db: SupabaseClient, projectId: stri
   return { updated, unchanged: active.length - updated.length };
 }
 
+/**
+ * What the script and story already say about each character (read-only), for the built-in story intelligence in
+ * Ask AuraStage (owner, 2026-09-30): the approved script's elements, each character's introduction and age as the
+ * script gives them, and the accent the story suggests. No writes.
+ */
+export async function profileEvidence(db: SupabaseClient, projectId: string) {
+  const [chars, apps, story, resolved, relationships, looks] = await Promise.all([
+    repo.listCharacters(db, projectId), repo.listAppearances(db, projectId), repo.storyPlaces(db, projectId), resolveFromApprovedScript(db, projectId),
+    repo.listRelationships(db, projectId), repo.listLooks(db, projectId),
+  ]);
+  const active = chars.filter((c) => !c.merged_into);
+  const accents = accentSuggestions(active, apps, story);
+  const fromScript = new Map((resolved?.resolutions ?? []).filter((r) => r.decision === "match").map((r) => [r.character_id as string, r.candidate]));
+  return {
+    elements: (resolved?.version.elements ?? []) as { index: number; type: string; text: string; speaker?: string }[],
+    appearances: apps,
+    relationships,
+    looks,
+    characters: Object.fromEntries(active.map((c) => {
+      const cand = fromScript.get(c.id as string);
+      return [c.id as string, { introduction: (cand?.introduction as string | null) ?? null, age: (cand?.age as string | null) ?? null, accent: accents[c.id as string]?.suggestion ?? null }];
+    })) as Record<string, { introduction: string | null; age: string | null; accent: { accent: string; languages: string[]; evidence: string[] } | null }>,
+  };
+}
+
 export async function getCastingWorkspace(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
   const [chars, aliases, apps, sync, resolved, relationships, looks, story] = await Promise.all([

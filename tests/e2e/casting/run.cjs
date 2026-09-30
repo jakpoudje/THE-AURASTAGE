@@ -337,13 +337,16 @@ async function api(method, path, body) {
     await page.getByRole("button", { name: "Profile", exact: true }).click();
     const box = page.getByTestId("profile-completeness");
     await box.getByText(/Still empty/).waitFor();
-    await box.getByRole("button", { name: "Develop the rest with AI" }).click();
+    await box.getByRole("button", { name: "Develop the rest (free)" }).click();
     const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
-    await panel.getByText(/profile in one pass/).first().waitFor();
-    await panel.getByTestId("proposal-status").waitFor();
+    await panel.getByText(/profile: fill the empty fields/).first().waitFor();
+    await panel.getByTestId("proposal-status").getByText("Suggested").waitFor();
+    await panel.getByTestId("proposal-provider").getByText(/built in · free/).waitFor();
+    await panel.getByTestId("change").first().getByRole("cell", { name: "personality" }).waitFor();
+    await panel.getByRole("button", { name: "Discard" }).click();
     await panel.getByRole("button", { name: "Close" }).click();
   });
-  await step("whole cast (owner request 2026-09-30): one click fills only empty fields from the script and story; reload keeps them; one click asks AI to develop the rest", async () => {
+  await step("whole cast (owner request 2026-09-30): one click fills only empty fields from the script and story; reload keeps them; one free click develops every remaining field", async () => {
     await page.goto(`${BASE}/projects/${P}/casting`);
     const bar = page.getByRole("region", { name: "Whole cast profiles" });
     await bar.getByText(/characters have empty fields/).waitFor();
@@ -362,11 +365,22 @@ async function api(method, path, body) {
       await page.getByRole("button", { name: "Profile", exact: true }).click();
       if ((await page.getByLabel("Accent").inputValue()) !== filled.accent) throw new Error("suggested accent not kept after reload");
     }
-    await bar.getByRole("button", { name: "Develop the rest of every profile with AI" }).click();
+    await bar.getByRole("button", { name: "Develop the rest of every profile" }).click();
     const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
-    await panel.getByText(/Develop every character's profile in one pass/).first().waitFor();
-    await panel.getByTestId("proposal-status").waitFor();
+    await panel.getByText(/Develop every character's profile/).first().waitFor();
+    await panel.getByTestId("proposal-status").getByText("Suggested").waitFor();
+    await panel.getByTestId("proposal-provider").getByText(/built in · free/).waitFor();
+    await panel.getByRole("button", { name: "Apply" }).click();
+    await panel.getByTestId("proposal-status").getByText("Applied").waitFor();
     await panel.getByRole("button", { name: "Close" }).click();
+    const done = (await api("GET", `/api/projects/${P}/characters`)).characters.filter((c) => !c.merged_into);
+    const tunde = done.find((c) => c.name === "Tunde Okafor");
+    if (tunde.nationality !== tundeAfter.nationality) throw new Error("a written field was changed by the fill");
+    if (!done.every((c) => c.personality && c.motivation && c.arc)) throw new Error("not every profile was developed: " + done.filter((c) => !c.personality).map((c) => c.name).join());
+    await page.reload();
+    await page.getByRole("button", { name: /Tunde Okafor/ }).first().click();
+    await page.getByRole("button", { name: "Personality & Backstory" }).click();
+    await page.getByText(tunde.personality.slice(0, 40), { exact: false }).first().waitFor();
   });
   await step("What's next (owner request 2026-09-30): every stage says what to do next from the project's records, and updates by itself after a save", async () => {
     await page.goto(`${BASE}/projects/${P}/casting`);

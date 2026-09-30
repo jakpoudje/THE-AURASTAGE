@@ -39,7 +39,9 @@ export async function getGenerationReadiness(db: SupabaseClient, projectId: stri
   const visFor = (cap: "image" | "video") => vis.filter((p) => p.capabilities.includes(cap)).map((p) =>
     b(p.id, p.name, p.id === "aurastage-sketch" ? "native" : "external", p.state === "configured" ? "configured" : "not_configured",
       p.id === "aurastage-sketch" ? "Labelled storyboard sketches, not AI — for layout and blocking." : ""));
-  const reasoning = reasoningStatuses(env).map((r) => b(r.id, r.name, r.execution === "test" ? "test" : "external", r.state === "configured" ? "configured" : "not_configured"));
+  // The built-in story intelligence always runs (free); paid writers (Claude…) are optional refinements.
+  const reasoning = [b("aurastage", "AuraStage story intelligence (built in)", "native", "configured", "Fills every field from the script with AuraStage's own engines — free."),
+    ...reasoningStatuses(env).map((r) => b(r.id, r.name, r.execution === "test" ? "test" : "external", r.state === "configured" ? "configured" : "not_configured"))];
   const refs = stillBackendStatuses(env).map((r) => b(r.id, r.name, r.id === "aurastage-sketch" ? "native" : "external", r.state as Backend["state"], r.id === "aurastage-sketch" ? "Labelled reference sketches, not AI." : ""));
   const audioFor = (kind: "fx" | "score" | "voice") => audioStatuses(env).filter((a) => a.kinds.includes(kind)).map((a) =>
     b(a.id, a.name, a.execution === "native" ? "native" : "external", a.state as Backend["state"],

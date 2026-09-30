@@ -117,13 +117,27 @@ async function writingLane() {
 // with row locks (skip locked), so lanes never take the same job. WRITING_LANES (1–8) sets how many; default 3.
 const WRITING_LANES = Math.min(8, Math.max(1, Number(env.WRITING_LANES) || 3));
 
+// Ask AuraStage plans: short and interactive (the built-in ones are already planned and are only recorded), so they
+// run in their own lane and never wait behind a generation take.
+async function planLane() {
+  while (!stopping) {
+    try {
+      if (!(await planOnce(plannerDeps))) await new Promise((r) => setTimeout(r, 1000));
+    } catch (e) {
+      log("worker.error", { lane: "plans", error: (e as Error).message });
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  }
+}
+
 (async () => {
+  void planLane();
   for (let i = 0; i < WRITING_LANES; i++) void writingLane();
   log("worker.started", { writing_lanes: WRITING_LANES, providers: providerStatuses(env).filter((p) => p.state === "configured").map((p) => p.id), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
   while (!stopping) {
     try {
-      // Assistant plans are short and interactive, so they go first; then one generation take.
-      const planned = await planOnce(plannerDeps);
+      // Assistant plans have their own lane (planLane), so a long generation never keeps a suggestion waiting.
+      const planned = false;
       const sounded = await audioOnce(audioDeps);
       const drew = await refOnce(refDeps);
       const drewWorld = await refOnce(worldRefDeps);

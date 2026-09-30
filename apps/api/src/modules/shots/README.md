@@ -25,7 +25,7 @@ dialogue lines as mandatory beats, readiness predicates).
 - `POST   /api/projects/:id/storyboard/generate-all` — `{style?}`; one click for the film: plans every active scene whose Scene DNA is locked and current and that has **no** plan yet. Existing plans are never replaced; they (and unlocked scenes) come back in `skipped` with the reason
 - `POST   /api/projects/:id/storyboard/scenes/:sceneId/generate` — `{replace?, style?}`; 412 until Scene DNA is locked and current; 409 if shots exist and `replace` is not set
 
-Coverage styles (`CoverageStyleSchema`, shotPlanningEngine 1.1.0): `standard` (the 1.0.0 plan), `simple` (no reactions,
+Coverage styles (`CoverageStyleSchema`, shotPlanningEngine 1.1.0; 1.1.1 fits long Scene DNA lighting into a shot): `standard` (the 1.0.0 plan), `simple` (no reactions,
 medium singles, camera on sticks), `intimate` (one size closer, shallow focus, reactions from intensity 5), `energetic`
 (moving camera, push-ins from intensity 5, reactions from 6). Every style keeps full story-time and line coverage; each
 shot's note starts with the style's name so the choice is visible in the plan.

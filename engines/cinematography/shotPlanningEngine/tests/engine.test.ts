@@ -32,6 +32,17 @@ const coverageOf = (plan: ReturnType<typeof shotPlanningEngine>, input = base())
   });
 
 describe("shotPlanningEngine", () => {
+  it("regression: a long lighting intent (over 500 characters) fits every shot instead of being refused (1.1.1)", async () => {
+    const { ShotEditableSchema } = await import("@aurastage/contracts");
+    const long = "A single buzzing fluorescent tube is the only real source: hard, greenish-white top light on the table. ".repeat(8);
+    const plan = shotPlanningEngine({ ...base(), dna: { ...base().dna, lighting_intent: long } });
+    for (const s of plan.shots) {
+      expect(s.lighting!.length).toBeLessThanOrEqual(500);
+      expect(s.lighting!.endsWith(".")).toBe(true);
+      expect(ShotEditableSchema.safeParse(s).success).toBe(true);
+    }
+  });
+
   it("opens with an establishing wide and a master for two on-screen characters", () => {
     const { shots } = shotPlanningEngine(base());
     expect(shots[0]).toMatchObject({ purpose: "establishing", size: "EWS", story_start: 0, lighting: "Sodium streetlight" });

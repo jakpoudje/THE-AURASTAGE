@@ -1,4 +1,4 @@
-// Browser test: Ask AuraStage (offline, mock on :3911, web on :3902). Plans come from the real labelled test planner.
+// Browser test: Ask AuraStage (offline, mock on :3911, web on :3902). Plans come from the real built-in story intelligence.
 // Ask → preview (before → after, TEST OUTPUT label) → Apply → reload shows the change → Undo → reload shows it gone.
 const { chromium } = require("playwright");
 const BASE = "http://localhost:3902", API = "http://localhost:3911", P = "11111111-1111-4111-8111-111111111111";
@@ -29,14 +29,15 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
   };
   const story = () => page.getByRole("region", { name: "Story & Creative Summary" });
 
-  await step("ask from any workspace; the suggestion shows before → after, labelled as test output, and changes nothing yet", async () => {
+  await step("ask from any workspace; the suggestion shows before → after, built in and free, and changes nothing yet", async () => {
     await page.goto(`${BASE}/projects/${P}/scriptwriter`);
     await openPanel();
     await panel().getByLabel("What would you like to change?").fill("Change the tone to Tense and brooding");
-    await panel().getByTestId("cost-note").getByText("Free").waitFor(); // the cost of asking, before anything is sent
+    await panel().getByTestId("ask-free").waitFor(); // asking is free: AuraStage's built-in story intelligence
     await ask("Change the tone to Tense and brooding");
     await panel().getByTestId("proposal-status").getByText("Suggested").waitFor();
-    await panel().getByTestId("test-output").getByText("DEVELOPMENT / TEST OUTPUT").waitFor();
+    await panel().getByTestId("proposal-provider").getByText("AuraStage story intelligence · built in · free").waitFor();
+    if (await panel().getByTestId("test-output").count()) throw new Error("built-in intelligence labelled as test output");
     await panel().getByText("I'd update the story setup (tone).").waitFor();
     const change = panel().getByTestId("change");
     await change.getByRole("cell", { name: "tone", exact: true }).waitFor();
@@ -55,7 +56,7 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
   });
   await step("undo from Recent requests after a reload; the previous value is back", async () => {
     await openPanel();
-    await panel().getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Change the tone to Tense and brooding.*Applied · test/ }).click();
+    await panel().getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Change the tone to Tense and brooding.*Applied/ }).click();
     await panel().getByRole("button", { name: "Undo", exact: true }).click();
     await panel().getByTestId("proposal-status").getByText("Undone").waitFor();
     await page.reload();
@@ -71,7 +72,7 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
     await openPanel();
     const pass = panel().getByRole("group", { name: "One pass for a scene" });
     await pass.getByLabel("Scene").fill("1");
-    await pass.getByRole("button", { name: "Annotate scene in one pass" }).click();
+    await pass.getByRole("button", { name: "Fill scene in one pass (free)" }).click();
     await panel().getByTestId("proposal-status").getByText("Suggested").waitFor();
     if ((await panel().getByTestId("change").count()) !== 4) throw new Error(`expected 3 lines + Scene DNA, got ${await panel().getByTestId("change").count()}`);
     await panel().getByTestId("change").filter({ hasText: "Scene 1" }).getByRole("cell", { name: "camera energy" }).waitFor();
@@ -83,11 +84,11 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
     if (emo.join() !== "anger,anticipation,determination") throw new Error("emotions: " + emo.join());
     await page.getByText("Get out of my house!").first().waitFor();
   });
-  await step("a request the test planner can't do says so plainly; nothing to apply", async () => {
+  await step("a request the built-in intelligence can't do says so plainly (and offers the paid writer); nothing to apply", async () => {
     await openPanel();
     await ask("Write me a poem about the sea");
-    await panel().getByText("I couldn't turn that into a change with the test planner.").waitFor();
-    await panel().getByText(/Connect Claude for full understanding/).waitFor();
+    await panel().getByText(/AuraStage's built-in intelligence couldn't turn that into a change/).waitFor();
+    await panel().getByText(/Refine with Claude \(paid\) for anything else/).waitFor();
     if (!(await panel().getByRole("button", { name: "Apply" }).isDisabled())) throw new Error("Apply enabled with no changes");
     await panel().getByRole("button", { name: "Discard" }).click();
     await panel().getByTestId("proposal-status").getByText("Discarded").waitFor();

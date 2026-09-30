@@ -24,6 +24,10 @@ vi.mock("../../scene-dna/sceneDna.service", () => ({
 vi.mock("../../characters/characters.service", () => ({
   editCharacter: async (_db: unknown, id: string, changes: Row) => Object.assign(tables.characters.find((c) => c.id === id)!, changes, { updated_at: bump() }),
   saveLook: async () => ({}),
+  profileEvidence: async () => ({
+    elements: tables.script_elements ?? [], appearances: tables.character_appearances ?? [], relationships: [], looks: tables.wardrobe_looks,
+    characters: Object.fromEntries(tables.characters.map((c) => [c.id, { introduction: c.intro ?? null, age: c.intro_age ?? null, accent: null }])),
+  }),
 }));
 vi.mock("../../world/world.service", () => ({
   updateWorldItem: async (_db: unknown, kind: string, id: string, body: Row) => {
@@ -68,7 +72,7 @@ function fakeDb(access: Record<string, string[]> = { scene_dna: ["view", "edit"]
     const f: [string, unknown][] = [];
     const res = () => (tables[t] ?? []).filter((r) => f.every(([c, v]) => (v === null ? r[c] == null : r[c] === v)));
     const q: any = {
-      select: () => q, order: () => q, limit: () => q,
+      select: () => q, order: () => q, limit: () => q, range: () => q,
       eq: (c: string, v: unknown) => (f.push([c, v]), q), is: (c: string, v: unknown) => (f.push([c, v]), q),
       maybeSingle: async () => ({ data: res()[0] ?? null, error: null }),
       then: (ok: any) => ok({ data: res(), error: null }),
@@ -99,9 +103,13 @@ async function app(fake: ReturnType<typeof fakeDb>) {
   await registerAssistantRoutes(a);
   return a;
 }
-/** What the worker does: plan from the frozen snapshot with the labelled test planner. */
+/** What the worker does: record the built-in engines' plan, or plan from the frozen snapshot with the labelled test planner. */
 async function plan() {
   const row = tables.ai_proposals[0];
+  if (row.snapshot.planner === "builtin") {
+    Object.assign(row, { status: "proposed", plan: PlanSchema.parse(row.snapshot.builtin_plan), provider: row.snapshot.provider, model: row.snapshot.model, test_output: false });
+    return;
+  }
   const r = await testReasoningAdapter.complete({ system: "", prompt: row.snapshot.prompt, schema: PlanSchema, task: { kind: "plan", snapshot: row.snapshot } }, {});
   Object.assign(row, { status: "proposed", plan: r.data, provider: testReasoningAdapter.id, model: r.model, test_output: r.test_output });
 }
@@ -144,7 +152,7 @@ describe("Ask AuraStage", () => {
 
   it("queues a planning job with the frozen context: canonical ids and the versions they were read at", async () => {
     const fake = fakeDb();
-    const r = (await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "Make scene 2 night and rainy" } })).json();
+    const r = (await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "Make scene 2 night and rainy", planner: "writer" } })).json();
     expect(r.status).toBe("queued");
     const args = fake.calls.find((c) => c.fn === "request_ai_proposal")!.args;
     expect(args.p_intent.operation).toBe("MODIFY_SCENE");
@@ -163,7 +171,7 @@ describe("Ask AuraStage", () => {
   it("previews field-level before → after, labelled as test output, then applies through the domain service and undoes", async () => {
     const fake = fakeDb();
     const a = await app(fake);
-    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "Make scene 2 night and rainy" } });
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "Make scene 2 night and rainy", planner: "writer" } });
     await plan();
     const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
     expect(p.test_output).toBe(true);
@@ -243,7 +251,7 @@ describe("Ask AuraStage", () => {
   it("describes a location through Locations & Props (owner: AI helps on every page), with its revision; undo puts it back", async () => {
     const fake = fakeDb();
     const a = await app(fake);
-    const q = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: 'Describe the location "HARBOUR" for its reference views' } })).json();
+    const q = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: 'Describe the location "HARBOUR" for its reference views', planner: "writer" } })).json();
     const args = fake.calls.find((c) => c.fn === "request_ai_proposal")!.args;
     expect(args.p_intent.operation).toBe("MODIFY_WORLD");
     expect(args.p_snapshot.tools).toContain("updateLocationOrProp");
@@ -362,13 +370,13 @@ describe("Ask AuraStage", () => {
   it("prices a request before it is sent (owner: every stage tells the cost): the exact prompt, nothing queued", async () => {
     const fake = fakeDb();
     const a = await app(fake);
-    const free = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant/estimate`, payload: { module: "casting", text: "Make Amara older" } })).json();
+    const free = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant/estimate`, payload: { module: "casting", text: "Make Amara older", planner: "writer" } })).json();
     expect(free.input_chars).toBeGreaterThan(1000);
     expect(fake.calls.some((c) => c.fn === "request_ai_proposal")).toBe(false);
     const keep = process.env.ANTHROPIC_API_KEY;
     process.env.ANTHROPIC_API_KEY = "test-key";
     try {
-      const paid = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant/estimate`, payload: { module: "casting", text: "Make Amara older" } })).json();
+      const paid = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant/estimate`, payload: { module: "casting", text: "Make Amara older", planner: "writer" } })).json();
       expect(paid).toMatchObject({ provider: "anthropic", model: "claude-opus-5-5" });
       expect(paid.estimate.lines[0].min).toBeGreaterThan(0);
       expect(paid.estimate.lines[0].basis).toMatch(/\$4\/\$20 per million/);
@@ -379,11 +387,66 @@ describe("Ask AuraStage", () => {
 
   it("Scene DNA sections (owner request 2026-09-30): continuity notes come from the scenes around it, and only facts from the script", async () => {
     const a = await app(fakeDb());
-    const q = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "For scene 2, write its continuity notes in Scene DNA: what must match the previous and next scenes, from the script." } })).json();
+    const q = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "For scene 2, write its continuity notes in Scene DNA: what must match the previous and next scenes, from the script.", planner: "writer" } })).json();
     expect(q.context_refs.filter((r: Row) => r.type === "scene").map((r: Row) => r.label)).toEqual(["Scene 2", "Scene 1"]);
     await plan();
     const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
     expect(p.preview.calls[0]).toMatchObject({ tool: "updateSceneDNA", allowed: true, after: { continuity_notes: expect.stringMatching(/^After Scene 1 \(INT\. FLAT - DAY\)\. The last scene\. Same time of day/) } });
     expect(JSON.stringify(p)).toMatch(/needs a connected writer/);
+  });
+
+  it("built-in story intelligence (owner, 2026-09-30: only third-party generation costs): the whole cast is developed from the script, free, previewed and undoable", async () => {
+    tables.characters[0] = { ...tables.characters[0], age: null, intro: "AMARA BELLO (30s), a journalist in a rain-soaked denim jacket, clutches a notebook.", intro_age: "30s" };
+    tables.dialogue_lines = [{ id: "99999999-9999-4999-8999-999999999991", scene_id: S2, project_id: P, ordinal: 1, speaker_name: "AMARA", character_id: AMARA, text: "I will not stop until they count every vote!", status: "active", emotion: null, intensity: null, intention: null, subtext: null, notes: null, updated_at: "2026-09-03T00:00:00+00:00" }];
+    const fake = fakeDb();
+    const a = await app(fake);
+    const est = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant/estimate`, payload: { module: "casting", text: "Develop every character's profile", task: "develop_cast" } })).json();
+    expect(est).toMatchObject({ provider: "aurastage", estimate: { free: true } });
+    const q = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "casting", text: "Develop every character's profile: fill only the empty fields from the script.", task: "develop_cast" } })).json();
+    const args = fake.calls.find((c) => c.fn === "request_ai_proposal")!.args;
+    expect(args.p_snapshot).toMatchObject({ planner: "builtin", provider: "aurastage" });
+    expect(args.p_snapshot.prompt).toBeUndefined();
+    // Regression (owner report: "String must contain at most 4000 characters"): the page sends a short request whatever the cast size.
+    expect(q.request.length).toBeLessThan(200);
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p).toMatchObject({ provider: "aurastage", test_output: false });
+    expect(p.preview.can_apply).toBe(true);
+    const upd = p.preview.calls.find((c: Row) => c.tool === "updateCharacter");
+    expect(upd.after).toMatchObject({ age: "30s", occupation: "Journalist", description: expect.stringMatching(/rain-soaked denim jacket/), personality: expect.stringMatching(/^Resolute/) });
+    expect(upd.after.age).toBe("30s");
+    expect(p.preview.calls.find((c: Row) => c.tool === "changeWardrobe").after.look).toMatchObject({ name: "As written: rain-soaked denim jacket" });
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/apply` })).json().status).toBe("applied");
+    expect(tables.characters[0]).toMatchObject({ age: "30s", occupation: "Journalist" });
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/undo` })).json().status).toBe("undone");
+    expect(tables.characters[0].age).toBeNull();
+  });
+
+  it("built-in: a whole scene — every line's performance and the Scene DNA — only empty fields, never touching what's written", async () => {
+    tables.scenes[1] = { ...tables.scenes[1], int_ext: "EXT", location: "HARBOUR", element_start: 0, element_end: 5 };
+    tables.script_elements = [{ index: 1, type: "action", text: "Rain hammers the harbour. Amara runs along the dock, clutching a phone. Sirens wail in the distance." }];
+    tables.dialogue_lines = [
+      { id: "99999999-9999-4999-8999-999999999991", scene_id: S2, project_id: P, ordinal: 1, speaker_name: "AMARA", character_id: AMARA, text: "Where is he?", status: "active", emotion: null, intensity: null, intention: null, subtext: null, notes: null, updated_at: "2026-09-03T00:00:00+00:00" },
+      { id: "99999999-9999-4999-8999-999999999992", scene_id: S2, project_id: P, ordinal: 2, speaker_name: "AMARA", character_id: AMARA, text: "Get out of my way!", status: "active", emotion: "anger", intensity: 9, intention: "Mine", subtext: "Mine", notes: "Mine", updated_at: "2026-09-03T00:00:00+00:00" },
+    ];
+    const a = await app(fakeDb({ scene_dna: ["view", "edit"], dialogue: ["view", "edit"] }));
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: "Fill scene 2 from the script", task: "fill_scene", object: { type: "scene", id: S2 } } });
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    const lines = p.preview.calls.filter((c: Row) => c.tool === "modifyDialogue");
+    expect(lines).toHaveLength(1); // the written line is left alone
+    expect(lines[0].after).toMatchObject({ emotion: "tension", intention: expect.any(String), subtext: expect.any(String), notes: expect.stringMatching(/^Delivery:/) });
+    const dna = p.preview.calls.find((c: Row) => c.tool === "updateSceneDNA");
+    expect(dna.after).toMatchObject({ weather: expect.stringMatching(/^Rain/), lighting_intent: expect.any(String), sound_intent: expect.stringMatching(/rain ambience/i), camera_energy: "dynamic" });
+    expect(dna.after.mood).toBeUndefined(); // scene 2 already has a mood
+    expect(p.summary ?? p.plan.summary).toMatch(/Built in and free/);
+  });
+
+  it("built-in: describes a location from the script's own words", async () => {
+    const a = await app(fakeDb());
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "scene_dna", text: 'Describe the location "HARBOUR" for its reference views', task: "describe_world", object: { type: "location", id: HARBOUR } } });
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview.calls[0]).toMatchObject({ tool: "updateLocationOrProp", after: { description: expect.stringMatching(/^HARBOUR: exterior\. Seen at day and night\. Areas: DOCK\./) } });
   });
 });

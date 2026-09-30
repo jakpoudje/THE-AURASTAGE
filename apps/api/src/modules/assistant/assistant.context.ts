@@ -13,12 +13,12 @@ async function rows(q: PromiseLike<{ data: unknown[] | null; error: unknown }>):
 const item = (type: ContextItem["ref"]["type"], r: Row, label: string, data: Row): ContextItem =>
   ({ ref: { type, id: r.id, version: r.updated_at ?? r.created_at ?? null, label }, data });
 
-export async function buildContext(db: SupabaseClient, req: AssistantRequest, intent: Intent): Promise<ContextBundle> {
+export async function buildContext(db: SupabaseClient, req: AssistantRequest, intent: Intent, opts: { full?: boolean } = {}): Promise<ContextBundle> {
   const P = req.project_id;
   const [projectRows, scenes, chars, looks, dna, places, props] = await Promise.all([
     rows(db.from("projects").select("id, title, type, genre, subgenre, tone, setting, time_period, logline, target_runtime_minutes, updated_at").eq("id", P)),
     rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, element_start, element_end, source_version_id, updated_at").eq("project_id", P).eq("status", "active").order("number", { ascending: true }).limit(200)),
-    rows(db.from("characters").select("id, name, role, status, age, gender, nationality, accent, languages, occupation, description, personality, backstory, motivation, fears, strengths, weaknesses, arc, merged_into, updated_at").eq("project_id", P).is("merged_into", null).limit(100)),
+    rows(db.from("characters").select("id, name, role, status, age, gender, nationality, accent, languages, occupation, description, personality, backstory, motivation, fears, strengths, weaknesses, arc, merged_into, updated_at").eq("project_id", P).is("merged_into", null).limit(opts.full ? 250 : 100)),
     rows(db.from("wardrobe_looks").select("id, character_id, name, description, updated_at").eq("project_id", P).limit(300)),
     rows(db.from("scene_dna").select("id, scene_id, status, purpose, stakes, mood, weather, atmosphere, lighting_intent, sound_intent, story_time, camera_energy, wardrobe, notes, continuity_notes, on_screen_text, updated_at").eq("project_id", P)),
     // Locations & Props (owned by the world module; read-only here).
@@ -56,7 +56,7 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     if (sess[0]) tracks = await rows(db.from("audio_tracks").select("id, name, family, gain_db, pan, mute, solo, ordinal").eq("session_id", sess[0].id).order("ordinal", { ascending: true }).limit(40));
     [shots, lines] = await Promise.all([
       rows(db.from("shots").select("id, scene_id, ordinal, purpose, size, angle, movement, description, character_ids, updated_at").eq("scene_id", focusScene.id).order("ordinal", { ascending: true }).limit(60)),
-      rows(db.from("dialogue_lines").select("id, scene_id, ordinal, speaker_name, character_id, text, parenthetical, intention, subtext, emotion, intensity, status, updated_at").eq("scene_id", focusScene.id).eq("status", "active").order("ordinal", { ascending: true }).limit(80)),
+      rows(db.from("dialogue_lines").select("id, scene_id, ordinal, speaker_name, character_id, text, parenthetical, intention, subtext, emotion, intensity, notes, status, updated_at").eq("scene_id", focusScene.id).eq("status", "active").order("ordinal", { ascending: true }).limit(opts.full ? 200 : 80)),
     ]);
   }
 
@@ -81,7 +81,7 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
       personality: c.personality, backstory: c.backstory, motivation: c.motivation, fears: c.fears, strengths: c.strengths, weaknesses: c.weaknesses, arc: c.arc,
       looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })) }));
   }
-  for (const l of lines) items.push(item("dialogue_line", l, `${l.speaker_name} line ${l.ordinal}`, { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity }));
+  for (const l of lines) items.push(item("dialogue_line", l, `${l.speaker_name} line ${l.ordinal}`, { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity, notes: l.notes ?? null }));
   // Project Settings the assistant may change (never the spending settings).
   const st = await readProjectSettings(db, P);
   const { generation: _spend, ...editable } = st.settings;
@@ -105,12 +105,14 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
   }
   for (const s of shots) items.push(item("shot", s, `Shot ${s.ordinal}`, { ordinal: s.ordinal, purpose: s.purpose, size: s.size, angle: s.angle, movement: s.movement, description: s.description }));
 
-  return trimContext({
+  const bundle: ContextBundle = {
     project: { id: P, title: project.title, genre: project.genre ?? null, tone: project.tone ?? null },
     module: req.module,
     focus: focusScene ? { type: "scene", id: focusScene.id, version: dna.find((x) => x.scene_id === focusScene!.id)?.updated_at ?? focusScene.updated_at ?? null, label: `Scene ${focusScene.number}` } : req.object,
     items,
-  }, intent.mentions, rel);
+  };
+  // The built-in engines read everything (a whole cast, every line of a scene); a paid model gets a trimmed budget.
+  return opts.full ? { ...bundle, items: items.slice(0, 600) } : trimContext(bundle, intent.mentions, rel);
 }
 
 /** Object types the request is about (places and props; project settings), which then rank above the rest of the cast. */
