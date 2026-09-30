@@ -29,7 +29,8 @@ export function CastLooksBar({ projectId, firstCharacterId, count }: { projectId
     try {
       const r = await lookApi.generateAll(projectId, { redo, ...(provider ? { provider } : {}) });
       const made = r.characters.filter((c) => c.requested > 0);
-      const name = backends.find((b) => b.id === r.provider)?.name ?? r.provider;
+      // The built-in generator is named even if the generator list hasn't loaded yet (seen live: "with aurastage-sketch").
+      const name = backends.find((b) => b.id === r.provider)?.name ?? (r.provider === "aurastage-sketch" ? "AuraStage Sketch" : r.provider);
       setNotice(r.requested
         ? `Making ${r.requested} view${r.requested === 1 ? "" : "s"} for ${made.length} character${made.length === 1 ? "" : "s"} (${made.map((c) => c.name).slice(0, 6).join(", ")}${made.length > 6 ? "…" : ""}) with ${name}. Open any character's Look tab to watch them arrive; they also go to the Assets Library under Characters.`
         : "Nothing new to make — every character's views are made, or being made, from their current profile. Tick “Remake ones already made” for fresh ones.");
