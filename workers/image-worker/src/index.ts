@@ -111,9 +111,13 @@ async function writingLane() {
   }
 }
 
+// Several writing lanes, so one person's long full-script job never makes everyone else's story wait. Jobs are claimed
+// with row locks (skip locked), so lanes never take the same job. WRITING_LANES (1–8) sets how many; default 3.
+const WRITING_LANES = Math.min(8, Math.max(1, Number(env.WRITING_LANES) || 3));
+
 (async () => {
-  void writingLane();
-  log("worker.started", { providers: providerStatuses(env).filter((p) => p.state === "configured").map((p) => p.id), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
+  for (let i = 0; i < WRITING_LANES; i++) void writingLane();
+  log("worker.started", { writing_lanes: WRITING_LANES, providers: providerStatuses(env).filter((p) => p.state === "configured").map((p) => p.id), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
   while (!stopping) {
     try {
       // Assistant plans are short and interactive, so they go first; then one generation take.

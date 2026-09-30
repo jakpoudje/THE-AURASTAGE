@@ -30,7 +30,8 @@ export const StoryDevelopmentOutputSchema = z.object({
   tone: z.string().max(100),
   setting: z.string().max(200),
   time_period: z.string().max(100),
-  characters: z.array(ProposedCharacterSchema).min(1).max(12),
+  /** Up to 24 (a feature with a large cast must not lose people named in the brief — was 12). */
+  characters: z.array(ProposedCharacterSchema).min(1).max(24),
   beats: z.array(BeatSchema).min(3).max(40),
   /** Things the assistant assumed because the brief didn't say — shown to the writer. */
   assumptions: z.array(z.string().max(300)).max(10),
