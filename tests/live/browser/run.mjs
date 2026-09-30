@@ -248,6 +248,8 @@ await check("audio: spot, upload a WAV onto the line, measure, approve, export; 
   await page.getByRole("button", { name: "Spot audio from the shot plan" }).click();
   await page.getByText(/Spotted \d+ cues on \d+ tracks from shot plan version 1/).waitFor();
   await reload("Professional Sound for");
+  // Item 5: the scene's suggested music (free) is on the page, and the Score cue follows it when there is one.
+  await page.getByRole("region", { name: "Suggested music" }).getByText(/BPM|No score/).first().waitFor();
   const cue = page.getByRole("button", { name: /^Clip .*They buried it/ });
   await cue.click();
   await page.getByLabel("Upload a recording for this clip").setInputFiles(file);
@@ -294,6 +296,9 @@ await check("editorial: build the assembly, blade, lift offline shots, lock; rel
   await page.getByText(/Assembled 1 scene from approved shots/).waitFor();
   await reload(marker);
   await page.getByRole("group", { name: "Track A1" }).getByRole("button", { name: /^Clip Scene 1 mix v1/ }).waitFor();
+  // Item 9: the insert (V2) and music (A2) lanes are on the timeline.
+  await page.getByRole("group", { name: "Track V2" }).waitFor();
+  await page.getByRole("group", { name: "Track A2" }).waitFor();
   const n = await v1().count();
   await page.getByLabel("Viewer").click();
   await page.keyboard.press("Shift+ArrowRight");
