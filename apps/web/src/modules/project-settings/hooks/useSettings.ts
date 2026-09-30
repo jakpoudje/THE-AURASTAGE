@@ -9,6 +9,7 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ApiError, apiGet } from "@/lib/apiClient";
 import { invalidateProjectAccess } from "@/lib/useProjectAccess";
 import { settingsApi, type Impact, type SettingsView } from "../api/settingsApi";
+import { useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 
 export function useSettings(projectId: string) {
   const router = useRouter();
@@ -44,6 +45,10 @@ export function useSettings(projectId: string) {
   }, [projectId, router, reload]);
 
   const dirty = !!view && !!draft && JSON.stringify(view.settings) !== JSON.stringify(draft);
+  // Ask AuraStage applied or undid a settings change: show it at once, unless you have unsaved edits here (never lost).
+  useAssistantChanges(() => dirty
+    ? setNotice("Ask AuraStage changed the saved settings. Your unsaved edits are still here — save or reload to see its change.")
+    : reload());
 
   return {
     project, view, draft, impact, loading, busy, error, notice, dirty,

@@ -906,9 +906,9 @@ async function planned(tok: string, id: string) {
   throw new Error("the planning worker didn't pick the request up within 90 s");
 }
 let aiPlanner = "";
-await check("assistant: capabilities come from configured keys (planner, seven tools incl. Locations & Props)", async () => {
+await check("assistant: capabilities come from configured keys (planner, nine tools incl. Locations & Props, Project Settings, Audio Studio)", async () => {
   const c = await api("GET", "/api/assistant/capabilities");
-  assert(c.planner && c.tools.length === 7 && c.tools.some((t: any) => t.name === "updateLocationOrProp"), JSON.stringify(c.planner));
+  assert(c.planner && c.tools.length === 9 && ["updateLocationOrProp", "updateSettings", "adjustAudioTrack"].every((n) => c.tools.some((t: any) => t.name === n)), JSON.stringify(c.tools.map((t: any) => t.name)));
   aiPlanner = c.planner.id;
   return `${c.planner.name}${c.planner.test_output ? " (test output)" : ""}`;
 });
@@ -968,6 +968,44 @@ await check("assistant: on Locations & Props, describe a location; apply saves i
   const h2 = (await api("GET", `/api/projects/${projectId}/world`)).locations.find((l: any) => l.id === h0.id);
   assert(h2.description === h0.description, `undo: ${h2.description}`);
   return `${p.provider} · "${String(call.after.description).slice(0, 90)}…"`;
+});
+// ---- AI on every page (task 40): Project Settings and Audio Studio ----
+await check("assistant: on Project Settings, turn on the end credits and set who composed the music; a new settings version; undo restores; spending is never offered", async () => {
+  const s0 = await api("GET", `/api/projects/${projectId}/settings`);
+  const q = await api("POST", `/api/projects/${projectId}/assistant`, { module: "settings", text: 'Turn on the end credits with the film\'s theme music, and set the composer to "Ama Mensah".' });
+  const p = await planned(token, q.id);
+  assert(p.status === "proposed", `${p.status} ${p.error ?? ""}`);
+  const call = p.preview.calls.find((c: any) => c.tool === "updateSettings");
+  assert(call && call.allowed && call.after["titles.end_credits"] === true && call.after["production.composer"] === "Ama Mensah" && !Object.keys(call.after).some((k) => k.startsWith("generation.")), JSON.stringify(p.preview).slice(0, 500));
+  assert(p.preview.can_apply, "can't apply: " + JSON.stringify(p.preview.issues));
+  await api("POST", `/api/assistant/proposals/${q.id}/apply`, {});
+  const s1v = await api("GET", `/api/projects/${projectId}/settings`);
+  assert(s1v.settings.titles.end_credits === true && s1v.settings.production.composer === "Ama Mensah" && s1v.version_number === s0.version_number + 1, "not saved as a new settings version");
+  const u = await api("POST", `/api/assistant/proposals/${q.id}/undo`, {});
+  assert(u.status === "undone", u.status);
+  const s2v = await api("GET", `/api/projects/${projectId}/settings`);
+  assert(s2v.settings.titles.end_credits === s0.settings.titles.end_credits && s2v.settings.production.composer === s0.settings.production.composer, "undo didn't restore");
+  return `${p.provider} · ${Object.entries(call.after).map(([k, v]) => `${k}=${v}`).join(", ")}`;
+});
+await check("assistant: in Audio Studio, turn the music down in scene 1; only music tracks change, through Audio Studio; undo restores", async () => {
+  const ws0 = await api("GET", `/api/projects/${projectId}/audio`);
+  const t0 = ws0.scenes.find((x: any) => x.scene.id === s1).tracks as any[];
+  const q = await api("POST", `/api/projects/${projectId}/assistant`, { module: "audio", text: "Turn the music down by 6 dB in scene 1." });
+  assert(q.context_refs.some((r: any) => r.type === "audio_track"), "the scene's tracks weren't in the context");
+  const p = await planned(token, q.id);
+  assert(p.status === "proposed", `${p.status} ${p.error ?? ""}`);
+  const calls = p.preview.calls.filter((c: any) => c.tool === "adjustAudioTrack");
+  const music = new Set(t0.filter((t) => ["MX", "SCORE"].includes(t.family)).map((t) => t.id));
+  assert(calls.length >= 1 && calls.every((c: any) => music.has(c.object.id) && c.allowed && typeof c.after.gain_db === "number" && c.after.gain_db < c.before.gain_db), JSON.stringify(p.preview.calls).slice(0, 500));
+  await api("POST", `/api/assistant/proposals/${q.id}/apply`, {});
+  const t1 = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1).tracks as any[];
+  for (const c of calls) assert(Number(t1.find((t) => t.id === c.object.id).gain_db) === c.after.gain_db, "gain not saved");
+  assert(t1.filter((t) => !music.has(t.id)).every((t) => Number(t.gain_db) === Number(t0.find((x) => x.id === t.id).gain_db)), "a non-music track changed");
+  const u = await api("POST", `/api/assistant/proposals/${q.id}/undo`, {});
+  assert(u.status === "undone", u.status);
+  const t2 = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1).tracks as any[];
+  assert(t2.every((t) => Number(t.gain_db) === Number(t0.find((x) => x.id === t.id).gain_db)), "undo didn't restore the levels");
+  return `${p.provider} · ${calls.map((c: any) => `${c.object.label} ${c.before.gain_db}→${c.after.gain_db} dB`).join(", ")}`;
 });
 await check("AI & Generation readiness: states come from real results in this project (Claude, sketches, references, sound, voice, renders proven)", async () => {
   const r = await api("GET", `/api/projects/${projectId}/generation-readiness`);

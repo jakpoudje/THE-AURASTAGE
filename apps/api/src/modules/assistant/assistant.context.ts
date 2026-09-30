@@ -1,6 +1,7 @@
 // Context Engine (directive §18): only the objects a request is about, read with the user's own access (RLS), each
 // with its canonical id and the version it was read at (rows' updated_at). Read-only across domains (rule 4).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readProjectSettings } from "../settings/settings.read";
 import { trimContext, type AssistantRequest, type ContextBundle, type ContextItem, type Intent } from "@aurastage/aura-intelligence";
 
 type Row = Record<string, any>;
@@ -33,6 +34,7 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
   if (!focusScene && num) focusScene = scenes.find((s) => String(s.number) === num);
   let shots: Row[] = [];
   let lines: Row[] = [];
+  let tracks: Row[] = [];
   let action = "";
   if (req.object?.type === "shot") {
     const s = await rows(db.from("shots").select("scene_id").eq("id", req.object.id));
@@ -49,6 +51,9 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
       action = ((v[0]?.elements ?? []) as Row[]).filter((e) => e.index >= focusScene!.element_start && e.index <= focusScene!.element_end && e.type === "action")
         .map((e) => String(e.text)).join("\n").slice(0, 3000);
     }
+    // The scene's Audio Studio tracks (read-only here), so a mix request can be turned into track changes.
+    const sess = await rows(db.from("audio_sessions").select("id").eq("scene_id", focusScene.id).limit(1));
+    if (sess[0]) tracks = await rows(db.from("audio_tracks").select("id, name, family, gain_db, pan, mute, solo, ordinal").eq("session_id", sess[0].id).order("ordinal", { ascending: true }).limit(40));
     [shots, lines] = await Promise.all([
       rows(db.from("shots").select("id, scene_id, ordinal, purpose, size, angle, movement, description, character_ids, updated_at").eq("scene_id", focusScene.id).order("ordinal", { ascending: true }).limit(60)),
       rows(db.from("dialogue_lines").select("id, scene_id, ordinal, speaker_name, character_id, text, parenthetical, intention, subtext, emotion, intensity, status, updated_at").eq("scene_id", focusScene.id).eq("status", "active").order("ordinal", { ascending: true }).limit(80)),
@@ -72,8 +77,13 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
       looks: looks.filter((l) => l.character_id === c.id).map((l) => ({ id: l.id, name: l.name })) }));
   }
   for (const l of lines) items.push(item("dialogue_line", l, `${l.speaker_name} line ${l.ordinal}`, { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity }));
+  // Project Settings the assistant may change (never the spending settings).
+  const st = await readProjectSettings(db, P);
+  const { generation: _spend, ...editable } = st.settings;
+  items.push(item("settings", { id: P, updated_at: st.updated_at }, "Project Settings", editable));
   for (const l of places) items.push(item("location", l, l.name, { name: l.name, description: l.description, int_ext: l.int_ext, times_of_day: l.times_of_day, areas: l.areas, status: l.status }));
   for (const pr of props) items.push(item("prop", pr, pr.name, { name: pr.name, description: pr.description, category: pr.category, status: pr.status }));
+  for (const t of tracks) items.push(item("audio_track", t, `${t.name} track`, { name: t.name, family: t.family, gain_db: Number(t.gain_db), pan: Number(t.pan), mute: t.mute, solo: t.solo }));
   for (const s of shots) items.push(item("shot", s, `Shot ${s.ordinal}`, { ordinal: s.ordinal, purpose: s.purpose, size: s.size, angle: s.angle, movement: s.movement, description: s.description }));
 
   return trimContext({
@@ -81,12 +91,15 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
     module: req.module,
     focus: focusScene ? { type: "scene", id: focusScene.id, version: dna.find((x) => x.scene_id === focusScene!.id)?.updated_at ?? focusScene.updated_at ?? null, label: `Scene ${focusScene.number}` } : req.object,
     items,
-  }, intent.mentions, aboutWorld(req));
+  }, intent.mentions, relevantTypes(req));
 }
 
-/** Is the request about places or props (named, or asked from one of them)? Then they rank above the rest of the cast. */
-function aboutWorld(req: AssistantRequest) {
-  return req.object?.type === "location" || req.object?.type === "prop" || /\b(locations?|places?|props?|vehicles?|set dressing|the set)\b/i.test(req.text);
+/** Object types the request is about (places and props; project settings), which then rank above the rest of the cast. */
+function relevantTypes(req: AssistantRequest): ContextItem["ref"]["type"][] {
+  const out: ContextItem["ref"]["type"][] = [];
+  if (req.object?.type === "location" || req.object?.type === "prop" || /\b(locations?|places?|props?|vehicles?|set dressing|the set)\b/i.test(req.text)) out.push("location", "prop");
+  if (req.module === "settings" || /\b(settings?|aspect ratio|loudness|visual style|palette|deliverables?|credits|director|producer|company|copyright|title card|opening title|theme music|composer)\b/i.test(req.text)) out.push("settings");
+  return out;
 }
 
 /** The current version of a tool's target, read the same way the context read it (for the stale check). */
@@ -99,6 +112,7 @@ export async function currentVersion(db: SupabaseClient, projectId: string, t: {
     case "shot": return one("shots", "id", t.id);
     case "location": return one("locations", "id", t.id);
     case "prop": return one("props", "id", t.id);
+    case "settings": return (await readProjectSettings(db, projectId)).updated_at;
     case "scene": return (await one("scene_dna", "scene_id", t.id)) ?? one("scenes", "id", t.id);
     default: return null;
   }

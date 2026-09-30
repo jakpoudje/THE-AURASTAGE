@@ -88,6 +88,32 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
       .catch(() => { throw new Error("other save not shown"); });
     if ((await page.getByLabel("Producer").inputValue()) !== "Someone Else") throw new Error("other save not shown in Producer");
   });
+  await step("Ask AuraStage on Project Settings: set the composer and turn off the end credits; applying shows at once; reload: kept; undo: back", async () => {
+    await page.goto(`${BASE}/projects/${P}/settings`);
+    await page.getByLabel("Music by").waitFor();
+    const composer0 = await page.getByLabel("Music by").inputValue();
+    await page.getByRole("button", { name: "Ask AuraStage" }).click();
+    const ask = page.getByRole("complementary", { name: "Ask AuraStage" });
+    await ask.getByLabel("What would you like to change?").fill('Set the composer to "Ama Mensah" and turn off the end credits');
+    await ask.getByRole("button", { name: "Ask", exact: true }).click();
+    await ask.getByTestId("proposal-status").getByText("Suggested").waitFor({ timeout: 15000 });
+    await ask.getByRole("button", { name: "Apply", exact: true }).click();
+    await ask.getByTestId("proposal-status").getByText("Applied").waitFor();
+    // The settings page re-reads by itself.
+    await page.waitForFunction(() => [...document.querySelectorAll("input")].some((i) => i.value === "Ama Mensah"), null, { timeout: 10000 });
+    if (await page.getByRole("group", { name: "Titles and credits" }).getByLabel("End credits").isChecked()) throw new Error("end credits still on");
+    await ask.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    if ((await page.getByLabel("Music by").inputValue()) !== "Ama Mensah") throw new Error("composer not kept after reload");
+    await page.getByRole("button", { name: "Ask AuraStage" }).click();
+    await ask.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: /Set the composer/ }).first().click();
+    await ask.getByRole("button", { name: "Undo", exact: true }).click();
+    await ask.getByTestId("proposal-status").getByText("Undone").waitFor();
+    for (let i = 0; i < 40 && (await page.getByLabel("Music by").inputValue()) !== composer0; i++) await page.waitForTimeout(250);
+    if ((await page.getByLabel("Music by").inputValue()) !== composer0) throw new Error("composer not restored by undo");
+    if (!(await page.getByRole("group", { name: "Titles and credits" }).getByLabel("End credits").isChecked())) throw new Error("end credits not back on after undo");
+    await ask.getByRole("button", { name: "Close" }).click();
+  });
   await step("a Reviewer sees the settings but can't change them", async () => {
     await api("POST", "/__test/as", { role: "reviewer" });
     await page.goto(`${BASE}/projects/${P}/settings`);

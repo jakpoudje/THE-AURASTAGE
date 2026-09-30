@@ -31,8 +31,14 @@ come from the approved script), `updateSceneDNA`, `modifyShot`, `updateLocationO
 description, prop category, confirm — through the world module's own save with its revision; gated `scene_dna:edit`;
 views made from the old description are flagged, never replaced).
 
+`updateSettings` (Project Settings: format, visual style, deliverables, credit names, titles & credits — never the
+spending section; through the settings module's save with the current revision, so each change is a new settings
+version), `adjustAudioTrack` (a scene's track level, pan, mute, solo through Audio Studio; the mix then needs a fresh
+measurement before approval).
+
 Places and props are in the context only ranked below the cast unless the request is about them (or asked from one).
-After an apply or undo the panel announces `aura:applied`; Casting and Locations & Props re-read at once (askBus
+After an apply or undo the panel announces `aura:applied`; Casting, Locations & Props, Project Settings (unless you have
+unsaved edits there) and Audio Studio re-read at once (askBus
 `useAssistantChanges`), so the change shows without a manual reload.
 
 ## One pass over a scene (task 36)

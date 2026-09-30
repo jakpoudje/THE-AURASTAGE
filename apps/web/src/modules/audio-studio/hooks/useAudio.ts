@@ -11,6 +11,7 @@ import type { AddAudioTrackInput, Project, SaveAudioClipInput, SessionMix, Updat
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet } from "@/lib/apiClient";
 import { audioApi } from "../api/audioApi";
+import { useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 import type { AudioGeneration, AudioScene, AudioWorkspace } from "../types";
 import { encodeWav, loadAsset, measure, probeFile, renderMix, type Bus } from "../state/mixEngine";
 
@@ -32,6 +33,8 @@ export function useAudio(projectId: string) {
     if (alive.current) setWs(w);
     return w;
   }, [projectId]);
+  // Ask AuraStage changed a track: show it at once.
+  useAssistantChanges(reload);
 
   useEffect(() => {
     alive.current = true;

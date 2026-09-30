@@ -1,6 +1,6 @@
 // apps/api/src/providers/reasoning/test/testReasoningAdapter.ts
 // The labelled TestProvider for reasoning (directive §17). It does NOT understand language: it recognises a fixed set
-// of production phrasings (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields, describing a location or prop) and turns
+// of production phrasings (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields, describing a location or prop, titles & credits and credit names in Project Settings, quieter/louder/muted tracks in a scene's mix) and turns
 // them into real tool calls against the canonical ids in the context, so the whole Ask AuraStage flow can be tested
 // end to end without a paid model. Everything it returns is marked test_output and labelled in the UI.
 import { ProviderError } from "../../types";
@@ -218,6 +218,41 @@ function plan(snap: Snapshot) {
     }
   }
 
+  // ---- Audio Studio: quieter / louder / mute a family of tracks in the focus scene ----
+  const tracks = byType("audio_track");
+  if (tracks.length) {
+    const FAM: [RegExp, string[]][] = [[/\b(music|score)\b/i, ["MX", "SCORE"]], [/\b(ambience|ambient|background|atmos)\b/i, ["BG"]], [/\b(foley|footsteps)\b/i, ["FOLEY"]],
+      [/\b(effects|sfx|sound effects)\b/i, ["FX"]], [/\b(dialogue|voices?)\b/i, ["DX"]], [/\b(crowd|walla)\b/i, ["WALLA"]]];
+    const fams = FAM.filter(([re]) => re.test(text)).flatMap(([, f]) => f);
+    const change: Record<string, unknown> | null = /\bunmute\b/i.test(text) ? { mute: false } : /\bmute\b/i.test(text) ? { mute: true } : null;
+    const delta = /\b(quieter|softer|lower|turn (?:it |them )?down)\b/i.test(text) ? (/\bmuch\b/i.test(text) ? -10 : -6) : /\b(louder|raise|turn (?:it |them )?up)\b/i.test(text) ? 3 : 0;
+    for (const t of tracks.filter((x) => fams.includes(String(x.data.family)))) {
+      const ch = change ?? (delta ? { gain_db: Math.max(-60, Math.min(12, Number(t.data.gain_db ?? 0) + delta)) } : null);
+      if (ch) { add("adjustAudioTrack", { track_id: t.ref.id, changes: ch }, `${t.ref.label}: ${Object.entries(ch).map(([k, v]) => `${k} ${v}`).join(", ")}`); done.push(`change the ${t.ref.label} (${Object.entries(ch).map(([k, v]) => `${k.replace("_db", "")} ${v}`).join(", ")})`); }
+    }
+  }
+
+  // ---- Project Settings: titles & credits switches, credit names, the visual style ----
+  const settings = byType("settings")[0];
+  if (settings) {
+    const ch: Record<string, Record<string, unknown>> = {};
+    const put = (s: string, k: string, v: unknown) => ((ch[s] ??= {})[k] = v);
+    // "Turn on the end credits and the opening title": the verb covers every item listed after it.
+    const on = /\b(?:turn on|switch on|add|show|include)\b/i.test(text), off = /\b(?:turn off|switch off|remove|hide|no)\b/i.test(text);
+    if (on !== off) {
+      if (/\bend credits\b/i.test(text)) put("titles", "end_credits", on);
+      if (/\b(?:opening title|title card)\b/i.test(text)) put("titles", "opening_title", on);
+    }
+    if (/\b(?:with|play|use)\s+(?:the\s+)?(?:film'?s\s+)?theme(?: music| tune)?\b/i.test(text)) put("titles", "music", "theme");
+    for (const m of text.matchAll(/\bset\s+the\s+(director|producer|composer|writer|production company|company)\s+(?:to|as)\s+["“]?([^"”\n.;]+)["”]?/gi)) put("production", m[1].toLowerCase().replace("production ", ""), m[2].trim());
+    const look = text.match(/\bset\s+the\s+(?:visual style|look(?: of the film)?)\s+to\s+["“]?([^"”\n]+?)["”]?(?:[.;]|$)/i);
+    if (look) put("style", "look", look[1].trim());
+    if (Object.keys(ch).length) {
+      add("updateSettings", { changes: ch }, `Project Settings: ${Object.entries(ch).flatMap(([s, f]) => Object.keys(f).map((k) => `${s}.${k}`)).join(", ")}`);
+      done.push(`update Project Settings (${Object.values(ch).flatMap((f) => Object.keys(f)).join(", ").replace(/_/g, " ")})`);
+    }
+  }
+
   // ---- Story fields ----
   const story = [...text.matchAll(/\b(?:change|set|make)\s+the\s+(title|logline|tone|genre|setting|time period)\s+(?:to|into)\s+["“]?([^"”\n]+?)["”]?(?:[.;]|$)/gi)];
   if (story.length) {
@@ -233,7 +268,7 @@ function plan(snap: Snapshot) {
   if (!calls.length && !questions.length) not_possible.push("The development test planner only recognises common production requests (time of day, weather, mood, age, wardrobe, subtle dialogue, annotating a whole scene, camera, story fields). Connect Claude for full understanding.");
   return {
     summary: calls.length ? `I'd ${done.join("; ")}.` : "I couldn't turn that into a change with the test planner.",
-    operation: (calls[0] ? { updateSceneDNA: "MODIFY_SCENE", updateCharacter: "MODIFY_CHARACTER", changeWardrobe: "CHANGE_WARDROBE", modifyDialogue: "MODIFY_DIALOGUE", modifyShot: "MODIFY_SHOT", updateStory: "UPDATE_STORY", updateLocationOrProp: "MODIFY_WORLD" }[calls[0].tool] : "UNSUPPORTED") ?? "UNSUPPORTED",
+    operation: (calls[0] ? { updateSceneDNA: "MODIFY_SCENE", updateCharacter: "MODIFY_CHARACTER", changeWardrobe: "CHANGE_WARDROBE", modifyDialogue: "MODIFY_DIALOGUE", modifyShot: "MODIFY_SHOT", updateStory: "UPDATE_STORY", updateLocationOrProp: "MODIFY_WORLD", updateSettings: "UPDATE_SETTINGS", adjustAudioTrack: "MIX_AUDIO" }[calls[0].tool] : "UNSUPPORTED") ?? "UNSUPPORTED",
     calls, not_possible, questions,
   };
 }

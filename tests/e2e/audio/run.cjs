@@ -299,6 +299,32 @@ async function api(method, p, body) {
     await page.reload();
     await page.getByLabel("Timeline").getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip" }).waitFor();
   });
+  await step("Ask AuraStage in Audio Studio: (un)mute the music in the scene; only the Score track changes, at once; reload: kept; undo: back", async () => {
+    const ws = await api("GET", `/api/projects/${P}/audio`);
+    const n = (ws.scenes.find((x) => x.session) ?? ws.scenes[0]).scene.number;
+    const pressed = async () => page.getByRole("button", { name: /^Mixer mute Score/ }).getAttribute("aria-pressed");
+    const start = await pressed(), want = start === "true" ? "false" : "true";
+    const req = `${start === "true" ? "Unmute" : "Mute"} the music in scene ${n}`;
+    const waitFor = async (v, why) => { for (let i = 0; i < 40 && (await pressed()) !== v; i++) await page.waitForTimeout(250); if ((await pressed()) !== v) throw new Error(why); };
+    await page.getByRole("button", { name: "Ask AuraStage" }).click();
+    const ask = page.getByRole("complementary", { name: "Ask AuraStage" });
+    await ask.getByLabel("What would you like to change?").fill(req);
+    await ask.getByRole("button", { name: "Ask", exact: true }).click();
+    await ask.getByTestId("proposal-status").getByText("Suggested").waitFor({ timeout: 15000 });
+    await ask.getByText(/Score track/).first().waitFor();
+    await ask.getByRole("button", { name: "Apply", exact: true }).click();
+    await ask.getByTestId("proposal-status").getByText("Applied").waitFor();
+    await waitFor(want, "Score not changed on screen without a reload");
+    await ask.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await waitFor(want, "change not kept after reload");
+    await page.getByRole("button", { name: "Ask AuraStage" }).click();
+    await ask.getByRole("region", { name: "Recent requests" }).getByRole("button", { name: new RegExp(req.split(" ")[0] + " the music") }).first().click();
+    await ask.getByRole("button", { name: "Undo", exact: true }).click();
+    await ask.getByTestId("proposal-status").getByText("Undone").waitFor();
+    await waitFor(start, "undo didn't restore the Score track");
+    await ask.getByRole("button", { name: "Close" }).click();
+  });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();
   console.log(failed ? `${failed} FAILED` : "ALL PASSED");

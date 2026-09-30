@@ -13,7 +13,7 @@ export interface ToolDefinition<I = unknown> {
   /** Typed input; the planner's JSON is validated against it before the user sees the proposal. */
   input: z.ZodType<I>;
   /** Which object the tool changes (for context and the before/after view). */
-  target: "project" | "character" | "wardrobe_look" | "dialogue_line" | "scene" | "shot" | "location" | "prop";
+  target: "project" | "character" | "wardrobe_look" | "dialogue_line" | "scene" | "shot" | "location" | "prop" | "settings" | "audio_track";
   /** Downstream systems this change can flag for review (rule 11) — shown before the user applies it. */
   impact: string[];
   /** How the change is undone: the domain keeps a version to restore, or the tool can apply the inverse edit. */

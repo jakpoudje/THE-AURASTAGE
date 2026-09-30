@@ -4,13 +4,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { ToolRegistry, type ToolDefinition } from "@aurastage/aura-intelligence";
-import { UpdateCharacterInputSchema, UpdateDialogueLineInputSchema, UpdateSceneDnaInputSchema, UpdateShotInputSchema } from "@aurastage/contracts";
+import { ProjectSettingsSchema, UpdateCharacterInputSchema, UpdateDialogueLineInputSchema, UpdateSceneDnaInputSchema, UpdateShotInputSchema } from "@aurastage/contracts";
 import { editProject } from "../../projects/projects.service";
 import { editCharacter, saveLook } from "../../characters/characters.service";
 import { updateDialogueLine } from "../../dialogue/dialogue.service";
 import { updateSceneDna } from "../../scene-dna/sceneDna.service";
 import { updateShot } from "../../shots/shots.service";
 import { updateWorldItem } from "../../world/world.service";
+import { saveSettings } from "../../settings/settings.service";
+import { updateTrack } from "../../audio/audio.service";
+import { readProjectSettings } from "../../settings/settings.read";
 
 type Row = Record<string, any>;
 export interface ToolCtx { projectId: string; orgId: string }
@@ -230,6 +233,63 @@ const updateLocationOrProp: ToolImpl<{ kind: "location" | "prop"; id: string; ch
   },
 };
 
-const IMPLS: ToolImpl<any>[] = [updateStory, updateCharacter, changeWardrobe, modifyDialogue, updateSceneDNA, modifyShot, updateLocationOrProp];
+// Project Settings (format, visual style, deliverables, credit names, titles & credits) through the settings module's own
+// save (gate settings:edit, revision check, new settings version). Spending settings (generation: default paid providers,
+// the monthly paid-take cap) are deliberately not offered: the assistant never raises what can be spent.
+const SETTINGS_SECTIONS = ["technical", "style", "delivery", "production", "titles"] as const;
+type Section = (typeof SETTINGS_SECTIONS)[number];
+const section = (k: Section) => (ProjectSettingsSchema.shape[k] as unknown as { removeDefault(): z.AnyZodObject }).removeDefault().partial().strict();
+const SettingsChanges = z.object(Object.fromEntries(SETTINGS_SECTIONS.map((k) => [k, section(k)])) as Record<Section, ReturnType<typeof section>>)
+  .partial().strict().refine((c) => Object.values(c).some((v) => v && Object.keys(v).length > 0), "Nothing to change");
+const flat = (c: Row) => Object.fromEntries(Object.entries(c).flatMap(([s, f]) => Object.entries((f ?? {}) as Row).map(([k, v]) => [`${s}.${k}`, v])));
+const nest = (f: Row) => Object.entries(f).reduce<Row>((o, [p, v]) => { const [s, k] = p.split("."); (o[s] ??= {})[k] = v; return o; }, {});
+const updateSettings: ToolImpl<{ changes: Row }> = {
+  def: {
+    name: "updateSettings", module: "settings", action: "edit", target: "settings",
+    description: "Change Project Settings: technical {aspect_ratio 16:9|2.39:1|1.85:1|9:16|1:1|4:5, loudness_standard}, style {look (the film's visual style, added to every shot prompt), palette [#rrggbb]}, delivery {required_profiles}, production {director, producer, company, country, year, copyright, writer, composer, thanks}, titles {opening_title true/false, opening_seconds 2–15, opening_subtitle, end_credits true/false, credits_speed slow|medium|fast, music none|theme}. Never changes spending settings.",
+    input: z.object({ changes: SettingsChanges }).strict(),
+    impact: ["Project Settings (a new settings version)", "Visual Generation prompts (a style change flags compiled prompts for review)", "Export & Deliver (titles, credits, required deliverables)"], undo: "inverse",
+  },
+  target: () => ({ type: "settings", id: "" }), // the request's project
+  async before(db, input, ctx) {
+    const cur = (await readProjectSettings(db, ctx.projectId)).settings as Row;
+    return { object: { type: "settings", id: ctx.projectId, label: "Project Settings" }, fields: Object.fromEntries(Object.keys(flat(input.changes)).map((p) => { const [s, k] = p.split("."); return [p, cur[s]?.[k] ?? null]; })) };
+  },
+  async apply(db, input, ctx) {
+    const cur = await readProjectSettings(db, ctx.projectId);
+    const merged = Object.fromEntries(Object.entries(cur.settings as Row).map(([s, v]) => [s, { ...(v as Row), ...((input.changes as Row)[s] ?? {}) }]));
+    await saveSettings(db, ctx.projectId, { base_revision: cur.revision, settings: merged });
+    return this.before(db, input, ctx);
+  },
+  after: (i) => flat(i.changes),
+  undo(db, _i, b, _a, ctx) { return this.apply(db, { changes: nest(b.fields) }, ctx); },
+};
+
+// Audio Studio: one track of a scene's mix (level, pan, mute, solo) through the audio module's own save (gate audio:edit).
+// The mix then needs a fresh loudness measurement before approval, exactly as for a change made by hand.
+const TrackChanges = z.object({ gain_db: z.number().min(-60).max(12), pan: z.number().min(-1).max(1), mute: z.boolean(), solo: z.boolean() })
+  .partial().strict().refine((c) => Object.keys(c).length > 0, "Nothing to change");
+const TRACK_FIELDS = ["gain_db", "pan", "mute", "solo"];
+const adjustAudioTrack: ToolImpl<{ track_id: string; changes: Row }> = {
+  def: {
+    name: "adjustAudioTrack", module: "audio", action: "edit", target: "audio_track",
+    description: "Change one track of a scene's Audio Studio mix: gain_db (-60 to +12; e.g. -6 is clearly quieter), pan (-1 left to 1 right), mute, solo. Families: DX dialogue, ADR, VO, FOLEY, FX, WALLA, BG ambience, MX/SCORE music.",
+    input: z.object({ track_id: z.string().uuid(), changes: TrackChanges }).strict(),
+    impact: ["Audio Studio (the scene's mix needs a fresh loudness measurement before approval)", "Editorial & Export (the approved mix they use is flagged for review)"], undo: "inverse",
+  },
+  target: (i) => ({ type: "audio_track", id: i.track_id }),
+  async before(db, input) {
+    const t = await one(db, "audio_tracks", "id, name, gain_db, pan, mute, solo", input.track_id);
+    return { object: { type: "audio_track", id: t.id, label: `${t.name} track` }, fields: Object.fromEntries(Object.keys(input.changes).map((k) => [k, k === "gain_db" || k === "pan" ? Number(t[k]) : t[k]])) };
+  },
+  async apply(db, input, ctx) {
+    await updateTrack(db, input.track_id, input.changes);
+    return this.before(db, input, ctx);
+  },
+  after: (i) => i.changes,
+  undo(db, i, b, _a, ctx) { return this.apply(db, { track_id: i.track_id, changes: Object.fromEntries(Object.entries(b.fields).filter(([k]) => TRACK_FIELDS.includes(k))) }, ctx); },
+};
+
+const IMPLS: ToolImpl<any>[] = [updateStory, updateCharacter, changeWardrobe, modifyDialogue, updateSceneDNA, modifyShot, updateLocationOrProp, updateSettings, adjustAudioTrack];
 export const toolRegistry = IMPLS.reduce((r, t) => r.register(t.def), new ToolRegistry());
 export const toolImpl = (name: string) => IMPLS.find((t) => t.def.name === name);

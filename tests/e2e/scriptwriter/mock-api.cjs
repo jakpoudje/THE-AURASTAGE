@@ -1152,6 +1152,12 @@ http.createServer((req, res) => {
       updateSceneDNA: { module: "scene_dna", impact: ["Storyboard & Shots (plans from the locked version are flagged)", "Visual Generation prompts", "Audio Studio sound intent"], target: (i) => { const sc = scenes.find((x) => x.id === i.scene_id); if (!sc) return null;
         const rec = () => { let r = sdna.find((x) => x.scene_id === sc.id); if (!r) { r = { id: crypto.randomUUID(), project_id: P, scene_id: sc.id, purpose: null, stakes: null, story_time: null, mood: [], weather: null, atmosphere: null, lighting_intent: null, sound_intent: null, camera_energy: null, silent_scene: false, wardrobe: {}, ages: {}, notes: null, status: "draft", review_state: "current", approved_version_id: null, drift: [] }; sdna.push(r); } return r; };
         return { label: `Scene ${sc.number}`, get: () => sdna.find((x) => x.scene_id === sc.id) || {}, set: (ch) => Object.assign(rec(), Object.fromEntries(Object.entries(ch).map(([k, v]) => [k, v ?? (k === "mood" ? [] : null)])), { status: "draft", updated_at: now() }) }; } },
+      updateSettings: { module: "settings", impact: ["Project Settings (a new settings version)", "Visual Generation prompts (a style change flags compiled prompts for review)", "Export & Deliver (titles, credits, required deliverables)"],
+        target: () => ({ label: "Project Settings", get: () => JSON.parse(JSON.stringify(ST.settings)),
+          set: (ch) => { const next = JSON.parse(JSON.stringify(ST.settings)); for (const [s, f] of Object.entries(ch)) next[s] = { ...next[s], ...f };
+            Object.assign(ST, { settings: next, revision: crypto.randomUUID(), version_number: ST.version_number + 1, updated_at: now() }); } }) },
+      adjustAudioTrack: { module: "audio", impact: ["Audio Studio (the scene's mix needs a fresh loudness measurement before approval)", "Editorial & Export (the approved mix they use is flagged for review)"],
+        target: (i) => { const t = atracks.find((x) => x.id === i.track_id); return t && { label: `${t.name} track`, get: () => t, set: (ch) => Object.assign(t, ch) }; } },
       updateLocationOrProp: { module: "scene_dna", impact: ["Locations & Props (reference views made from the old description are marked for a refresh)", "Scene DNA and Visual Generation prompts that use this place or prop"],
         target: (i) => { const W0 = globalThis.__world || { location: [], prop: [] }; const r = (W0[i.kind] || []).find((x) => x.id === i.id); return r && { label: r.name, get: () => r, set: (ch) => Object.assign(r, ch, { revision: r.revision + 1, updated_at: now() }) }; } } };
     const aiPreview = (x) => {
@@ -1175,8 +1181,12 @@ http.createServer((req, res) => {
         const v = approved(); const d = sdna.find((x) => x.scene_id === fs.id) || {};
         items.push({ ref: { type: "scene", id: fs.id, version: d.updated_at || null, label: `Scene ${fs.number}` }, data: { number: fs.number, heading: fs.heading, action: v ? v.elements.filter((e) => e.index >= fs.element_start && e.index <= fs.element_end && e.type === "action").map((e) => e.text).join("\n") : "",
           dna: { mood: d.mood || [], atmosphere: d.atmosphere ?? null, sound_intent: d.sound_intent ?? null, camera_energy: d.camera_energy ?? null } } });
+        { const se = asessions.find((x) => x.scene_id === fs.id); if (se) for (const t of atracks.filter((x) => x.session_id === se.id).sort((a, b) => a.ordinal - b.ordinal))
+          items.push({ ref: { type: "audio_track", id: t.id, version: null, label: `${t.name} track` }, data: { name: t.name, family: t.family, gain_db: Number(t.gain_db), pan: Number(t.pan), mute: t.mute, solo: t.solo } }); }
         for (const l of dlines.filter((x) => x.scene_id === fs.id && x.status === "active")) items.push({ ref: { type: "dialogue_line", id: l.id, version: l.updated_at || null, label: `${l.speaker_name} line ${l.ordinal}` }, data: { speaker: l.speaker_name, character_id: l.character_id, text: l.text, parenthetical: l.parenthetical, intention: l.intention, subtext: l.subtext, emotion: l.emotion, intensity: l.intensity } });
       }
+      // Project Settings (never the spending section), as assistant.context does.
+      { const { generation: _g, ...editable } = ST.settings; items.push({ ref: { type: "settings", id: P, version: ST.updated_at, label: "Project Settings" }, data: editable }); }
       // Places and props when the request is about them (as assistant.context does).
       if (/\b(locations?|places?|props?|vehicles?)\b/i.test(b.text)) {
         const W0 = globalThis.__world || { location: [], prop: [] };
@@ -1210,7 +1220,9 @@ http.createServer((req, res) => {
         return send(200, aiView(x));
       }
       if (x.status !== "applied") return send(409, { error: { code: "AURA-AI-409", message: `This request is ${x.status}; only an applied change can be undone.` } });
-      for (const r of x.results.results) { const tg = aiTools[r.tool].target(r.input); if (Object.keys(r.applied).some((k) => JSON.stringify(tg.get()[k] ?? null) !== JSON.stringify(r.applied[k]))) return send(409, { error: { code: "AURA-AI-409", message: `${r.object.label} was changed again after this was applied, so undoing it would overwrite newer work. Change it by hand instead.` } }); }
+      // Nested changes (Project Settings sections) are compared field by field.
+      const same = (cur, want) => want && typeof want === "object" && !Array.isArray(want) && cur && typeof cur === "object" ? Object.keys(want).every((k) => same(cur[k], want[k])) : JSON.stringify(cur ?? null) === JSON.stringify(want ?? null);
+      for (const r of x.results.results) { const tg = aiTools[r.tool].target(r.input); if (Object.keys(r.applied).some((k) => !same(tg.get()[k], r.applied[k]))) return send(409, { error: { code: "AURA-AI-409", message: `${r.object.label} was changed again after this was applied, so undoing it would overwrite newer work. Change it by hand instead.` } }); }
       for (const r of [...x.results.results].reverse()) aiTools[r.tool].target(r.input).set(r.before);
       x.status = "undone"; return send(200, aiView(x));
     }

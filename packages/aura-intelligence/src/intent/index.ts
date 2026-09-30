@@ -9,6 +9,7 @@ const SIGNALS: { module: AssistantModule; op: Operation; words: RegExp }[] = [
   { module: "dialogue", op: "MODIFY_DIALOGUE", words: /\b(dialogue|line|lines|says?|said|speak|speech|subtext|admit|tell|whisper|shout)\b/i },
   { module: "scene_dna", op: "MODIFY_SCENE", words: /\b(night|evening|morning|dawn|dusk|afternoon|midday|rain|storm|thunder|snow|fog|wind|weather|mood|atmosphere|light(ing)?|dark(er)?|colder|warmer|threatening|tense|claustrophobic|scene)\b/i },
   { module: "scene_dna", op: "MODIFY_WORLD", words: /\b(locations?|places?|props?|vehicles?|set dressing|the set)\b/i },
+  { module: "settings", op: "UPDATE_SETTINGS", words: /\b(aspect ratio|loudness|visual style|the look of the film|colour palette|color palette|deliverables?|credits|director|producer|production company|copyright|opening title|title card|end credits|theme music|composer)\b/i },
   { module: "shots", op: "MODIFY_SHOT", words: /\b(camera|coverage|close[- ]?up|wide|lens|dolly|push in|pan|tilt|handheld|angle|framing|shot)\b/i },
   { module: "generation", op: "GENERATE_MEDIA", words: /\b(generate|render an image|image|picture|take|video)\b/i },
   { module: "audio", op: "MODIFY_SCENE", words: /\b(sound|music|score|sfx|foley|ambience|footsteps|mix|volume|louder|quieter)\b/i },

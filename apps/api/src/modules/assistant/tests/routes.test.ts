@@ -33,9 +33,22 @@ vi.mock("../../world/world.service", () => ({
     return Object.assign(r, patch, { revision: r.revision + 1, updated_at: bump() });
   },
 }));
+vi.mock("../../settings/settings.service", () => ({
+  saveSettings: async (_db: unknown, projectId: string, body: Row) => {
+    const cur = tables.project_settings.find((x) => x.project_id === projectId);
+    if ((cur?.revision ?? null) !== body.base_revision) throw Object.assign(new Error("stale"), { code: "AURA-SET-409" });
+    const row = { project_id: projectId, settings: body.settings, revision: `r${++tick}`, version_number: (cur?.version_number ?? 0) + 1, updated_at: bump(), updated_by: null };
+    tables.project_settings = [row];
+    return row;
+  },
+}));
+vi.mock("../../audio/audio.service", () => ({
+  updateTrack: async (_db: unknown, id: string, patch: Row) => Object.assign(tables.audio_tracks.find((t) => t.id === id)!, patch),
+}));
 const HARBOUR = "55555555-5555-4555-8555-555555555555";
+const MUSIC = "66666666-6666-4666-8666-666666666661", DIALOGUE = "66666666-6666-4666-8666-666666666662";
 
-function fakeDb(access: Record<string, string[]> = { scene_dna: ["view", "edit"], casting: ["view", "edit"] }) {
+function fakeDb(access: Record<string, string[]> = { scene_dna: ["view", "edit"], casting: ["view", "edit"], settings: ["view", "edit"], audio: ["view", "edit"] }) {
   const calls: { fn: string; args: Row }[] = [];
   const from = (t: string) => {
     const f: [string, unknown][] = [];
@@ -94,7 +107,10 @@ beforeEach(() => {
     characters: [{ id: AMARA, project_id: P, name: "Amara", age: "30", merged_into: null, updated_at: "2026-09-03T00:00:00+00:00" }],
     wardrobe_looks: [], shots: [], dialogue_lines: [], ai_proposals: [],
     locations: [{ id: HARBOUR, project_id: P, name: "HARBOUR", description: "", int_ext: ["EXT"], times_of_day: ["DAY", "NIGHT"], areas: ["DOCK"], status: "detected", archived_at: null, revision: 3, updated_at: "2026-09-04T00:00:00+00:00" }],
-    props: [],
+    props: [], project_settings: [],
+    audio_sessions: [{ id: "as2", scene_id: S2, project_id: P }],
+    audio_tracks: [{ id: DIALOGUE, session_id: "as2", ordinal: 1, name: "Dialogue", family: "DX", gain_db: 0, pan: 0, mute: false, solo: false },
+      { id: MUSIC, session_id: "as2", ordinal: 2, name: "Music", family: "MX", gain_db: -4, pan: 0, mute: false, solo: false }],
   };
 });
 
@@ -115,7 +131,7 @@ describe("Ask AuraStage", () => {
     expect(args.p_snapshot.tools).toContain("updateSceneDNA");
     expect(args.p_snapshot.prompt).toMatch(/Request: Make scene 2 night and rainy/);
     // Places and props come last (the request isn't about them), within the budget.
-    expect(r.context_refs.map((x: Row) => x.id)).toEqual([S2, P, AMARA, HARBOUR]);
+    expect(r.context_refs.map((x: Row) => `${x.type}:${x.id}`)).toEqual([`scene:${S2}`, `project:${P}`, `character:${AMARA}`, `audio_track:${DIALOGUE}`, `audio_track:${MUSIC}`, `settings:${P}`, `location:${HARBOUR}`]);
   });
 
   it("previews field-level before → after, labelled as test output, then applies through the domain service and undoes", async () => {
@@ -195,7 +211,7 @@ describe("Ask AuraStage", () => {
     expect(capabilities({}).planner).toEqual({ id: "aurastage-test", name: "AuraStage test planner", test_output: true });
     expect(capabilities({ ANTHROPIC_API_KEY: "k" }).planner).toMatchObject({ id: "anthropic", test_output: false });
     expect(capabilities({ AURA_TEST_PROVIDER: "off" }).planner).toBeNull();
-    expect(capabilities({}).tools.map((t) => t.name)).toEqual(["updateStory", "updateCharacter", "changeWardrobe", "modifyDialogue", "updateSceneDNA", "modifyShot", "updateLocationOrProp"]);
+    expect(capabilities({}).tools.map((t) => t.name)).toEqual(["updateStory", "updateCharacter", "changeWardrobe", "modifyDialogue", "updateSceneDNA", "modifyShot", "updateLocationOrProp", "updateSettings", "adjustAudioTrack"]);
   });
 
   it("describes a location through Locations & Props (owner: AI helps on every page), with its revision; undo puts it back", async () => {
@@ -223,5 +239,61 @@ describe("Ask AuraStage", () => {
     const ids = r.context_refs.map((x: Row) => x.id);
     // Still readable (budget permitting) but ranked after the cast.
     expect(ids.indexOf(HARBOUR)).toBeGreaterThan(ids.indexOf(AMARA));
+  });
+
+  it("changes titles & credits and a credit name in Project Settings (a new settings version); undo restores them; spending is never offered", async () => {
+    const fake = fakeDb();
+    const a = await app(fake);
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "settings", text: 'Turn on the end credits and the opening title with the theme music, and set the director to "Ada Obi".' } });
+    const args = fake.calls.find((c) => c.fn === "request_ai_proposal")!.args;
+    expect(args.p_intent.operation).toBe("UPDATE_SETTINGS");
+    const ctxSettings = args.p_snapshot.context.items.find((x: Row) => x.ref.type === "settings");
+    expect(ctxSettings.data.generation).toBeUndefined(); // spending settings aren't shown to the assistant
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview.calls[0]).toMatchObject({ tool: "updateSettings", allowed: true, stale: false, object: { label: "Project Settings" },
+      before: { "titles.end_credits": false, "titles.opening_title": false, "titles.music": "none", "production.director": null },
+      after: { "titles.end_credits": true, "titles.opening_title": true, "titles.music": "theme", "production.director": "Ada Obi" } });
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/apply` })).json().status).toBe("applied");
+    expect(tables.project_settings[0].settings.titles).toMatchObject({ end_credits: true, opening_title: true, music: "theme", credits_speed: "medium" });
+    expect(tables.project_settings[0].settings.production.director).toBe("Ada Obi");
+    expect(tables.project_settings[0].version_number).toBe(1);
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/undo` })).json().status).toBe("undone");
+    expect(tables.project_settings[0].settings.titles).toMatchObject({ end_credits: false, opening_title: false, music: "none" });
+    expect(tables.project_settings[0].settings.production.director).toBeNull();
+    expect(tables.project_settings[0].version_number).toBe(2);
+  });
+
+  it("refuses a plan that tries to change spending settings", async () => {
+    const { toolRegistry } = await import("../tools");
+    const def = toolRegistry.get("updateSettings")!;
+    expect(def.input.safeParse({ changes: { generation: { monthly_paid_take_limit: 100000 } } }).success).toBe(false);
+    expect(def.input.safeParse({ changes: { titles: { end_credits: true } } }).success).toBe(true);
+    expect(def.input.safeParse({ changes: { titles: { opening_seconds: 99 } } }).success).toBe(false);
+  });
+
+  it("turns the music down in a scene's mix through Audio Studio (only the music track); undo restores it", async () => {
+    const fake = fakeDb();
+    const a = await app(fake);
+    const q = (await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "audio", text: "Make the music quieter in scene 2" } })).json();
+    expect(q.context_refs.filter((r: Row) => r.type === "audio_track").map((r: Row) => r.label)).toEqual(["Dialogue track", "Music track"]);
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview.calls).toHaveLength(1);
+    expect(p.preview.calls[0]).toMatchObject({ tool: "adjustAudioTrack", allowed: true, object: { label: "Music track" }, before: { gain_db: -4 }, after: { gain_db: -10 } });
+    await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/apply` });
+    expect(tables.audio_tracks.map((t) => t.gain_db)).toEqual([0, -10]);
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/undo` })).json().status).toBe("undone");
+    expect(tables.audio_tracks[1].gain_db).toBe(-4);
+  });
+
+  it("a person without Audio Studio edit rights sees the suggestion but can't apply it", async () => {
+    const a = await app(fakeDb({ scene_dna: ["view"], casting: ["view"], settings: ["view"], audio: ["view"] }));
+    await a.inject({ method: "POST", url: `/api/projects/${P}/assistant`, payload: { module: "audio", text: "Mute the music in scene 2" } });
+    await plan();
+    const p = (await a.inject({ method: "GET", url: `/api/assistant/proposals/${PR}` })).json();
+    expect(p.preview).toMatchObject({ can_apply: false, calls: [{ tool: "adjustAudioTrack", allowed: false, after: { mute: true } }] });
+    expect((await a.inject({ method: "POST", url: `/api/assistant/proposals/${PR}/apply` })).statusCode).toBe(403);
+    expect(tables.audio_tracks[1].mute).toBe(false);
   });
 });
