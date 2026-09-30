@@ -41,6 +41,8 @@ work was saved. It runs as the Railway service `live-browser` (Playwright image,
 watch pattern `tests/live/browser/**`). Env: `WEB_URL`, `SMOKE_EMAIL`,
 `SMOKE_PASSWORD`. Run it (redeploy) after `live-smoke`, while the account still
 exists; read `SUMMARY n/m passed` in its deploy logs; then clean up as above.
+Never run it at the same time as `live-smoke`: the smoke's "sign out other devices" check ends the browser's session
+(seen 2026-09-30: every check after it failed with "Invalid or expired session"). Start it after the smoke's `SUMMARY`.
 
 ## Generation worker (`generation-worker`)
 
