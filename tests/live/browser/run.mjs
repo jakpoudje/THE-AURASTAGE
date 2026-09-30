@@ -99,6 +99,21 @@ await check("casting look panel: generate a character's reference views; images 
   await panel.getByText("8 of 16 made").waitFor();
   await panel.getByTestId("look-back:FULL").locator("img").waitFor();
 });
+await check("casting: one click makes the looks for the whole cast; a second click only fills gaps; reload: views there", async () => {
+  await page.goto(projectUrl + "/casting");
+  const bar = page.getByTestId("cast-looks");
+  await bar.getByRole("button", { name: "Generate all character looks" }).click();
+  // Tunde's views were made above, so only the rest of the cast (if any) is asked for.
+  const first = await bar.getByText(/^(Making \d+ views? for \d+ characters?|Nothing new to make)/).textContent({ timeout: 60000 });
+  await bar.getByRole("button", { name: "Generate all character looks" }).click();
+  await bar.getByText(/^Nothing new to make/).waitFor({ timeout: 60000 });
+  await page.reload();
+  await page.getByTestId("cast-looks").waitFor();
+  await page.getByRole("button", { name: /Tunde Okafor/ }).first().click();
+  await page.getByRole("button", { name: "Look & References" }).click();
+  await page.getByRole("region", { name: "Look and references" }).getByText("8 of 16 made").waitFor();
+  return first.slice(0, 120);
+});
 await check("casting Voice DNA: the voice comes from the profile and says why; reload: same", async () => {
   await page.getByRole("button", { name: "Voice DNA" }).click();
   const d = await page.getByTestId("voice-description").innerText();
