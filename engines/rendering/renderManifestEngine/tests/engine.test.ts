@@ -84,7 +84,7 @@ describe("renderManifestEngine 1.5.0: on-screen text from Scene DNA", () => {
     // The scene's first stretch is 48 frames (2 s), shorter than 4 s, so the text stays for the whole stretch.
     expect(manifest!.overlays).toEqual([{ record_in: 0, duration: 48, text: "LAGOS — 1995", position: "lower_third", scene_id: U(90) }]);
     expect(manifest!.sources.scene_captions).toEqual([U(90)]);
-    expect(manifest!.engine_versions.manifest).toBe("1.5.0");
+    expect(manifest!.engine_versions.manifest).toBe("1.6.0");
   });
   it("moves with the opening title card; caps at 4 s on a long stretch; only video deliverables; no captions = no overlays", () => {
     const titles = { opening: { frames: 120, svg: "<svg>T</svg>" }, end_credits: null, engine_version: "1.0.0" };
@@ -99,3 +99,22 @@ describe("renderManifestEngine 1.5.0: on-screen text from Scene DNA", () => {
     expect(renderManifestEngine(input()).manifest!.sources.scene_captions).toBeUndefined();
   });
 });
+
+describe("renderManifestEngine 1.6.0: transitions", () => {
+  const withT = (a: Record<string, unknown>, b: Record<string, unknown>) => {
+    const i = input();
+    i.clips[0] = { ...i.clips[0], transition: a } as never;
+    i.clips[1] = { ...i.clips[1], record_in: 48, transition: b } as never;
+    return renderManifestEngine(i).manifest!;
+  };
+  it("a dissolve right after picture stays a dissolve; after black or at the start it becomes a fade from black; cuts carry nothing", () => {
+    const m = withT({ in: "dissolve", out: "cut", frames: 12 }, { in: "dissolve", out: "fade_to_black", frames: 12 });
+    expect(m.picture.filter((s) => s.kind === "take").map((s) => [s.kind, s.transition?.in ?? null, s.transition?.out ?? null])).toEqual([["take", "fade_from_black", "cut"], ["take", "dissolve", "fade_to_black"]]);
+    expect(renderManifestEngine(input()).manifest!.picture.every((s) => !s.transition)).toBe(true);
+  });
+  it("a clip shorter than its transition gets a shorter one", () => {
+    const m = withT({ in: "cut", out: "cut", frames: 12 }, { in: "fade_from_black", out: "fade_to_black", frames: 20 });
+    expect(m.picture.filter((s) => s.kind === "take")[1].transition).toEqual({ in: "fade_from_black", out: "fade_to_black", frames: 12 }); // 24-frame clip, two ends
+  });
+});
+

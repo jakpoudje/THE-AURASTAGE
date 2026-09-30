@@ -2,7 +2,7 @@
 // Builds the first assembly: every scene with an approved shot plan, in scene
 // order, cut from the approved takes over the plan's story time, with the
 // scene's approved mix on A1 lined up with its picture.
-import { NEUTRAL_GRADE } from "@aurastage/contracts";
+import { NEUTRAL_GRADE, NO_TRANSITION } from "@aurastage/contracts";
 import { SLUG_MISSING_COVERAGE } from "./rules";
 import { validateAssemblyInput } from "./validator";
 import { ENGINE_VERSION } from "./version";
@@ -15,7 +15,7 @@ export function assemblyTimelineEngine(raw: unknown): AssemblyOutput {
   const clips: EngineClip[] = [];
   const rationale: string[] = [];
   let cursor = 0;
-  const base = { id: null, grade: { ...NEUTRAL_GRADE }, take_id: null, audio_session_version_id: null, shot_id: null } as const;
+  const base = { id: null, grade: { ...NEUTRAL_GRADE }, transition: { ...NO_TRANSITION }, take_id: null, audio_session_version_id: null, shot_id: null } as const;
 
   for (const sc of [...scenes].sort((a, b) => a.number - b.number)) {
     const shots = sc.shots.filter((s) => s.story_end > s.story_start).map((s) => ({ ...s, a: F(s.story_start), b: F(s.story_end) }));

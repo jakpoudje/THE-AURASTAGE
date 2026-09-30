@@ -39,8 +39,8 @@ function manifest(profile: string, extra: Record<string, unknown> = {}): RenderM
     project: { id: U(1), title: "Render Test" }, profile: getDeliveryProfile(profile), options: { watermark: "FOR REVIEW", burn_timecode: true },
     picture_lock: { id: U(2), lock_number: 1, timeline_version_id: U(3) }, fps: 24,
     clips: [
-      clip(10, { track: "V1", kind: "take", record_in: 0, duration: 24, take_id: U(20) }),
-      clip(11, { track: "V1", kind: "take", record_in: 36, duration: 12, take_id: U(20), grade: { ...NEUTRAL_GRADE, exposure: 1 } }),
+      clip(10, { track: "V1", kind: "take", record_in: 0, duration: 24, take_id: U(20), ...(extra.transitions ? { transition: (extra.transitions as object[])[0] } : {}) }),
+      clip(11, { track: "V1", kind: "take", record_in: extra.transitions ? 24 : 36, duration: extra.transitions ? 24 : 12, take_id: U(20), grade: { ...NEUTRAL_GRADE, exposure: 1 }, ...(extra.transitions ? { transition: (extra.transitions as object[])[1] } : {}) }),
       clip(12, { track: "A1", kind: "audio_mix", record_in: 0, duration: 48, source_frames: 48, audio_session_version_id: U(30) }),
     ],
     takes: { [U(20)]: { storage_key: "k/take.svg", media_type: "image/svg+xml", capability: "image", duration_seconds: null } },
@@ -51,7 +51,7 @@ function manifest(profile: string, extra: Record<string, unknown> = {}): RenderM
       ] } },
     assets: { [U(40)]: { storage_key: "k/line.wav", media_type: "audio/wav" } },
     lines: { l1: { speaker: "TUNDE", text: "You came." } },
-    ...extra,
+    ...Object.fromEntries(Object.entries(extra).filter(([k]) => k !== "transitions")),
   });
   if (!r.manifest) throw new Error(r.missing.join("; "));
   return r.manifest;
@@ -161,6 +161,20 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
       "-vf", "crop=900:200:60:820,scale=180:40", "-f", "rawvideo", "-pix_fmt", "gray", "-"]));
     expect(peak(r.store, 0.5)).toBeGreaterThan(peak(plain.store, 0.5) + 40); // the white text is on screen mid-scene-start
     expect(Math.abs(peak(r.store, 1.75) - peak(plain.store, 1.75))).toBeLessThan(6); // …and gone after its stretch
+  }, 240000);
+  it("transitions (manifest 1.6.0): fade up from black, dissolve from the shot before, fade out — same length, QC passes", async () => {
+    const plain = await render("streaming_master");
+    const r = await render("streaming_master", { transitions: [{ in: "fade_from_black", out: "cut", frames: 12 }, { in: "dissolve", out: "fade_to_black", frames: 6 }] });
+    expect(failing(r.qc).filter((f) => !/^(loudness|true_peak)/.test(f))).toEqual([]);
+    const luma = (store: string, t: number) => execFileSync("ffmpeg", ["-v", "error", "-ss", String(t), "-i", join(store, "streaming_1080p24.mp4"), "-frames:v", "1", "-vf", "crop=100:100:0:0,scale=1:1", "-f", "rawvideo", "-pix_fmt", "gray", "-"])[0];
+    const secs = (store: string) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(store, "streaming_1080p24.mp4")]).toString());
+    expect(secs(r.store)).toBeCloseTo(secs(plain.store), 1); // nothing moved
+    expect(luma(r.store, 0.02)).toBeLessThan(luma(plain.store, 0.02) - 40); // starts from black
+    expect(Math.abs(luma(r.store, 0.8) - luma(plain.store, 0.8))).toBeLessThan(6); // then the shot as normal
+    const mid = luma(r.store, 1.08); // inside the 6-frame dissolve from the plain shot (128) into the brighter graded one (255)
+    expect(mid).toBeGreaterThan(140);
+    expect(mid).toBeLessThan(245);
+    expect(luma(r.store, 1.9)).toBeLessThan(luma(r.store, 1.5) - 30); // fades out at the end
   }, 240000);
   it("subtitles and EDL", async () => {
     const s = await render("subtitles");

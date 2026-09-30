@@ -26,6 +26,20 @@ export const ClipGradeSchema = z
 export type ClipGrade = z.infer<typeof ClipGradeSchema>;
 export const NEUTRAL_GRADE: ClipGrade = { exposure: 0, contrast: 0, saturation: 0, temperature: 0 };
 
+/**
+ * How a picture clip starts and ends (migration 0041). Timing never changes: a dissolve blends in from the last frame of
+ * the picture before it over the clip's first `frames`, a fade goes from/to black over its first/last `frames`.
+ */
+export const ClipTransitionSchema = z
+  .object({
+    in: z.enum(["cut", "dissolve", "fade_from_black"]).default("cut"),
+    out: z.enum(["cut", "fade_to_black"]).default("cut"),
+    frames: z.number().int().min(2).max(96).default(12),
+  })
+  .strict();
+export type ClipTransition = z.infer<typeof ClipTransitionSchema>;
+export const NO_TRANSITION: ClipTransition = { in: "cut", out: "cut", frames: 12 };
+
 const frame = z.number().int().min(0).max(24 * 60 * 60 * 6);
 export const TimelineClipSchema = z.object({
   id: z.string().uuid(),
@@ -44,6 +58,7 @@ export const TimelineClipSchema = z.object({
   audio_session_version_id: z.string().uuid().nullable(),
   label: z.string().min(1).max(200),
   grade: ClipGradeSchema,
+  transition: ClipTransitionSchema.default(NO_TRANSITION),
 });
 export type TimelineClip = z.infer<typeof TimelineClipSchema>;
 
@@ -70,6 +85,7 @@ export const EditOperationSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("extract"), clip_id: clipId }).strict(),
   z.object({ op: z.literal("move"), clip_id: clipId, record_in: at }).strict(),
   z.object({ op: z.literal("grade"), clip_id: clipId, grade: ClipGradeSchema }).strict(),
+  z.object({ op: z.literal("transition"), clip_id: clipId, transition: ClipTransitionSchema }).strict(),
   /** Swap every clip's source for the currently approved take / scene mix, keeping the cut. */
   z.object({ op: z.literal("conform") }).strict(),
 ]);

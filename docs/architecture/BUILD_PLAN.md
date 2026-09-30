@@ -1,8 +1,11 @@
 # The AuraStage — Build Plan to a Fully Functional Studio
 
-Written 2026-09-29 for the owner. Plain language first; the technical notes under each item are for whoever builds
-it. Status marks: ✅ built and verified live · 🟡 partly built · ⬜ not built yet. Nothing here is marked ✅ unless it has
-been checked on the live site.
+Written 2026-09-29 for the owner; kept up to date after every piece of work (last update 2026-09-30). Plain language
+first; the technical notes under each item are for whoever builds it. Status marks: ✅ built and verified live ·
+🟡 partly built · ⬜ not built yet. Nothing here is marked ✅ unless it has been checked on the live site.
+
+**This file is the one list of what is done and what is left** (section 8 lists every open task). Data ownership — which
+stage is the single source of truth for each record — is in `DATA_AUTHORITY.md`; the code map is in `MODULE_REGISTRY.md`.
 
 ---
 
@@ -55,31 +58,39 @@ changes, the shots that used it are flagged "needs review".
   decided are passed back to Claude and kept; a warning if an outline came from an older story.
 - ✅ Write or edit the story yourself; build or edit the outline yourself; write the script yourself.
 - ✅ Outline & Structure: editable scene list sized to the runtime.
-- ✅ Generate Script: the whole screenplay written in the background (3 batches at a time), live progress and the real
-  current step on screen; opens as a draft version you approve.
+- ✅ Generate Script: the whole screenplay written in the background (6 batches at a time, a pool so no batch waits for
+  a slow one), live progress and the real current step on screen; a worker restart resumes from the scenes already
+  written; opens as a draft version you approve.
+- ✅ Names in the logline are kept by Develop Story (asked again by name if one is dropped); with no names given, the
+  writer picks names that fit the story's world and says why.
 - ✅ Edit & Refine: editor with preview, versions, import (Final Draft / Fountain), AI scene tools (improve, expand,
   rephrase, condense, sharpen dialogue, new scene) with before → after, continuity check.
 - ✅ Scene Breakdown and Character Extraction: interactive (jump to a scene, rework it, rename a character everywhere,
-  open in Casting / Scene DNA).
+  open in Casting / Scene DNA); they always follow the current saved script (older unsaved typing is kept aside, never
+  shown as the script).
 - ⬜ PDF import. ⬜ Side-by-side version compare. ⬜ Beat board (cards you drag between acts).
 
 ### Stage 2 — Casting & Characters
 - ✅ Characters created from the approved script; profiles (age, look, personality, background); approval.
 - ✅ Wardrobe looks per character; 16 reference views per character (angle × framing) from one identity description.
+- ✅ "Generate all character looks": the standard views for the whole cast in one click (only missing or outdated ones;
+  free sketches up to 400 a minute, paid images still capped at 40 a minute).
 - 🟡 **AuraSketch 2** (built 2026-09-29; live check pending): the free built-in sketcher draws each character as a real
   illustrated figure from their description and wardrobe — build, age, hair (12 styles), face, facial hair, glasses,
   headwear (gele, hijab, turban, caps, hats), layered clothes in the described colours — from four angles and every shot
   size, in Casting and in every storyboard frame. It only draws what's written (skin tone never guessed) and says what
   isn't described yet.
 - ✅ Voice DNA: each character's voice type, pitch, pace and accent, matched to a natural neural voice.
-- 🟡 AI assistant fills profiles as proposals (Ask AuraStage). ⬜ Relationship map.
+- ✅ AI develops every profile field (accent and languages from the story, never from a name) as a proposal you apply.
+  ⬜ Relationship map.
 - ✅ **Story-driven aging** (verified live 2026-09-29): each character's other ages (Casting → Ages), reference
   views per age, the age chosen per scene in Scene DNA (with the script's own time clues pointed out), and prompts and
   reference images that follow it; a changed age flags the scenes that use it.
 - ⬜ Upload an actor's photos as the reference (with consent record) instead of generated views.
 
 ### Stage 3 — Locations & Props
-- ✅ Every place and prop found in the approved script with the line it comes from; describe, confirm, add by hand.
+- ✅ Every place and prop found in the approved script with the line it comes from; describe, confirm, add by hand;
+  "Describe with AI" (Ask AuraStage writes the look from the script and story; apply, undo).
 - ✅ Reference views: establishing / wide / medium / detail per time of day; props hero / ¾ / detail / in hand.
 - ✅ Used by every shot's prompt (described location, props, reference images); edits flag those prompts.
 - ⬜ Set dressing per scene (what's on the table in scene 12) and continuity of props between scenes.
@@ -91,11 +102,15 @@ changes, the shots that used it are flagged "needs review".
 
 ### Stage 4 — Dialogue Intelligence
 - ✅ Lines from the approved script; intent, emotion, intensity, subtext per line; review when the script changes.
-- ⬜ AI performance notes for every line in one pass; ⬜ pronunciation guide for names and non-English words.
+- ✅ AI performance notes for every line of a scene in one pass (with the scene's Scene DNA). ⬜ Pronunciation guide for
+  names and non-English words.
 
 ### Stage 5 — Scene DNA
 - ✅ Per scene: purpose, mood, weather, atmosphere, lighting intent, wardrobe per character; lock.
-- 🟡 AI fills Scene DNA as a proposal. ⬜ Colour palette and reference mood images per scene.
+- ✅ AI fills Scene DNA as a proposal (one pass with the dialogue).
+- ✅ **On-screen text** per scene ("LAGOS — 1995", "Three years later"), lower third / top / centre, burned into video
+  deliverables over the start of the scene; changing only the text keeps a locked scene locked.
+- ⬜ Colour palette and reference mood images per scene.
 
 ### Stage 6 — Storyboard & Shots
 - ✅ Shot plan per scene (size, angle, movement, lens, focus, composition, timing), approval, sketches.
@@ -120,14 +135,16 @@ changes, the shots that used it are flagged "needs review".
   provider (needs a key) or chosen from a built-in library; stems.
 - ⬜ **Better built-in SFX and ambience**: a curated, licence-clear library (rain, crowds, traffic, doors, footsteps…)
   alongside the procedural generator; auto-placement from the script's action lines.
-- ⬜ Built-in **presets**: dialogue clean-up, "phone call", "radio", "large hall", "outdoor night", genre mix templates.
+- ✅ Built-in **presets**: channel presets (e.g. phone call) and genre mix templates.
+- ✅ Ask AuraStage changes a scene's mix (quieter / louder / mute a family of tracks), with undo.
 
 ### Stage 9 — Editorial & Timeline
 - ✅ First assembly from approved takes and mixes; NLE tools (trim, ripple, roll, slip, slide, blade, lift, extract);
   grading; versions; Picture Lock with impact; EDL.
 - ✅ Clear assembly overview, scene row, volume automation you draw or set, kept after picture lock.
-- ⬜ Titles and credits; transitions (dissolve, fade); a second picture track for inserts; music on its own timeline
-  track across scenes.
+- ✅ Opening title card, end-credits roll (cast from Casting, credits from Project Settings) and the film's built-in main
+  theme under them, on video deliverables.
+- ⬜ Transitions (dissolve, fade); a second picture track for inserts; music on its own timeline track across scenes.
 
 ### Stage 10 — Export & Deliver
 - ✅ Streaming master, review copy, ProRes master, audio package (mix, stems, M&E), subtitles, EDL, technical QC.
@@ -136,6 +153,10 @@ changes, the shots that used it are flagged "needs review".
 ### Around every stage
 - ✅ Team roles and permissions, comments and mentions, tasks, activity, Help & Support, Project Settings, Assets
   Library (edit images/audio in the browser), dashboard from real evidence, AI & Generation readiness page.
+- ✅ **Ask AuraStage acts on**: story, characters, wardrobe, dialogue, Scene DNA (incl. on-screen text), shots,
+  locations & props, Project Settings (never spending), Audio Studio mixes. Every change goes through that stage's own
+  save (same permissions, versions and review flags as a manual edit), shows before → after, and can be undone; the page
+  updates at once. ⬜ Visual Generation, Editorial, Export and Assets are not yet actionable by the assistant.
 - ⬜ Real-time co-editing presence; ⬜ mobile review app.
 
 ---
@@ -169,8 +190,8 @@ Every one of these is recorded in the render's manifest, so any frame can be tra
 | 5 | Premium voices (ElevenLabs) with Voice DNA | Natural performances | ElevenLabs key |
 | 6 | Lip sync on dialogue shots | Believable speaking characters | Lip-sync provider key |
 | 7 | More video providers (Luma, Veo), image-to-video | Motion for every shot | Luma / Google keys |
-| 8 | Editorial titles, credits, transitions, music track | A finished-looking film | — |
-| 9 | AI in every field (one-click shot lists, Scene DNA, performance notes) | Speed | — |
+| 8 | 🟡 Titles, credits, theme, on-screen text done; transitions, music track remain | A finished-looking film | — |
+| 9 | 🟡 AI in every field: done for 9 stages; one-click shot lists and Visual/Editorial/Export/Assets remain | Speed | — |
 | 10 | Location Intelligence L1–L2 (Location DNA, entity resolution, real/fictional, scene states, World Library, packs) | Same places, right geography, before expensive generation | Claude credit |
 | 11 | Location Intelligence L3–L5 (shot geography, reference selection, continuity QC, ambience, assistant commands) | Continuity across a feature | — |
 | 12 | Social cut-downs, trailer assistant, PDF import, beat board | Reach and comfort | — |
@@ -191,8 +212,33 @@ Location Intelligence.
 
 ## 7. What only the owner can provide
 
-- **Claude credit** (console.anthropic.com → Plans & Billing) — required for every AI writing and assistant step. The
-  live check on 2026-09-29 found the balance empty.
+- **Claude credit** (console.anthropic.com → Plans & Billing) — required for every AI writing and assistant step
+  (working again since 2026-09-30).
+- **Kling keys** (`KLING_ACCESS_KEY`, `KLING_SECRET_KEY`) on both the THE-AURASTAGE and generation-worker services — none
+  are set yet (checked 2026-09-30).
 - Keys for paid generators when you want them: ElevenLabs (voices), a music provider, a lip-sync provider, Runway /
   Luma / Google Veo (video), OpenAI (images). Each is added as a variable on the API and generation worker in Railway.
 - Supabase dashboard → Authentication → "Leaked password protection" (one switch).
+
+## 8. Open tasks — the one list
+
+Everything not yet done, in build order. When an item is finished it moves up into the stage lists above as ✅.
+
+| # | Task | Done when |
+|---|---|---|
+| 1 | Better built-in sound effects and ambience (curated, licence-clear library beside the procedural generator) | Rain, crowd, traffic, doors, footsteps… play from real recordings, placed from the script |
+| 2 | AuraSketch drawings reviewed by the owner (characters and locations) | The owner is happy the sketches read as the described people and places |
+| 3 | Ask AuraStage in Visual Generation, Editorial, Export and Assets | Each of those pages can take a request, show before → after, apply and undo |
+| 4 | One-click AI shot list per scene ("coverage presets") | A scene's shot plan is proposed from its Scene DNA in one click |
+| 5 | Music suggestions per scene + built-in library; music provider | Every scene has a suggested cue; a provider generates it when its key is added |
+| 6 | Premium voices (ElevenLabs) with Voice DNA | Lines are spoken by ElevenLabs when its key is added |
+| 7 | Lip sync on dialogue shots | Mouths match the lines when a lip-sync key is added |
+| 8 | More video providers verified with keys (Luma, Veo, Kling), image-to-video | A shot's approved still becomes a moving take |
+| 9 | Editorial transitions, insert track, music track | Dissolves and fades render; music runs across scenes |
+| 10 | Location Intelligence L1–L6 (see `LOCATION_INTELLIGENCE.md`) | Per phase, as written there |
+| 11 | Global platform: interface in many languages; scripts and dialogue in any language | The interface switches language; a script in another language flows through every stage |
+| 12 | Set dressing and prop continuity per scene; relationship map; pronunciation guide | Each works in its stage and is used downstream |
+| 13 | PDF import, version compare, beat board, social cut-downs, trailer assistant | Each works end to end |
+| 14 | Upload an actor's photos as the reference (with consent record) | Photos replace generated views for that character |
+| 15 | Verify every page live after each change (the live checks grow with every feature) | `live-smoke` and `live-browser` both pass |
+

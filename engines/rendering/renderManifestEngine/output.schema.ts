@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ProjectCreditsSchema } from "./input.schema";
-import { AudioFamilySchema, ClipGradeSchema, RenderOptionsSchema, SessionMixSchema, TimelineAutomationSchema, TrackFxSchema } from "@aurastage/contracts";
+import { AudioFamilySchema, ClipGradeSchema, ClipTransitionSchema, RenderOptionsSchema, SessionMixSchema, TimelineAutomationSchema, TrackFxSchema } from "@aurastage/contracts";
 import { DeliveryProfileSchema } from "../deliveryProfileEngine/output.schema";
 import { SubtitleOutputSchema } from "../subtitleTimelineEngine/output.schema";
 
@@ -18,6 +18,8 @@ export const PictureSegmentSchema = z.object({
   /** Title card / credit roll artwork (SVG); the roll scrolls an image this tall through the frame. */
   svg: z.string().optional(),
   image_height: z.number().int().optional(),
+  /** How a take starts/ends (manifest ≥ 1.6.0): dissolve from the picture before, fade from/to black; timing unchanged. */
+  transition: ClipTransitionSchema.optional(),
 });
 export type PictureSegment = z.infer<typeof PictureSegmentSchema>;
 

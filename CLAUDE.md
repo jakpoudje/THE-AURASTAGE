@@ -25,7 +25,9 @@ Read this file before modifying anything in this repository.
 
 ## Repository map
 
-See `docs/architecture/MODULE_REGISTRY.md` for the full domain-to-folder map and
+See `docs/architecture/MODULE_REGISTRY.md` for the full domain-to-folder map, `docs/architecture/DATA_AUTHORITY.md` for
+the single source of truth of every record, `docs/architecture/BUILD_PLAN.md` for the one list of what is done and
+what is left (update it after every piece of work), and
 `docs/SRS/` for the authoritative Software Requirements Specification this codebase implements.
 
 ## Traceability convention

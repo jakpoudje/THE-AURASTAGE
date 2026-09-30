@@ -13,9 +13,9 @@ character, scene, shot or technical truth.
 | Character | Casting | Canonical identity |
 | CharacterState | Casting + Scene DNA resolution | Story-time look/condition/knowledge/emotion |
 | DialogueLine | Dialogue Intelligence | Approved spoken/written line + semantics |
-| Location / Prop | Scene/Asset domain | Canonical place/set/prop |
+| Location / Prop | Locations & Props (`apps/api/src/modules/world`) | Canonical place/set/prop, found in the approved script (migration 0028) |
 | WardrobeLook | Casting | Named character look |
-| SceneDNA | Scene DNA | Versioned scene production blueprint |
+| SceneDNA | Scene DNA | Versioned scene production blueprint, incl. the scene's on-screen text (migration 0040) |
 | Shot | Storyboard & Shots | Canonical Shot DNA |
 | GenerationPackage / Take | Visual Generation | Provider-neutral spec + generated result |
 | Asset / AssetVersion / AssetLink | Assets Library | Media/reference metadata, versions (a new file never overwrites an old one), usage links to scenes/characters; migration 0024 |
@@ -40,3 +40,13 @@ character, scene, shot or technical truth.
   sonically but does not silently rewrite it.
 - Media bytes are stored once as Assets/AssetVersions; Scene DNA, Shot DNA, Audio and
   Editorial reference Asset IDs only.
+- On-screen text for a scene is written only in Scene DNA; renders read it (never copy it into the timeline).
+- Opening title, end credits, credit names and the theme switch are written only in Project Settings; the cast in the
+  roll comes from Casting at render time.
+- The assistant (Ask AuraStage) owns nothing: every change it makes goes through the owning stage's own save function
+  (same permission gate, versions, audit and review flags as a manual edit), and it keeps only the proposal and the
+  before/after needed for undo (`ai_proposals`).
+- The Scriptwriter's "current story" is the only source of character names before Casting exists; after the script is
+  approved, Casting's characters are the names every later stage uses.
+- What is done and what is left is tracked in one place: `BUILD_PLAN.md` (section 8).
+

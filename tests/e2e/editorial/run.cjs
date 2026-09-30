@@ -146,6 +146,20 @@ async function approveTakeFor(shotId) {
     await v1Clips().first().click();
     if ((await page.getByLabel("Exposure").inputValue()) !== "0.5") throw new Error("grade lost after reload");
   });
+  await step("transitions: fade up from black and fade to black on a clip; a too-long one is refused; kept after reload", async () => {
+    await v1Clips().first().click();
+    await page.getByLabel("Transition in").selectOption("fade_from_black");
+    await page.getByLabel("Transition out").selectOption("fade_to_black");
+    await page.getByLabel("Transition length in frames").fill("96");
+    await page.getByRole("button", { name: "Apply transition" }).click();
+    await page.getByText(/too short for a 96-frame transition/).waitFor();
+    await page.getByLabel("Transition length in frames").fill("6"); // the clip is 12 frames after the blade step
+    await page.getByRole("button", { name: "Apply transition" }).click();
+    await notice(/now fades up from black and fades out to black \(6 frames\)/);
+    await reload();
+    await v1Clips().first().click();
+    if ((await page.getByLabel("Transition in").inputValue()) !== "fade_from_black" || (await page.getByLabel("Transition length in frames").inputValue()) !== "6") throw new Error("transition lost after reload");
+  });
   await step("save a named version; kept after reload", async () => {
     await page.getByLabel("Version name").fill("Director's cut");
     await page.getByRole("button", { name: "Save version" }).click();

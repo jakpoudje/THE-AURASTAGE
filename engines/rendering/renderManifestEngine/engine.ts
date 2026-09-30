@@ -33,7 +33,15 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
     else {
       const tk = i.takes[c.take_id];
       if (!tk?.storage_key) missing.push(`${c.label}: the take's media file is missing`);
-      picture.push({ kind: "take", record_in: c.record_in, duration: c.duration, source_in: c.source_in, take_id: c.take_id, storage_key: tk?.storage_key ?? null, media_type: tk?.media_type ?? null, capability: tk?.capability ?? null, grade: c.grade, label: c.label });
+      // A dissolve straight after black (a gap, or the very start) is a fade up from black — the same frames on screen.
+      const tr = c.transition ?? { in: "cut", out: "cut", frames: 12 };
+      const prev = picture.at(-1);
+      const t0 = tr.in === "dissolve" && (!prev || prev.kind === "black" || prev.record_in + prev.duration !== c.record_in) ? { ...tr, in: "fade_from_black" as const } : tr;
+      // A clip trimmed shorter than its transition gets a shorter one (never longer than the clip allows).
+      const ends = (t0.in !== "cut" ? 1 : 0) + (t0.out !== "cut" ? 1 : 0);
+      const transition = ends ? { ...t0, frames: Math.max(1, Math.min(t0.frames, Math.floor(c.duration / ends))) } : t0;
+      picture.push({ kind: "take", record_in: c.record_in, duration: c.duration, source_in: c.source_in, take_id: c.take_id, storage_key: tk?.storage_key ?? null, media_type: tk?.media_type ?? null, capability: tk?.capability ?? null, grade: c.grade, label: c.label,
+        ...(transition.in !== "cut" || transition.out !== "cut" ? { transition } : {}) });
     }
     t = Math.max(t, c.record_in + c.duration);
   }

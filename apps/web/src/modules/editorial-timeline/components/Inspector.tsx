@@ -2,7 +2,7 @@
 
 // Selected clip: exact timecodes, precise trims/slip, grade, lift/extract.
 import { useState } from "react";
-import type { ClipGrade, EditOperation, TimelineClip } from "@aurastage/contracts";
+import type { ClipGrade, ClipTransition, EditOperation, TimelineClip } from "@aurastage/contracts";
 import { clipEnd, tc } from "../state/timelineMath";
 
 const GRADE: { k: keyof ClipGrade; label: string; min: number; max: number }[] = [
@@ -17,6 +17,9 @@ export function Inspector({ clip, fps, issue, busy, onOp }: { clip: TimelineClip
   const [ripple, setRipple] = useState(false);
   const [grade, setGrade] = useState<ClipGrade>(clip.grade);
   const dirtyGrade = JSON.stringify(grade) !== JSON.stringify(clip.grade);
+  const baseT: ClipTransition = clip.transition ?? { in: "cut", out: "cut", frames: 12 };
+  const [trans, setTrans] = useState<ClipTransition>(baseT);
+  const dirtyTrans = JSON.stringify(trans) !== JSON.stringify(baseT);
   const row = (k: string, v: string) => (
     <div className="flex justify-between gap-2">
       <dt className="text-white/40">{k}</dt>
@@ -66,6 +69,25 @@ export function Inspector({ clip, fps, issue, busy, onOp }: { clip: TimelineClip
             <button disabled={busy || !dirtyGrade} onClick={() => onOp({ op: "grade", clip_id: clip.id, grade })} className="flex-1 rounded bg-aura-gold px-2 py-1 text-xs font-medium text-black disabled:opacity-40">Apply grade</button>
             <button disabled={busy} onClick={() => setGrade({ exposure: 0, contrast: 0, saturation: 0, temperature: 0 })} className="rounded border border-aura-border px-2 py-1 text-xs">Reset</button>
           </div>
+        </div>
+      )}
+      {clip.track === "V1" && (
+        <div className="mt-3 space-y-1.5 border-t border-aura-border pt-3 text-xs" role="group" aria-label="Transition">
+          <div className="text-white/50">Transition (inside the clip — nothing else moves)</div>
+          <label className="flex items-center justify-between gap-2">Start
+            <select aria-label="Transition in" value={trans.in} onChange={(e) => setTrans({ ...trans, in: e.target.value as ClipTransition["in"] })} className="rounded border border-aura-border bg-black px-1 py-0.5">
+              <option value="cut">Cut</option><option value="dissolve">Dissolve from the shot before</option><option value="fade_from_black">Fade up from black</option>
+            </select>
+          </label>
+          <label className="flex items-center justify-between gap-2">End
+            <select aria-label="Transition out" value={trans.out} onChange={(e) => setTrans({ ...trans, out: e.target.value as ClipTransition["out"] })} className="rounded border border-aura-border bg-black px-1 py-0.5">
+              <option value="cut">Cut</option><option value="fade_to_black">Fade to black</option>
+            </select>
+          </label>
+          <label className="flex items-center justify-between gap-2">Length
+            <span><input aria-label="Transition length in frames" type="number" min={2} max={96} value={trans.frames} onChange={(e) => setTrans({ ...trans, frames: Math.max(2, Math.min(96, Math.round(Number(e.target.value) || 12))) })} className="w-14 rounded border border-aura-border bg-black px-1 py-0.5 text-right" /> frames ({(trans.frames / fps).toFixed(2)} s)</span>
+          </label>
+          <button disabled={busy || !dirtyTrans} onClick={() => onOp({ op: "transition", clip_id: clip.id, transition: trans })} className="w-full rounded bg-aura-gold px-2 py-1 font-medium text-black disabled:opacity-40">Apply transition</button>
         </div>
       )}
       <div className="mt-3 grid grid-cols-2 gap-1 border-t border-aura-border pt-3 text-xs">

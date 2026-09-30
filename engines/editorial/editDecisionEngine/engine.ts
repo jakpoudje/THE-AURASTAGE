@@ -94,7 +94,10 @@ export function editDecisionEngine(raw: unknown): EditDecisionOutput {
       const c = onTrack(clips, op.track).find((x) => x.record_in < op.at && end(x) > op.at) ?? reject("There's no clip under the playhead on that track to cut.");
       const e = end(c);
       c.duration = op.at - c.record_in;
-      clips.push({ ...c, id: null, record_in: op.at, source_in: c.source_in + c.duration, duration: e - op.at });
+      // The first piece keeps how the clip starts, the second how it ends (a fade-in doesn't repeat mid-shot).
+      const tr = c.transition ?? { in: "cut", out: "cut", frames: 12 };
+      clips.push({ ...c, id: null, record_in: op.at, source_in: c.source_in + c.duration, duration: e - op.at, transition: { ...tr, in: "cut" } });
+      c.transition = { ...tr, out: "cut" };
       summary = `Cut “${c.label}” in two.`;
       break;
     }
@@ -181,6 +184,16 @@ export function editDecisionEngine(raw: unknown): EditDecisionOutput {
       if (c.kind !== "take") return reject("Only picture clips can be graded.");
       c.grade = { ...NEUTRAL_GRADE, ...op.grade };
       summary = `Graded “${c.label}”.`;
+      break;
+    }
+    case "transition": {
+      const c = find(op.clip_id);
+      if (c.track !== "V1") return reject("Transitions are for picture clips.");
+      const t = op.transition, used = (t.in !== "cut" ? t.frames : 0) + (t.out !== "cut" ? t.frames : 0);
+      if (used > c.duration) return reject(`“${c.label}” is only ${c.duration} frames — too short for a ${t.frames}-frame transition at ${t.in !== "cut" && t.out !== "cut" ? "both ends" : "that end"}.`);
+      c.transition = t;
+      const words = [t.in === "dissolve" ? "dissolves in" : t.in === "fade_from_black" ? "fades up from black" : "", t.out === "fade_to_black" ? "fades out to black" : ""].filter(Boolean);
+      summary = words.length ? `“${c.label}” now ${words.join(" and ")} (${t.frames} frames).` : `“${c.label}” now cuts in and out.`;
       break;
     }
     case "conform": {

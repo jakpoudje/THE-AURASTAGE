@@ -18,6 +18,16 @@ export function gradeFilter(g: PictureSegment["grade"]): string | null {
   return parts.join(",");
 }
 
+/** Fade from / to black on a take (manifest ≥ 1.6.0), inside its own frames so nothing moves. */
+export function fadeFilter(s: PictureSegment, fps: number): string | null {
+  const t = s.transition;
+  if (!t || s.kind !== "take") return null;
+  const d = t.frames / fps, secs = s.duration / fps, parts: string[] = [];
+  if (t.in === "fade_from_black") parts.push(`fade=t=in:st=0:d=${d.toFixed(4)}`);
+  if (t.out === "fade_to_black") parts.push(`fade=t=out:st=${(secs - d).toFixed(4)}:d=${d.toFixed(4)}`);
+  return parts.length ? parts.join(",") : null;
+}
+
 export async function renderPicture(
   m: RenderManifest, fetchMedia: (key: string) => Promise<{ bytes: Uint8Array; contentType: string }>, dir: string,
   onProgress: (fraction: number) => void, signal?: AbortSignal
@@ -60,12 +70,25 @@ export async function renderPicture(
         cache.set(s.storage_key!, src);
       }
       const vf = [fit, gradeFilter(s.grade), toYuv].filter(Boolean).join(",");
+      const fx = fadeFilter(s, m.fps);
       if (s.capability === "video") {
         const pad = `tpad=stop_mode=clone:stop_duration=${(s.duration / m.fps).toFixed(3)}`;
-        await ffmpeg(["-ss", (s.source_in / m.fps).toFixed(4), "-i", src, "-vf", `fps=${m.fps},${vf},${pad}`, ...common], { signal });
+        await ffmpeg(["-ss", (s.source_in / m.fps).toFixed(4), "-i", src, "-vf", [`fps=${m.fps}`, vf, pad, fx].filter(Boolean).join(","), ...common], { signal });
       } else {
-        await ffmpeg(["-loop", "1", "-framerate", String(m.fps), "-i", src, "-vf", vf, ...common], { signal });
+        await ffmpeg(["-loop", "1", "-framerate", String(m.fps), "-i", src, "-vf", [vf, fx].filter(Boolean).join(","), ...common], { signal });
       }
+    }
+    // Dissolve (manifest ≥ 1.6.0): blend in from the last frame of the picture before, over this clip's first frames.
+    if (s.kind === "take" && s.transition?.in === "dissolve" && i > 0) {
+      const prev = join(dir, `seg_${String(i - 1).padStart(5, "0")}.mkv`), last = join(dir, `last_${i}.png`), mixed = join(dir, `seg_${String(i).padStart(5, "0")}_x.mkv`);
+      await ffmpeg(["-sseof", "-0.5", "-i", prev, "-update", "1", "-frames:v", "999", last], { signal });
+      const d = (s.transition.frames / m.fps).toFixed(4);
+      await ffmpeg(["-loop", "1", "-framerate", String(m.fps), "-t", d, "-i", last, "-i", out, "-filter_complex",
+        `[0:v]fps=${m.fps},setsar=1,format=yuv444p,settb=AVTB[a];[1:v]fps=${m.fps},setsar=1,format=yuv444p,settb=AVTB[b];[a][b]xfade=transition=fade:duration=${d}:offset=0,format=yuv444p`,
+        "-frames:v", String(s.duration), "-r", String(m.fps), ...INTERMEDIATE, "-an", mixed], { signal });
+      list.push(`file '${mixed}'`);
+      onProgress((i + 1) / m.picture.length);
+      continue;
     }
     list.push(`file '${out}'`);
     onProgress((i + 1) / m.picture.length);

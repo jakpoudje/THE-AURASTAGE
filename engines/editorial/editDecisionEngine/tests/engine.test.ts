@@ -82,4 +82,13 @@ describe("editDecisionEngine", () => {
   it("refuses unknown clips in plain language", () => {
     expect(() => run({ op: "lift", clip_id: U(55) })).toThrow(/no longer on the timeline/);
   });
+  it("transitions: set on a picture clip; refused on sound or when longer than the clip; a blade keeps the fade-in on the first piece and the fade-out on the second", () => {
+    const r = run({ op: "transition", clip_id: U(2), transition: { in: "dissolve", out: "fade_to_black", frames: 12 } });
+    expect(r.clips.find((c) => c.id === U(2))!.transition).toEqual({ in: "dissolve", out: "fade_to_black", frames: 12 });
+    expect(r.summary).toBe("“C2” now dissolves in and fades out to black (12 frames).");
+    expect(() => run({ op: "transition", clip_id: U(4), transition: { in: "dissolve", out: "cut", frames: 12 } })).toThrow(/picture clips/);
+    expect(() => run({ op: "transition", clip_id: U(1), transition: { in: "fade_from_black", out: "fade_to_black", frames: 30 } })).toThrow(/only 48 frames/);
+    const both = editDecisionEngine({ clips: [clip(1, "V1", 0, 96, { transition: { in: "fade_from_black", out: "fade_to_black", frames: 12 } })], operation: { op: "blade", track: "V1", at: 48 } });
+    expect(both.clips.map((c) => [c.record_in, c.transition.in, c.transition.out])).toEqual([[0, "fade_from_black", "cut"], [48, "cut", "fade_to_black"]]);
+  });
 });

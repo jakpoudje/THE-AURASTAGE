@@ -463,6 +463,11 @@ await check("editorial: edits apply against the current revision (stale refused 
   await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "grade", clip_id: pic.id, grade: { exposure: 0.5, contrast: 0, saturation: 0, temperature: 0 } } });
   ws = await edWs();
   assert(ws.clips.find((c: any) => c.id === pic.id).grade.exposure === 0.5, "grade not saved");
+  // Transitions (migration 0041): a fade up from black on that shot, saved with the clip; an impossible one refused.
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "transition", clip_id: pic.id, transition: { in: "fade_from_black", out: "fade_to_black", frames: 96 } } }, [409]);
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "transition", clip_id: pic.id, transition: { in: "fade_from_black", out: "cut", frames: Math.min(6, ws.clips.find((c: any) => c.id === pic.id).duration) } } });
+  ws = await edWs();
+  assert(ws.clips.find((c: any) => c.id === pic.id).transition?.in === "fade_from_black", "transition not saved");
   edRev = ws.timeline.revision;
 });
 await check("editorial: Picture Lock refused while offline; lift the slugs, lock, and a locked picture refuses edits until the break is confirmed", async () => {
@@ -552,6 +557,7 @@ await check("delivery: queue Streaming Master, Subtitles and Audio Package from 
   const mix: any = Object.values(m.manifest.mixes)[0];
   assert(mix && mix.mix && mix.mix.master && mix.tracks.every((t: any) => t.fx && t.fx.eq), "mix routing / channel strips missing from the manifest");
   assert(m.manifest.automation?.A1?.length === 3 && typeof m.manifest.sources.automation_revision === "string", "automation missing from the manifest");
+  assert(m.manifest.picture.some((p: any) => p.kind === "take" && p.transition?.in === "fade_from_black"), "the transition didn't reach the manifest");
   const c = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "edit_decision_list" });
   const x = await api("POST", `/api/renders/${c.render_id}/cancel`, {});
   assert(x.status === "cancelled" || x.cancel_requested, "cancel");

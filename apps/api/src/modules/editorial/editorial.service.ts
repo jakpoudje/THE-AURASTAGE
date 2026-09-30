@@ -244,7 +244,7 @@ export async function assembleTimeline(db: SupabaseClient, projectId: string, pa
 }
 
 function resolveSource(ctx: Ctx, up: Up, op: Extract<EditOperation, { op: "insert" | "overwrite" }>): EngineClip {
-  const base = { id: null, source_in: 0, record_in: op.at, grade: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 }, take_id: null, audio_session_version_id: null, shot_id: null } as const;
+  const base = { id: null, source_in: 0, record_in: op.at, grade: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 }, transition: { in: "cut", out: "cut", frames: 12 }, take_id: null, audio_session_version_id: null, shot_id: null } as const;
   if (op.source.kind === "shot") {
     const info = up.shotInfo.get(op.source.shot_id);
     if (!info) throw new EditorialNotReadyError("That shot isn't in an approved shot plan.");
