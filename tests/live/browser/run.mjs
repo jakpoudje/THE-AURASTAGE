@@ -201,7 +201,7 @@ await check("storyboard: plan shots, reload: kept; edit, reload: kept; approve, 
   await page.getByText("Cinematic Precision").waitFor();
   await page.getByRole("button", { name: /INT\. TUNDE'S APARTMENT/ }).first().click();
   await page.getByRole("button", { name: "Plan shots from Scene DNA" }).click();
-  await page.getByText(/Planned \d+ shots from Scene DNA version 1/).waitFor();
+  await page.getByText(/Planned \d+ shots (?:\(\w+ coverage\) )?from Scene DNA version 1/).waitFor();
   await reload("Cinematic Precision");
   await page.getByRole("button", { name: "Shot 1", exact: true }).click();
   await page.getByLabel("Angle").selectOption({ label: "Low" });
