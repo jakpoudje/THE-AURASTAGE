@@ -343,6 +343,42 @@ async function api(method, path, body) {
     await panel.getByTestId("proposal-status").waitFor();
     await panel.getByRole("button", { name: "Close" }).click();
   });
+  await step("whole cast (owner request 2026-09-30): one click fills only empty fields from the script and story; reload keeps them; one click asks AI to develop the rest", async () => {
+    await page.goto(`${BASE}/projects/${P}/casting`);
+    const bar = page.getByRole("region", { name: "Whole cast profiles" });
+    await bar.getByText(/characters have empty fields/).waitFor();
+    const before = await api("GET", `/api/projects/${P}/characters`);
+    const tundeBefore = before.characters.find((c) => c.name === "Tunde Okafor");
+    await bar.getByRole("button", { name: "Use suggested profiles for the whole cast" }).click();
+    await page.getByText(/Filled empty fields for \d+ character|Nothing to fill/).waitFor();
+    const after = await api("GET", `/api/projects/${P}/characters`);
+    const tundeAfter = after.characters.find((c) => c.name === "Tunde Okafor");
+    if (tundeBefore.accent && tundeAfter.accent !== tundeBefore.accent) throw new Error("a written accent was changed");
+    if (tundeBefore.nationality !== tundeAfter.nationality) throw new Error("a written field was changed");
+    const filled = after.characters.find((c) => !c.merged_into && c.accent && !before.characters.find((b) => b.id === c.id).accent);
+    if (filled) {
+      await page.reload();
+      await page.getByRole("button", { name: new RegExp(filled.name) }).first().click();
+      await page.getByRole("button", { name: "Profile", exact: true }).click();
+      if ((await page.getByLabel("Accent").inputValue()) !== filled.accent) throw new Error("suggested accent not kept after reload");
+    }
+    await bar.getByRole("button", { name: "Develop the rest of every profile with AI" }).click();
+    const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
+    await panel.getByText(/Develop every character's profile in one pass/).first().waitFor();
+    await panel.getByTestId("proposal-status").waitFor();
+    await panel.getByRole("button", { name: "Close" }).click();
+  });
+  await step("Save & next: saves what was typed and opens the next character that still needs work; reload keeps the save", async () => {
+    await page.goto(`${BASE}/projects/${P}/casting`);
+    const first = (await page.getByRole("heading", { level: 2 }).filter({ hasNotText: /Characters|Same person|Profiles/ }).first().textContent()).trim();
+    await page.getByRole("button", { name: "Profile", exact: true }).click();
+    await page.getByLabel("Occupation").fill("Harbour pilot");
+    await page.getByRole("button", { name: "Save & next →" }).click();
+    await page.getByText("Character saved.").waitFor();
+    await page.waitForFunction((n) => ![...document.querySelectorAll("h2")].some((h) => h.textContent.trim() === n), first);
+    const ws = await api("GET", `/api/projects/${P}/characters`);
+    if (!ws.characters.some((c) => c.name === first && c.occupation === "Harbour pilot")) throw new Error("Save & next didn't save " + first);
+  });
   await page.screenshot({ path: `${OUT}/casting.png` });
   console.log("ERRORS:", errors);
   await browser.close();

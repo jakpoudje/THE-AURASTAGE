@@ -21,11 +21,14 @@ import { PendingCandidates } from "./components/PendingCandidates";
 import { SyncBanner } from "./components/SyncBanner";
 import { CastLooksBar } from "./components/CastLooksBar";
 import { DuplicatesBar } from "./components/DuplicatesBar";
+import { CastProfilesBar } from "./components/CastProfilesBar";
+import { nextToComplete } from "./state/completeness";
 
 export default function CastingCharactersPage() {
   const { id } = useParams<{ id: string }>();
   const c = useCasting(id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [castDone, setCastDone] = useState(false);
 
   if (c.loading) return <div className="p-12 text-center text-white/50">Opening Casting…</div>;
   if (!c.project || !c.ws) {
@@ -80,6 +83,13 @@ export default function CastingCharactersPage() {
 
         <SyncBanner ws={c.ws} projectId={id} busy={c.busy === "sync"} onSync={() => c.sync()} />
 
+        {castDone && !c.error && (
+          <div role="status" className="flex flex-wrap items-center gap-3 rounded-md border border-emerald-500/40 px-4 py-2 text-sm text-emerald-300">
+            Every character has been gone through. Approve any still in draft, then continue.
+            <Link href={`/projects/${id}/world`} className="text-aura-gold underline">Next: Locations & Props →</Link>
+            <button onClick={() => setCastDone(false)} className="text-xs text-white/40">Dismiss</button>
+          </div>
+        )}
         {(c.error || c.notice) && (
           <div className={`rounded-md border px-4 py-2 text-sm ${c.error ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300"}`}>
             {c.error ?? c.notice}
@@ -93,6 +103,8 @@ export default function CastingCharactersPage() {
           onMerge={(mergeId, keepId) => c.merge(mergeId, keepId)}
           onDistinct={(a, b, names) => c.markDistinct(a, b, names)}
         />
+
+        {active.length > 0 && <CastProfilesBar projectId={id} characters={active} busy={c.busy !== null} onApplySuggestions={() => c.applySuggestions()} />}
 
         {active.length > 0 && <CastLooksBar projectId={id} firstCharacterId={active[0].id} count={active.length} />}
 
@@ -138,6 +150,12 @@ export default function CastingCharactersPage() {
                 onAddAlias={(alias) => c.addAlias(selected.id, alias)}
                 onMerge={(sourceId) => c.merge(sourceId, selected.id)}
                 onUnmerge={(sourceId) => c.unmerge(sourceId)}
+                onSaveNext={async (patch) => {
+                  if (patch && !(await c.save(selected.id, patch))) return;
+                  const next = nextToComplete(active, selected.id);
+                  if (next) setSelectedId(next.id);
+                  else setCastDone(true);
+                }}
                 relationships={c.ws.relationships}
                 looks={c.ws.wardrobe_looks}
                 onSaveRelationship={(input) => c.setRelationship(input)}

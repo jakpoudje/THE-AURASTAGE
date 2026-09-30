@@ -25,6 +25,8 @@ export const castingApi = {
   addAlias: (characterId: string, alias: string) => apiPost<CharacterAlias>(`/api/characters/${characterId}/aliases`, { alias }),
   merge: (projectId: string, sourceId: string, targetId: string) =>
     apiPost<Character>(`/api/projects/${projectId}/characters/merge`, { source_id: sourceId, target_id: targetId }),
+  applySuggestions: (projectId: string) =>
+    apiPost<{ updated: { id: string; name: string; fields: string[] }[]; unchanged: number }>(`/api/projects/${projectId}/characters/apply-suggestions`, {}),
   markDistinct: (projectId: string, a: string, b: string) => apiPost<{ ok: true }>(`/api/projects/${projectId}/characters/distinct`, { a_id: a, b_id: b }),
   unmerge: (characterId: string) => apiPost<Character>(`/api/characters/${characterId}/unmerge`, {}),
   create: (projectId: string, input: Partial<CreateCharacterInput> & { name: string }) =>

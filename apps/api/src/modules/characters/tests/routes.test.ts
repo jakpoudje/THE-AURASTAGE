@@ -152,6 +152,29 @@ describe("Casting routes", () => {
     expect((await (await appWith(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/characters` })).json().duplicates).toEqual([]);
   });
 
+  it("one click fills only EMPTY profile fields for the whole cast from the script and story (owner request 2026-09-30); written fields are never changed", async () => {
+    const AMARA = "66666666-6666-4666-8666-666666666666";
+    rows.projects = [{ id: P, org_id: ORG, setting: "Lagos, Nigeria", time_period: "Present day", logline: null }];
+    rows.scenes = [{ id: "sc1", project_id: P, location: "LAGOS HARBOUR", status: "active" }];
+    rows.characters = [character({ age: null, description: null }), character({ id: AMARA, name: "Amara Bello", description: "Written by the director", accent: "Her own accent" })];
+    rows.character_aliases = [
+      { id: "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1", project_id: P, character_id: TUNDE, alias: "Tunde Okafor", normalized: "TUNDE OKAFOR", source: "name" },
+      { id: "aaaaaaa2-aaaa-4aaa-8aaa-aaaaaaaaaaa2", project_id: P, character_id: AMARA, alias: "Amara Bello", normalized: "AMARA BELLO", source: "name" },
+    ];
+    rows.character_appearances = [{ character_id: TUNDE, scene_id: "sc1", project_id: P }, { character_id: AMARA, scene_id: "sc1", project_id: P }];
+    const fake = fakeDb(rows, () => ({ data: character() }));
+    const r = await (await appWith(fake)).inject({ method: "POST", url: `/api/projects/${P}/characters/apply-suggestions` });
+    expect(r.statusCode).toBe(200);
+    const patches = fake.calls.filter((c) => c.fn === "update_character").map((c) => [c.args.p_character_id, c.args.p_patch]);
+    const tunde = patches.find(([id]) => id === TUNDE)![1] as Row;
+    expect(tunde).toMatchObject({ age: "35" });
+    expect(String(tunde.description)).toMatch(/reviews documents/);
+    const amara = patches.find(([id]) => id === AMARA)?.[1] as Row | undefined;
+    expect(amara?.description).toBeUndefined();
+    expect(amara?.accent).toBeUndefined();
+    expect(r.json().updated.map((u: Row) => u.name)).toContain("Tunde Okafor");
+  });
+
   it("reports sync state honestly: never / current / stale", async () => {
     let app = await appWith(fakeDb(rows));
     const first = await app.inject({ method: "GET", url: `/api/projects/${P}/characters` });

@@ -99,3 +99,12 @@ non-name aliases, scene counts, approval, `distinct_from`). Casting shows them a
 (the existing `merge_characters`, undoable from Names & Merges) and **Not the same**:
 `POST /api/projects/:id/characters/distinct {a_id, b_id}` → `mark_characters_distinct` (gate `casting:edit`, audit
 `CharactersMarkedDistinct`) adds each id to the other's `characters.distinct_from`, so the pair is never suggested again.
+
+## Whole-cast profiles and "Save & next" (owner request 2026-09-30)
+`POST /api/projects/:id/characters/apply-suggestions` fills only EMPTY fields for every active character from what is
+known without AI — the age and introduction the approved script gives, and the accent and languages `storyAccentEngine`
+suggests — each through the same gated save (`update_character`) as a manual edit. Written fields are never changed.
+Casting shows a "Profiles for the whole cast" bar: that button (free), and "Develop the rest of every profile with AI"
+(one Ask AuraStage request listing each character's empty fields; shown before → after, applied only on request).
+The profile's "Save & next →" saves and opens the next character that still needs work (empty fields or not approved);
+when the whole cast is complete the page points to the next stage (Locations & Props).

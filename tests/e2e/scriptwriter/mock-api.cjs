@@ -229,6 +229,23 @@ http.createServer((req, res) => {
         duplicates: eng.characterDuplicateEngine({ characters: chars.filter((c) => !c.merged_into).map((c) => ({ id: c.id, name: c.name, aliases: aliases.filter((a) => a.character_id === c.id && a.source !== "name").map((a) => a.alias),
           scene_count: new Set(apps.filter((a) => a.character_id === c.id).map((a) => a.scene_id)).size, approved: c.status === "approved", distinct_from: c.distinct_from || [] })) }).pairs });
     }
+    // Mirrors characters.service applySuggestedProfiles: only EMPTY fields, from the script (age, introduction) and the story (accent).
+    if (u === `/api/projects/${P}/characters/apply-suggestions`) {
+      const r = resolve(); const cand = new Map((r ? r.rs : []).filter((y) => y.decision === "match").map((y) => [y.character_id, y.candidate]));
+      const blank = (v) => v == null || String(v).trim() === ""; const updated = [];
+      for (const c of chars.filter((x) => !x.merged_into)) {
+        const patch = {}; const cd = cand.get(c.id);
+        if (blank(c.age) && cd && cd.age) patch.age = String(cd.age);
+        if (blank(c.description) && cd && cd.introduction) patch.description = cd.introduction;
+        const sug = eng.storyAccentEngine({ character: { nationality: c.nationality ?? null, description: c.description ?? null, backstory: c.backstory ?? null },
+          scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => (scenes.find((x) => x.id === a.scene_id) || {}).location).filter(Boolean), project: { setting: project.setting ?? null, logline: project.logline ?? null } }).suggestion;
+        if (sug && blank(c.accent)) patch.accent = sug.accent;
+        if (sug && blank(c.languages) && sug.languages.length) patch.languages = sug.languages.join(", ");
+        if (!Object.keys(patch).length) continue;
+        Object.assign(c, patch, { updated_at: now() }); updated.push({ id: c.id, name: c.name, fields: Object.keys(patch) });
+      }
+      return send(200, { updated, unchanged: chars.filter((x) => !x.merged_into).length - updated.length });
+    }
     if (u === `/api/projects/${P}/characters/distinct`) {
       const a = chars.find((c) => c.id === b.a_id), c2 = chars.find((c) => c.id === b.b_id);
       if (!a || !c2 || a === c2) return send(400, { error: { code: "AURA-CHR-002", message: "Choose two different characters" } });

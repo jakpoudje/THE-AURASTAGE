@@ -41,10 +41,8 @@ const TABS: { key: Tab | string; label: string; soon?: boolean }[] = [
   { key: "names", label: "Names & Merges" },
 ];
 const ROLES: CharacterRole[] = ["lead", "supporting", "minor", "extra"];
-const PROFILE_FIELDS = ["name", "age", "gender", "nationality", "accent", "languages", "occupation", "description"] as const;
-const STORY_FIELDS = ["personality", "backstory", "motivation", "fears", "strengths", "weaknesses", "arc"] as const;
-type Field = (typeof PROFILE_FIELDS)[number] | (typeof STORY_FIELDS)[number];
-const LABELS: Record<Field, string> = {
+import { PROFILE_FIELDS, STORY_FIELDS, type ProfileField as Field } from "../state/completeness";
+export const LABELS: Record<Field, string> = {
   name: "Name", age: "Age", gender: "Gender", nationality: "Nationality", accent: "Accent", languages: "Languages", occupation: "Occupation", description: "Description",
   personality: "Personality", backstory: "Background", motivation: "Motivation", fears: "Fears", strengths: "Strengths",
   weaknesses: "Weaknesses", arc: "Character arc (by act)",
@@ -64,6 +62,7 @@ export function CharacterProfile({
   onAddAlias,
   onMerge,
   onUnmerge,
+  onSaveNext,
   relationships,
   looks,
   onSaveRelationship,
@@ -82,6 +81,8 @@ export function CharacterProfile({
   onAddAlias: (alias: string) => void;
   onMerge: (sourceId: string) => void;
   onUnmerge: (id: string) => void;
+  /** Save (when there are changes) and move to the next character that needs work. */
+  onSaveNext?: (patch: UpdateCharacterInput | null) => void;
   relationships: CharacterRelationship[];
   looks: WardrobeLook[];
   onSaveRelationship: (input: SetRelationshipInput) => void;
@@ -112,12 +113,13 @@ export function CharacterProfile({
 
   const changed = (Object.keys(form) as Field[]).filter((k) => form[k].trim() !== initial[k].trim());
   const dirty = changed.length > 0 || role !== character.role;
-  const save = () => {
+  const patchOf = () => {
     const patch: Record<string, unknown> = {};
     for (const k of changed) patch[k] = k === "name" ? form[k].trim() : form[k].trim() || null;
     if (role !== character.role) patch.role = role;
-    onSave(patch as UpdateCharacterInput);
+    return patch as UpdateCharacterInput;
   };
+  const save = () => onSave(patchOf());
 
   const mine = appearances.filter((a) => a.character_id === character.id);
   // Every field developed: what's still empty, and one request to develop the rest (reviewed before anything changes).
@@ -167,6 +169,16 @@ export function CharacterProfile({
           >
             {busy === "save" ? "Saving…" : "Save"}
           </button>
+          {onSaveNext && (
+            <button
+              onClick={() => onSaveNext(dirty ? patchOf() : null)}
+              disabled={busy !== null}
+              title="Save what you've written and open the next character that still needs work"
+              className="rounded-md border border-aura-border px-4 py-1.5 text-sm disabled:opacity-40"
+            >
+              {dirty ? "Save & next →" : "Next →"}
+            </button>
+          )}
           <button
             onClick={() => onSave({ status: character.status === "approved" ? "draft" : "approved" })}
             disabled={dirty || busy !== null}

@@ -243,10 +243,10 @@ Everything not yet done, in build order. When an item is finished it moves up in
 | 12 | Set dressing and prop continuity per scene; relationship map; pronunciation guide | Each works in its stage and is used downstream |
 | 13 | PDF import, version compare, beat board, social cut-downs, trailer assistant | Each works end to end |
 | 14 | Upload an actor's photos as the reference (with consent record) | Photos replace generated views for that character |
-| 16 | Casting: one click to accept the suggested profile for the whole cast; one click to develop every remaining field for every character; "Save — complete" for a finished character | Owner request 2026-09-30 |
+| 16 | ✅ Casting whole-cast buttons and "Save & next" (2026-09-30); remaining: the same "save & continue + what's next" on every other stage (item 17) | Owner request 2026-09-30 |
 | 17 | Save and continue everywhere: every stage saves what the person typed and points to the next logical step (a guided "what's next") | Owner request 2026-09-30 |
-| 18 | Delete any asset, with a warning that lists exactly where it is used in the project | Owner request 2026-09-30 |
-| 19 | Characters named twice: find duplicates and merge them into one (keeping both histories) | Owner request 2026-09-30 |
+| 18 | ✅ Delete any asset, with a warning that lists exactly where it is used (migration 0043, 2026-09-30) | Owner request 2026-09-30 |
+| 19 | ✅ Characters named twice: pointed out, merged in one click or kept apart (migration 0042, 2026-09-30) | Owner request 2026-09-30 |
 | 20 | Every stage shows what an action will cost before it runs (AI writing, images, video, voice) | Owner request 2026-09-30 |
 | 15 | Verify every page live after each change (the live checks grow with every feature) | `live-smoke` and `live-browser` both pass |
 

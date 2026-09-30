@@ -15,6 +15,7 @@ import {
   editCharacter,
   getCastingWorkspace,
   mergeCharacters,
+  applySuggestedProfiles,
   markCharactersDistinct,
   saveLook,
   setRelationship,
@@ -56,6 +57,7 @@ export async function registerCharactersRoutes(app: FastifyInstance) {
 
   app.get("/api/projects/:id/characters", route(({ params, db }) => getCastingWorkspace(db, params.id)));
   app.post("/api/projects/:id/characters/sync", route(({ params, body, db }) => syncFromScript(db, params.id, body)));
+  app.post("/api/projects/:id/characters/apply-suggestions", route(({ params, db }) => applySuggestedProfiles(db, params.id)));
   app.post("/api/projects/:id/characters/distinct", route(({ params, body, db }) => markCharactersDistinct(db, params.id, body)));
   app.post("/api/projects/:id/characters/merge", route(({ params, body, db }) => mergeCharacters(db, params.id, body)));
   app.patch("/api/characters/:id", route(({ params, body, db }) => editCharacter(db, params.id, body)));

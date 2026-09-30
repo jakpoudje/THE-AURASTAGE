@@ -71,6 +71,48 @@ function toSyncItem(r: Resolution) {
   };
 }
 
+type StoryPlaces = Awaited<ReturnType<typeof repo.storyPlaces>>;
+/** How each character might speak, from what the story says (never from a name) — a suggestion the writer can use. */
+function accentSuggestions(chars: Record<string, any>[], apps: Record<string, any>[], story: StoryPlaces) {
+  const locationOf = new Map(story.scenes.map((s) => [s.id as string, String(s.location ?? "")]));
+  return Object.fromEntries(chars.map((c) => [c.id as string, storyAccentEngine({
+    character: { nationality: c.nationality ?? null, description: c.description ?? null, backstory: c.backstory ?? null, occupation: c.occupation ?? null },
+    scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => locationOf.get(a.scene_id as string) ?? "").filter(Boolean).slice(0, 400),
+    project: { setting: story.project?.setting ?? null, time_period: story.project?.time_period ?? null, logline: story.project?.logline ?? null },
+  })]));
+}
+
+const blank = (v: unknown) => v === null || v === undefined || String(v).trim() === "";
+
+/**
+ * One click for the whole cast (owner request 2026-09-30): fills only EMPTY profile fields from what the platform already
+ * knows without AI — the age and introduction the script gives, and the accent and languages the story suggests. Written
+ * fields are never changed. Each character is saved through the same gated save as a manual edit.
+ */
+export async function applySuggestedProfiles(db: SupabaseClient, projectId: string) {
+  await assertProjectAccess(db, projectId);
+  const [chars, apps, story, resolved] = await Promise.all([
+    repo.listCharacters(db, projectId), repo.listAppearances(db, projectId), repo.storyPlaces(db, projectId), resolveFromApprovedScript(db, projectId),
+  ]);
+  const active = chars.filter((c) => !c.merged_into);
+  const accents = accentSuggestions(active, apps, story);
+  const fromScript = new Map((resolved?.resolutions ?? []).filter((r) => r.decision === "match").map((r) => [r.character_id as string, r.candidate]));
+  const updated: { id: string; name: string; fields: string[] }[] = [];
+  for (const c of active) {
+    const patch: Record<string, string> = {};
+    const cand = fromScript.get(c.id as string);
+    if (blank(c.age) && cand?.age) patch.age = String(cand.age).slice(0, 40);
+    if (blank(c.description) && cand?.introduction) patch.description = String(cand.introduction).slice(0, 2000);
+    const sug = accents[c.id as string]?.suggestion;
+    if (sug && blank(c.accent)) patch.accent = sug.accent.slice(0, 120);
+    if (sug && blank(c.languages) && sug.languages.length) patch.languages = sug.languages.join(", ").slice(0, 200);
+    if (!Object.keys(patch).length) continue;
+    await editCharacter(db, c.id as string, patch);
+    updated.push({ id: c.id as string, name: c.name as string, fields: Object.keys(patch) });
+  }
+  return { updated, unchanged: active.length - updated.length };
+}
+
 export async function getCastingWorkspace(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
   const [chars, aliases, apps, sync, resolved, relationships, looks, story] = await Promise.all([
@@ -83,13 +125,7 @@ export async function getCastingWorkspace(db: SupabaseClient, projectId: string)
     repo.listLooks(db, projectId),
     repo.storyPlaces(db, projectId),
   ]);
-  // How each character might speak, from what the story says (never from a name) — a suggestion the writer can use.
-  const locationOf = new Map(story.scenes.map((s) => [s.id as string, String(s.location ?? "")]));
-  const accent_suggestions = Object.fromEntries(chars.map((c) => [c.id as string, storyAccentEngine({
-    character: { nationality: c.nationality ?? null, description: c.description ?? null, backstory: c.backstory ?? null, occupation: c.occupation ?? null },
-    scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => locationOf.get(a.scene_id as string) ?? "").filter(Boolean).slice(0, 400),
-    project: { setting: story.project?.setting ?? null, time_period: story.project?.time_period ?? null, logline: story.project?.logline ?? null },
-  })]));
+  const accent_suggestions = accentSuggestions(chars, apps, story);
   const approvedVersionId = resolved?.version.id ?? null;
   const syncedVersionId = sync?.input_snapshot?.script_version_id ?? null;
   const pending = (resolved?.resolutions ?? []).filter((r) => r.decision === "confirm").map((r) => r.candidate);

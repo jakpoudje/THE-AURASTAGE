@@ -83,6 +83,13 @@ export function useCasting(projectId: string) {
     addAlias: (id: string, alias: string) => run("alias", async () => (await castingApi.addAlias(id, alias), `Added "${alias}" as another name.`)),
     merge: (sourceId: string, targetId: string) =>
       run("merge", async () => (await castingApi.merge(projectId, sourceId, targetId), "Merged. You can undo this from Names & Merges.")),
+    applySuggestions: () =>
+      run("save", async () => {
+        const r = await castingApi.applySuggestions(projectId);
+        return r.updated.length
+          ? `Filled empty fields for ${r.updated.length} character${r.updated.length === 1 ? "" : "s"} (${r.updated.map((u) => u.name).join(", ")}). Nothing you'd written was changed.`
+          : "Nothing to fill — the script and story have no more suggestions for empty fields. Try “Develop the rest with AI”.";
+      }),
     markDistinct: (a: string, b: string, names: string) => run("merge", async () => (await castingApi.markDistinct(projectId, a, b), `Kept ${names} as different people. AuraStage won't suggest merging them again.`)),
     unmerge: (id: string) => run("unmerge", async () => (await castingApi.unmerge(id), "Merge undone and scenes re-checked against the script.")),
     create: async (name: string, role: CharacterRole) => {

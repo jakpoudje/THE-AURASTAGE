@@ -175,6 +175,22 @@ await check("casting: a character named twice is pointed out; \"not the same\" i
   await api("POST", `/api/projects/${projectId}/characters/merge`, { source_id: dup.id, target_id: chief.id });
   return pair.reason;
 });
+await check("casting: one click uses the suggested profiles for the whole cast — only empty fields, written ones untouched", async () => {
+  const before = await api("GET", `/api/projects/${projectId}/characters`);
+  const r = await api("POST", `/api/projects/${projectId}/characters/apply-suggestions`, {});
+  const after = await api("GET", `/api/projects/${projectId}/characters`);
+  for (const b of before.characters.filter((c: any) => !c.merged_into)) {
+    const a = after.characters.find((c: any) => c.id === b.id);
+    for (const k of ["age", "description", "accent", "languages", "nationality", "occupation"]) {
+      if (b[k] && String(b[k]).trim()) assert(a[k] === b[k], `${b.name}: written ${k} changed`);
+    }
+  }
+  for (const u of r.updated) {
+    const a = after.characters.find((c: any) => c.id === u.id);
+    assert(u.fields.every((k: string) => a[k] && String(a[k]).trim()), `${u.name}: ${u.fields} not saved`);
+  }
+  return r.updated.map((u: any) => `${u.name}: ${u.fields.join(", ")}`).join("; ") || "nothing empty to fill";
+});
 await check("casting: relationship + wardrobe look", async () => {
   const ws = await api("GET", `/api/projects/${projectId}/characters`);
   amaraId = ws.characters.find((c: any) => c.name === "Amara Bello")?.id;
@@ -746,7 +762,7 @@ await check("overview: every stage reports real counts and its checks; flagged s
   assert(by.visual.done >= 1 && by.visual.total >= by.visual.done, `visual ${by.visual.done}/${by.visual.total}`);
   // The Casting change earlier flagged Scene DNA downstream: the overview must say so, not hide it.
   assert(o.attention.some((a: any) => a.stage === "scene-dna" || a.stage === "storyboard"), "attention: " + JSON.stringify(o.attention));
-  assert(o.counts.scenes === 2 && o.counts.characters >= 2 && o.counts.assets >= 2, "counts " + JSON.stringify(o.counts));
+  assert(o.counts.scenes === 2 && o.counts.characters >= 2 && o.counts.assets >= 1 /* the image was deleted by the asset-delete check */, "counts " + JSON.stringify(o.counts));
   assert(o.stages.every((s: any) => (s.done === null) === (s.total === null) || s.id === "export"), "counts are paired");
   return o.stages.map((s: any) => `${s.number}:${s.state}`).join(" ");
 });
