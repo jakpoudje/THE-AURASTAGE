@@ -8,7 +8,7 @@
 // are never removed (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AddAudioTrackInputSchema, loudnessTarget, MoveAudioTrackInputSchema, SessionMixSchema, UpdateAudioMixInputSchema } from "@aurastage/contracts";
-import { audioSpotting, audioSpottingEngine } from "@aurastage/engines";
+import { audioSpotting, audioSpottingEngine, musicSuggestionEngine } from "@aurastage/engines";
 // Storyboard owns plan review state; ask it to refresh (it refreshes Scene DNA first).
 import { refreshShotPlanReview } from "../shots/shots.service";
 import { assertClipAccess, assertProjectAccess, assertSceneInProject, assertSessionAccess, assertTrackAccess } from "./audio.permissions";
@@ -64,6 +64,26 @@ export async function refreshAudioReview(db: SupabaseClient, projectId: string) 
   }
 }
 
+
+/** The scene's music suggestion (built-in library, free) from its locked Scene DNA, its dialogue and the film's story. */
+function musicFor(scene: Row, index: number, total: number, pv: Row | undefined, dnaVersions: Row[], lines: Row[], story: Row) {
+  const content = ((pv && dnaVersions.find((d) => d.id === pv.scene_dna_version_id)?.content) ?? {}) as Row;
+  const editable = (content.editable ?? {}) as Row;
+  const ids = new Set<string>(content.proposal?.dialogue?.line_ids ?? []);
+  const sceneLines = lines.filter((l) => ids.has(l.id));
+  const seconds = pv ? Math.max(0, ...((pv.shots as Row[]) ?? []).map((s) => Number(s.story_end))) : 0;
+  return musicSuggestionEngine({
+    film: { genre: story.genre ?? null, tone: story.tone ?? null, setting: story.setting ?? null },
+    scene: {
+      number: scene.number, heading: scene.heading ?? "", time_of_day: scene.time_of_day ?? null,
+      mood: (editable.mood ?? []).slice(0, 20), sound_intent: editable.sound_intent ? String(editable.sound_intent).slice(0, 2000) : null,
+      emotions: sceneLines.map((l) => l.emotion).filter(Boolean).slice(0, 2000),
+      dialogue_seconds: sceneLines.reduce((a, l) => a + Number(l.estimated_seconds ?? 0), 0), seconds,
+    },
+    position: { index, total: Math.max(1, total) },
+  });
+}
+
 export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
   await assertProjectAccess(db, projectId);
   await refreshAudioReview(db, projectId);
@@ -73,6 +93,7 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
     repo.listTracks(db, projectId), repo.listClips(db, projectId), repo.listMeasurements(db, projectId), repo.listVersions(db, projectId),
     repo.listAudioAssets(db, projectId), repo.listGenerations(db, projectId),
   ]);
+  const [dnaVersions, lines, story] = await Promise.all([repo.listDnaVersions(db, projectId), repo.listLines(db, projectId), repo.getProjectStory(db, projectId)]);
   const assetTimes = await repo.listAssetVersionTimes(db, projectId);
   const out = [];
   for (const scene of scenes) {
@@ -105,6 +126,7 @@ export async function getAudioWorkspace(db: SupabaseClient, projectId: string) {
       readiness: ready?.readiness ?? [],
       ready_for_approval: ready?.ready ?? false,
       generations: generations.filter((g) => g.scene_id === scene.id).map(toGenerationDTO),
+      music_suggestion: musicFor(scene, scenes.indexOf(scene), scenes.length, pv, dnaVersions, lines, story),
     });
   }
   return {
@@ -124,6 +146,7 @@ export async function spotScene(db: SupabaseClient, projectId: string, sceneId: 
     repo.listScenes(db, projectId), repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId), repo.listDnaVersions(db, projectId),
     repo.listLines(db, projectId), repo.listCharacters(db, projectId),
   ]);
+  const story = await repo.getProjectStory(db, projectId);
   const scene = scenes.find((s) => s.id === sceneId)!;
   const plan = plans.find((p) => p.scene_id === sceneId);
   const pv = plan?.approved_version_id ? versions.find((v) => v.id === plan.approved_version_id) : undefined;
@@ -158,6 +181,7 @@ export async function spotScene(db: SupabaseClient, projectId: string, sceneId: 
       sound_intent: editable.sound_intent ?? null, weather: editable.weather ?? null, atmosphere: editable.atmosphere ?? null,
       mood: editable.mood ?? [], sound_candidates: proposal.sound_candidates ?? [],
     },
+    music: (() => { const m = musicFor(scene, scenes.indexOf(scene), scenes.length, pv, dnaVersions, lines, story); return { needed: m.needed, description: m.description, why: m.why }; })(),
   });
   const s = await repo.spot(db, { projectId, sceneId, planVersionId: pv.id, seconds, tracks, clips, engineVersion: engine_version });
   return { session_id: s.id, tracks: tracks.length, cues: clips.length, shot_plan_version_number: pv.version_number };

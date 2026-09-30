@@ -368,7 +368,12 @@ await check("audio: spot the approved scene into tracks and cues (unplanned scen
   assert(typing && typing.start_seconds >= said.start_seconds + said.duration_seconds - 0.01, `typing should follow the line it comes after (${typing?.start_seconds} vs ${said.start_seconds}+${said.duration_seconds})`);
   // Honest generators: the built-in synthesiser is ready; nothing unbuilt claims to be connected.
   assert(ws.generators.every((g: any) => ["aurastage-synth", "aurastage-voice", "aurastage-neural-voice"].includes(g.id) ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
-  return `${r.tracks} tracks, ${r.cues} cues from plan v${r.shot_plan_version_number}; ${fx.map((c: any) => `${c.label}@${c.start_seconds}s`).join(", ") || "no FX cues in this scene"}`;
+  // Item 5: the scene's music suggestion (built-in library, free); the Score cue, when there is one, is that style.
+  const mu = sc.music_suggestion;
+  assert(mu && mu.key && mu.tempo_bpm > 0 && mu.why.length > 0 && /^\d+\.\d+\.\d+$/.test(mu.engine_version), "music suggestion missing");
+  const scoreCue = sc.clips.find((c: any) => c.source.cue === "score");
+  assert(mu.needed ? scoreCue && scoreCue.label.startsWith(`Score — ${mu.style.name}`) : !scoreCue, `score cue should follow the suggestion (${mu.style.name}, needed ${mu.needed}): ${scoreCue?.label}`);
+  return `${r.tracks} tracks, ${r.cues} cues from plan v${r.shot_plan_version_number}; ${fx.map((c: any) => `${c.label}@${c.start_seconds}s`).join(", ") || "no FX cues in this scene"}; music: ${mu.needed ? `${mu.style.name}, ${mu.key}, ${mu.tempo_bpm} BPM` : "none suggested"}`;
 });
 await check("audio: upload a WAV to the private library (non-audio refused); bytes round-trip", async () => {
   const bad = await fetch(`${API}/api/projects/${projectId}/assets/audio?name=x.wav&duration=1&sample_rate=48000&channels=1`, {

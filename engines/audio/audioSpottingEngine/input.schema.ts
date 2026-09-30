@@ -30,5 +30,8 @@ export const AudioSpottingInputSchema = z.object({
     mood: z.array(z.string()),
     sound_candidates: z.array(z.object({ cue: z.string(), line: z.number().int(), text: z.string() })),
   }),
+  /** The scene's music suggestion (musicSuggestionEngine, 1.2.0+): it names the score cue so "Generate" plays the suggested
+   * style, and a scene better without score gets none. Absent: the score cue comes from Scene DNA mood / sound intent. */
+  music: z.object({ needed: z.boolean(), description: z.string().max(400), why: z.array(z.string().max(300)).max(10).default([]) }).nullable().optional(),
 });
 export type AudioSpottingInput = z.input<typeof AudioSpottingInputSchema>;

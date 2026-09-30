@@ -101,3 +101,15 @@ describe("audioSpottingEngine 1.1.0: sound cues placed by their script position"
     expect(f[1].start_seconds).toBeGreaterThan(f[0].start_seconds);
   });
 });
+
+describe("audioSpottingEngine 1.2.0: the score cue follows the scene's music suggestion", () => {
+  it("names the score cue with the suggestion, or leaves it out when the scene is better without", () => {
+    const withMusic = audioSpottingEngine({ ...base(), music: { needed: true, description: "Dark drone (eerie, dark, mysterious) in G minor, 70 BPM", why: ["Scene DNA mood"] } });
+    const score = withMusic.clips.find((c) => c.track_key === "score")!;
+    expect(score.label).toBe("Score — Dark drone (eerie, dark, mysterious) in G minor, 70 BPM");
+    expect(score.source.evidence).toContain("Music suggestion");
+    const without = audioSpottingEngine({ ...base(), music: { needed: false, description: "Neutral pad (calm)", why: [] } });
+    expect(without.clips.some((c) => c.track_key === "score")).toBe(false);
+    expect(audioSpottingEngine(base()).clips.find((c) => c.track_key === "score")!.label).toContain("tense");
+  });
+});

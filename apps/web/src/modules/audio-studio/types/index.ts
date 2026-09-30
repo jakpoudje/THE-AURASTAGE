@@ -20,6 +20,12 @@ export interface AudioScene {
   ready_for_approval: boolean;
   /** Sound generated for this scene (newest first); files land in the Assets Library. */
   generations: AudioGeneration[];
+  /** The scene's suggested music from the built-in library (free; the built-in generator plays exactly this style). */
+  music_suggestion?: MusicSuggestion;
+}
+export interface MusicSuggestion {
+  needed: boolean; style: { id: string; name: string }; key: string; tempo_bpm: number; description: string;
+  instruments: string[]; placement: string; level_db: number; why: string[]; engine_version: string;
 }
 export interface AudioGeneration {
   id: string; scene_id: string; clip_id: string | null; kind: "ambience" | "fx" | "foley" | "score" | "voice"; description: string; duration_seconds: number;

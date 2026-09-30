@@ -15,7 +15,7 @@ import type { AudioSpottingOutput } from "./output.schema";
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
-  const { scene, scene_seconds: T, shots, lines, dna, script_lines } = validateAudioSpottingInput(raw);
+  const { scene, scene_seconds: T, shots, lines, dna, script_lines, music } = validateAudioSpottingInput(raw);
   const tracks: AudioSpottingOutput["tracks"] = [];
   const clips: AudioSpottingOutput["clips"] = [];
   const addTrack = (key: string, name: string, family: AudioSpottingOutput["tracks"][number]["family"]) => {
@@ -102,7 +102,12 @@ export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
 
   // Score intent from mood / sound intent.
   const intent = [dna.mood.join(", "), dna.sound_intent].filter(Boolean).join(" — ");
-  if (intent) {
+  if (music) {
+    if (music.needed) {
+      addTrack("score", "Score", "SCORE");
+      clips.push({ track_key: "score", label: `Score — ${music.description}`, start_seconds: 0, duration_seconds: r2(T), source: { cue: "score", evidence: `Music suggestion: ${music.why.join("; ") || "built-in library"}` } });
+    }
+  } else if (intent) {
     addTrack("score", "Score", "SCORE");
     clips.push({ track_key: "score", label: `Score — ${intent}`, start_seconds: 0, duration_seconds: r2(T), source: { cue: "score", evidence: "Scene DNA mood / sound intent" } });
   }

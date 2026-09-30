@@ -832,6 +832,14 @@ http.createServer((req, res) => {
       }
       return send(200, { requested, skipped });
     }
+    const amusic = (scene, pv) => {
+      const dv = pv && sdnaVersions.find((x) => x.id === pv.scene_dna_version_id); const ed = (dv && dv.content.editable) || {}; const ids = new Set((dv && dv.content.proposal && dv.content.proposal.dialogue && dv.content.proposal.dialogue.line_ids) || []);
+      const ls = dlines.filter((l) => ids.has(l.id));
+      return eng.musicSuggestionEngine({ film: { genre: project.genre ?? null, tone: project.tone ?? null, setting: project.setting ?? null },
+        scene: { number: scene.number, heading: scene.heading || "", mood: ed.mood || [], sound_intent: ed.sound_intent ?? null, emotions: ls.map((l) => l.emotion).filter(Boolean),
+          dialogue_seconds: ls.reduce((a, l) => a + Number(l.estimated_seconds || 0), 0), seconds: pv ? Math.max(0, ...pv.shots.map((x) => x.story_end)) : 0 },
+        position: { index: scenes.indexOf(scene), total: scenes.length } });
+    };
     if (u === `/api/projects/${P}/audio` && req.method === "GET") {
       const out = [];
       for (const scene of scenes) {
@@ -847,7 +855,7 @@ http.createServer((req, res) => {
             mix: cc0.SessionMixSchema.parse(s.mix || {}),
             approved_version_number: s.approved_version_id ? aversions.find((v) => v.id === s.approved_version_id).version_number : null } : null,
           tracks: st.map((t) => ({ ...t, fx: cc0.TrackFxSchema.parse(t.fx || {}) })), clips: sc.map(clipDTO), measurement: me, readiness: r ? r.readiness : [], ready_for_approval: r ? r.ready : false,
-          generations: agens.filter((g) => g.scene_id === scene.id).map((g) => agenWork(g)) });
+          generations: agens.filter((g) => g.scene_id === scene.id).map((g) => agenWork(g)), music_suggestion: amusic(scene, pv) });
       }
       return send(200, { target: { ...cc0.loudnessTarget(ST.settings.technical.loudness_standard), standard: ST.settings.technical.loudness_standard },
         generators: agen.generatorsFor({}),
@@ -863,7 +871,8 @@ http.createServer((req, res) => {
       const r = eng.audioSpottingEngine({ scene: { number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day }, scene_seconds: seconds, shots: shotsIn,
         lines: (pr.dialogue ? pr.dialogue.line_ids : []).map((id) => dlines.find((l) => l.id === id)).filter(Boolean).map((l) => ({ id: l.id, speaker: l.speaker_name, character_id: l.character_id,
           character_name: (chars.find((c) => c.id === l.character_id) || {}).name || null, text: l.text, estimated_seconds: l.estimated_seconds, voice_over: (l.extensions || []).some((e) => /V\.?O/i.test(e)) })),
-        dna: { sound_intent: ed.sound_intent ?? null, weather: ed.weather ?? null, atmosphere: ed.atmosphere ?? null, mood: ed.mood || [], sound_candidates: pr.sound_candidates || [] } });
+        dna: { sound_intent: ed.sound_intent ?? null, weather: ed.weather ?? null, atmosphere: ed.atmosphere ?? null, mood: ed.mood || [], sound_candidates: pr.sound_candidates || [] },
+        music: (() => { const mu = amusic(scene, pv); return { needed: mu.needed, description: mu.description, why: mu.why }; })() });
       let s = asessions.find((x) => x.scene_id === m[1]);
       if (!s) { s = { id: crypto.randomUUID(), scene_id: m[1], status: "draft", review_state: "current", review_reason: null, approved_version_id: null }; asessions.push(s); }
       Object.assign(s, { shot_plan_version_id: pv.id, scene_seconds: seconds, status: "draft" }); atouch(s);

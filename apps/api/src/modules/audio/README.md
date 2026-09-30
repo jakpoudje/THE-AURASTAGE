@@ -78,6 +78,7 @@ what was approved is what is heard in the cut and in delivered files.
 Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 
 ## Relevant engines
+- `engines/audio/musicSuggestionEngine` 1.0.0 — each scene's suggested music (`music_suggestion` in the workspace): a style from the built-in library chosen from Scene DNA mood, then the dialogue's emotions, then the film's tone; key, tempo, level, placement, instruments from the setting/genre and why. Free. Spotting (1.2.0) names the Score cue after it so the built-in generator plays that style; a scene better without score gets no Score cue.
 - `engines/audio/audioSpottingEngine` — tracks and cues from shots, lines and Scene DNA (evidence per cue). The service passes each line's script position (read from the approved script version) so sound cues land where the action happens.
 - `engines/audio/loudnessMeterEngine` — ITU-R BS.1770-4 / EBU R128 (integrated, true peak, LRA). Runs in the browser on the rendered mix.
 - `engines/audio/proceduralAudioEngine` — the built-in synthesiser's layer plan.

@@ -37,7 +37,13 @@ export const listPlans = (db: SupabaseClient, p: string) => rows(db.from("shot_p
 export const listPlanVersions = (db: SupabaseClient, p: string) => rows(db.from("shot_plan_versions").select("id, plan_id, version_number, scene_dna_version_id, shots").eq("project_id", p));
 export const listDnaVersions = (db: SupabaseClient, p: string) => rows(db.from("scene_dna_versions").select("id, content").eq("project_id", p));
 export const listLines = (db: SupabaseClient, p: string) =>
-  rows(db.from("dialogue_lines").select("id, speaker_name, character_id, text, estimated_seconds, extensions, element_index, source_version_id").eq("project_id", p));
+  rows(db.from("dialogue_lines").select("id, speaker_name, character_id, text, estimated_seconds, extensions, element_index, source_version_id, emotion").eq("project_id", p));
+/** The film's genre, tone and setting (Scriptwriter owns them) — for the music suggestions. */
+export async function getProjectStory(db: SupabaseClient, p: string): Promise<Row> {
+  const { data, error } = await db.from("projects").select("genre, tone, setting").eq("id", p).maybeSingle();
+  if (error) throw error;
+  return (data ?? {}) as Row;
+}
 /** Source line of each element of a script version (read-only; Scriptwriter owns it) — to place sound cues by script position. */
 export async function scriptElementLines(db: SupabaseClient, versionId: string): Promise<Map<number, number>> {
   const { data, error } = await db.from("script_versions").select("elements").eq("id", versionId).maybeSingle();

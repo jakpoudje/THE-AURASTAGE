@@ -90,6 +90,18 @@ describe("Audio Studio routes", () => {
     expect(args.p_tracks.map((t: Row) => t.family)).toEqual(["DX", "FOLEY", "BG", "SCORE"]);
   });
 
+  it("item 5: every scene gets a music suggestion from the built-in library; the score cue is named after it (free)", async () => {
+    rows.projects = [{ id: P, genre: "Political thriller", tone: "Tense", setting: "Lagos, Nigeria" }];
+    const fake = fakeDb(rows, () => ({ data: session() }));
+    await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/spot` });
+    const score = fake.calls[0].args.p_clips.find((c: Row) => c.track_key === "score");
+    expect(score.label).toMatch(/^Score — Tense minor pulse \(tense, suspense\) in A minor, 96 BPM/);
+    expect(score.source.evidence).toContain("Scene DNA mood (tense)");
+    const ws = (await (await app(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/audio` })).json();
+    expect(ws.scenes[0].music_suggestion).toMatchObject({ needed: true, style: { id: "tense_pulse" }, key: "A minor", tempo_bpm: 96 });
+    expect(ws.scenes[0].music_suggestion.instruments).toContain("talking drum");
+  });
+
   it("won't spot until the shot plan is approved and current (412)", async () => {
     rows.shot_plans[0].status = "draft";
     const res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/spot` });

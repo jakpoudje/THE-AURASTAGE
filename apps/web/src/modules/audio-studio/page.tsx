@@ -8,6 +8,7 @@
 // Canonical backend authority: apps/api/src/modules/audio (+ assets for recordings)
 // Engines: engines/audio (spotting on the server, loudness meter in the browser)
 
+import { MusicSuggestionPanel } from "./components/MusicSuggestion";
 import { can, useProjectAccess } from "@/lib/useProjectAccess";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -251,6 +252,7 @@ export default function AudioStudioPage() {
                 {s.session && (
                   <DeliveryPanel s={s} target={ws.target} busy={d.busy} onMeasure={() => d.measure(s)} onApprove={() => d.approve(s.scene.id)} onExport={(bus) => d.exportStem(s, bus)} />
                 )}
+                {s.music_suggestion && <MusicSuggestionPanel m={s.music_suggestion} spotted={!!s.session} />}
                 <GeneratorsPanel generators={ws.generators} canGenerate={canGenerate} busy={d.busy !== null} onGenerateCues={s.session ? () => d.generateCues(s.scene.id) : null} />
               </div>
             </div>

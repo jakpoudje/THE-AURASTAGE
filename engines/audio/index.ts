@@ -12,3 +12,5 @@ export * as mixPreset from "./mixPresetEngine";
 export { applyChannelPreset, applyMixTemplate, applySpacePreset, channelPresetsFor, CHANNEL_PRESETS, MIX_TEMPLATES, SPACE_PRESETS } from "./mixPresetEngine";
 export * as studioMixRender from "./studioMixRenderEngine";
 export { studioMixRenderEngine } from "./studioMixRenderEngine";
+export * as musicSuggestion from "./musicSuggestionEngine";
+export { musicSuggestionEngine, MUSIC_LIBRARY } from "./musicSuggestionEngine";

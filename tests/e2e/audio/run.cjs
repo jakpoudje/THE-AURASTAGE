@@ -81,6 +81,14 @@ async function api(method, p, body) {
     await page.getByRole("button", { name: /Clip Score/ }).waitFor();
     if (!(await page.getByRole("button", { name: "Measure mix" }).isDisabled())) throw new Error("measure should need a recording");
   });
+  await step("item 5: the scene's suggested music (free, built-in library) is shown with why, and the Score cue is that style", async () => {
+    const panel = page.getByRole("region", { name: "Suggested music" });
+    await panel.getByText(/BPM/).waitFor();
+    const text = await panel.innerText();
+    if (!/BPM/.test(text) || !/Suggested music · free/i.test(text) || !/ — /.test(text)) throw new Error("suggestion panel: " + text.replace(/\n/g, " | "));
+    const style = (await panel.locator("p").first().innerText()).trim();
+    await page.getByRole("button", { name: new RegExp(`Clip Score — ${style}`) }).waitFor();
+  });
   await step("upload a real WAV onto the dialogue cue: waveform drawn, placed, kept after reload", async () => {
     await page.getByRole("button", { name: /Clip Tunde.*You came/i }).click();
     await page.getByLabel("Upload a recording for this clip").setInputFiles(file);

@@ -233,7 +233,7 @@ Everything not yet done, in build order. When an item is finished it moves up in
 |---|---|---|
 | 1 | Better built-in sound effects and ambience (curated, licence-clear library beside the procedural generator) | Rain, crowd, traffic, doors, footsteps… play from real recordings, placed from the script |
 | 2 | AuraSketch drawings reviewed by the owner (characters and locations) | The owner is happy the sketches read as the described people and places |
-| 5 | Music suggestions per scene + built-in library; music provider | Every scene has a suggested cue; a provider generates it when its key is added |
+| 5 | 🟡 Music suggestions per scene + built-in library ✅ (musicSuggestionEngine 1.0.0, audioSpottingEngine 1.2.0, 2026-09-30: Audio Studio shows each scene's suggested music — style from the built-in library, key, tempo, level, where it sits, instruments for a composer — with why; spotting names the Score cue after it, so the free built-in generator plays exactly that style; dialogue-heavy scenes with no strong mood are left without score, and say so). Remaining: a music provider, once its key is added | Every scene has a suggested cue; a provider generates it when its key is added |
 | 6 | Premium voices (ElevenLabs) with Voice DNA | Lines are spoken by ElevenLabs when its key is added |
 | 7 | Lip sync on dialogue shots | Mouths match the lines when a lip-sync key is added |
 | 8 | More video providers verified with keys (Luma, Veo, Kling), image-to-video | A shot's approved still becomes a moving take |
