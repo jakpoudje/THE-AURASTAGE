@@ -90,6 +90,26 @@ const SP = process.env.E2E_OUT || require("os").tmpdir(), BASE = "http://localho
     if ((await page.locator("textarea").inputValue()).includes("UNSAVED LINE FOR RECOVERY")) throw new Error("not discarded");
     await page.getByText("All changes saved").waitFor();
   });
+  await step("regression (owner 2026-09-30): old unsaved typing never hides a newer saved script from steps 5–7", async () => {
+    const ta = page.locator("textarea");
+    await ta.fill("INT. OLD FLAT - NIGHT\n\nOLDIE\nOld draft line.\n");
+    await page.waitForTimeout(800);
+    // A newer version arrives from elsewhere (e.g. AuraScript finished the full script) while the old typing sits on this device.
+    await page.evaluate(async () => { const api = "http://localhost:3911/api/projects/11111111-1111-4111-8111-111111111111/script"; await fetch(`${api}/versions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_text: "INT. NEW HALL - DAY\n\nNEWCOMER\nFresh script line.\n\nEXT. NEW YARD - NIGHT\n\nNEWCOMER\nStill here.\n", base_version_id: (await (await fetch(api)).json()).current_version.id }) }); });
+    await page.reload();
+    await page.getByText(/Showing your latest saved script/).waitFor();
+    await page.locator("main nav button", { hasText: "Edit & Refine" }).click();
+    if (!(await page.locator("textarea").inputValue()).includes("NEW HALL")) throw new Error("editor did not show the newer script");
+    await page.locator("main nav button", { hasText: "Scene Breakdown" }).click();
+    await page.getByText(/NEW YARD/).first().waitFor();
+    await page.locator("main nav button", { hasText: "Character Extraction" }).click();
+    await page.getByText("NEWCOMER").first().waitFor();
+    if (await page.getByText("OLDIE").count()) throw new Error("old draft leaked into Character Extraction");
+    await page.getByRole("button", { name: "Discard them" }).click();
+    await page.reload();
+    await page.locator("main nav button", { hasText: "Edit & Refine" }).click();
+    if (await page.getByText(/Showing your latest saved script/).count()) throw new Error("stale draft not discarded");
+  });
   console.log("ERRORS:", errors.filter((e) => !/Failed to load resource.*(409|404)/.test(e)));
   await browser.close();
 })();

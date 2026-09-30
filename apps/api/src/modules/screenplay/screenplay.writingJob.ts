@@ -73,10 +73,10 @@ export async function runWritingJob(job: WritingJob, d: WritingDeps): Promise<Wr
   // Resume after a restart: keep scenes already written by an earlier attempt of this job.
   const written = new Map<number, { number: number; fountain: string }>(((job.output?.scenes ?? []) as Row[]).map((s) => [s.number, s as { number: number; fountain: string }]));
   const checks: Row[] = [];
-  // Batches run CONCURRENCY at a time (a full script used to be written strictly one batch after another). A batch
+  // Batches run CONCURRENCY at a time (a full script used to be written strictly one batch after another; 3 → 6 lanes on 2026-09-30). A batch
   // continues from the real end of the scene before it when that scene is already written; otherwise the outline
   // (which every batch receives in full) carries the continuity.
-  const CONCURRENCY = 3;
+  const CONCURRENCY = 6;
   const heading = (n: number) => { const o = outline.find((x) => x.number === n); return o ? `${o.int_ext}. ${o.location} - ${o.time_of_day}` : `scene ${n}`; };
   let batchesDone = 0;
   const runBatch = async (bi: number) => {
@@ -101,13 +101,22 @@ export async function runWritingJob(job: WritingJob, d: WritingDeps): Promise<Wr
       stage: written.size >= outline.length ? "Checking headings, cast and length across the whole script" : `Wrote ${heading(numbers[numbers.length - 1])}${next >= 0 ? ` · now writing ${heading(batches[next][0])}` : ""}`,
     }, { scenes: [...written.values()].sort((x, y) => x.number - y.number) });
   };
-  await stage(`Writing ${outline.length} scenes, ${Math.min(CONCURRENCY, batches.length)} batches at a time — starting with ${heading(outline[0]?.number ?? 1)}`, { done: written.size, total: outline.length, batches_done: 0, batches: batches.length });
-  for (let w = 0; w < batches.length; w += CONCURRENCY) {
-    const wave = batches.slice(w, w + CONCURRENCY).map((_, k) => w + k);
-    const results = await Promise.allSettled(wave.map(runBatch));
-    const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
-    if (failed) throw failed.reason;
-  }
+  // A resumed job says so and names the first scene still to write (it used to repeat the opening line and scene 1).
+  const firstLeft = outline.find((o) => !written.has(o.number));
+  await stage(written.size && firstLeft
+    ? `Continuing: ${written.size} of ${outline.length} scenes already written — writing the last ${outline.length - written.size}, starting with ${heading(firstLeft.number)}`
+    : `Writing ${outline.length} scenes, ${Math.min(CONCURRENCY, batches.length)} batches at a time — starting with ${heading(outline[0]?.number ?? 1)}`, { done: written.size, total: outline.length, batches_done: 0, batches: batches.length });
+  // A pool, not waves: each lane takes the next batch as soon as its own finishes, so one slow batch no longer holds
+  // the others back (owner, 2026-09-30: a 63-scene script took over half an hour). The first failure stops new batches.
+  let nextBatch = 0, failure: unknown = null;
+  const lane = async () => {
+    while (!failure && nextBatch < batches.length) {
+      const bi = nextBatch++;
+      try { await runBatch(bi); } catch (e) { failure ??= e; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, lane));
+  if (failure) throw failure;
   // One summary per check across all batches (failing batches listed as evidence).
   const merged = [...new Set(checks.map((c) => c.id))].map((id) => {
     const all = checks.filter((c) => c.id === id), bad = all.filter((c) => !c.ok);

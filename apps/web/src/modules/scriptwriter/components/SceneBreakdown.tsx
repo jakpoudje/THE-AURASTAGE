@@ -9,14 +9,18 @@ function fmt(seconds: number) {
   return m ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
 }
 
-export function SceneBreakdown({ scenes, draftScenes, projectId, targetMinutes, onOpen, onRework }: {
+export function SceneBreakdown({ scenes, draftScenes, projectId, targetMinutes, onOpen, onRework, currentIsApproved = true }: {
   scenes: Scene[]; draftScenes: SceneCandidate[]; projectId: string; targetMinutes: number | null;
+  /** False when a newer version than the approved one is open: the breakdown then follows the current script
+   *  (regression, owner 2026-09-30: steps 5–7 kept showing the older approved scenes). */
+  currentIsApproved?: boolean;
   /** Open the scene's heading in the editor (by its number in the current draft). */
   onOpen: (number: number) => void;
   /** Open the AI scene tools on this scene. */
   onRework: (number: number) => void;
 }) {
-  const approved = scenes.length > 0;
+  const approved = scenes.length > 0 && currentIsApproved;
+  const olderApproved = scenes.length > 0 && !currentIsApproved;
   const rows = approved ? scenes : draftScenes;
   const total = rows.reduce((a, s) => a + s.estimated_seconds, 0);
   const inDraft = new Set(draftScenes.map((s) => s.number));
@@ -27,7 +31,9 @@ export function SceneBreakdown({ scenes, draftScenes, projectId, targetMinutes, 
         <p className="text-sm text-white/50">
           {approved
             ? "Scenes from the approved script. Later stages build on these."
-            : "Draft only: approve the script to lock these in as production scenes."}
+            : olderApproved
+              ? `Scenes from your current script (not approved yet). Later stages still use the ${scenes.filter((x) => x.status !== "omitted").length} scenes of the previously approved version until you approve this one.`
+              : "Draft only: approve the script to lock these in as production scenes."}
         </p>
         {rows.length > 0 && (
           <p className="mt-1 text-xs text-white/60" data-testid="breakdown-total">

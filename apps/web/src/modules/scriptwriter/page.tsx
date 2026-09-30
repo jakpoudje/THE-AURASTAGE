@@ -130,6 +130,19 @@ export default function ScriptwriterPage() {
           </button>
         </div>
       )}
+      {sw.stale && (
+        <div role="status" className="mx-6 mt-4 flex flex-wrap items-center gap-3 rounded-md border border-white/20 px-4 py-2 text-sm text-white/70">
+          <span className="flex-1">
+            Showing your latest saved script. You also had unsaved changes on an older version from {new Date(sw.stale.saved_at).toLocaleString()} — they are kept aside, not mixed in.
+          </span>
+          <button onClick={() => { sw.restoreStale(); setStep("edit"); }} className="underline">
+            Open the older changes instead
+          </button>
+          <button onClick={sw.discardStale} className="text-white/60 hover:text-white">
+            Discard them
+          </button>
+        </div>
+      )}
       {sw.conflict && (
         <div className="mx-6 mt-4 flex flex-wrap items-center gap-3 rounded-md border border-sky-400/40 px-4 py-2 text-sm text-sky-200">
           <span className="flex-1">A newer version was saved since you started. Your text can be saved after it — nothing is overwritten.</span>
@@ -198,7 +211,7 @@ export default function ScriptwriterPage() {
         )}
 
         {step === "breakdown" && (
-          <SceneBreakdown scenes={ws?.scenes ?? []} draftScenes={sw.live.scenes} projectId={id} targetMinutes={sw.project.target_runtime_minutes ?? null}
+          <SceneBreakdown scenes={ws?.scenes ?? []} draftScenes={sw.live.scenes} currentIsApproved={!!currentId && currentId === approvedId && !sw.dirty} projectId={id} targetMinutes={sw.project.target_runtime_minutes ?? null}
             onOpen={(n) => { const sc = sw.live.scenes.find((x) => x.number === n); if (sc) { setFocusLine({ line: sc.heading_line, key: Date.now() }); setStep("edit"); } }}
             onRework={(n) => { setToolScene(n); const sc = sw.live.scenes.find((x) => x.number === n); if (sc) setFocusLine({ line: sc.heading_line, key: Date.now() }); setStep("edit"); }} />
         )}

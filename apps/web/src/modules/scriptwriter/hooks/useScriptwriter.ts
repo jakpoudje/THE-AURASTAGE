@@ -10,7 +10,7 @@ import type { Project, ScopePlan, UpdateProjectInput } from "@aurastage/contract
 import { sceneBoundaryEngine, screenplayFormatEngine, screenplayImportEngine } from "@aurastage/engines";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ApiError } from "@/lib/apiClient";
-import { clearDraft, readDraft, writeDraft } from "@/lib/localDraft";
+import { clearDraft, readDraft, writeDraft, type LocalDraft } from "@/lib/localDraft";
 import { scriptwriterApi } from "../api/scriptwriterApi";
 import type { ScriptWorkspace } from "../types";
 
@@ -27,6 +27,8 @@ export function useScriptwriter(projectId: string) {
   /** Set when a save hit 409: someone else saved first. Lets the writer save on top of the latest. */
   const [conflict, setConflict] = useState(false);
   const [recovered, setRecovered] = useState<string | null>(null);
+  /** Unsaved typing kept on this device from an older version than the current one (never shown as the script). */
+  const [stale, setStale] = useState<LocalDraft | null>(null);
   const draftScope = `script:${projectId}`;
   const ready = useRef(false);
 
@@ -41,13 +43,21 @@ export function useScriptwriter(projectId: string) {
     setPlan(sp.plan);
     const saved = ws.current_version?.source_text ?? "";
     const local = readDraft(draftScope);
-    if (local && local.text !== saved) {
+    if (local && local.text !== saved && local.base_version_id === (ws.current_version?.id ?? null)) {
       setDraft(local.text);
       setRecovered(local.saved_at);
-      if (local.base_version_id !== (ws.current_version?.id ?? null)) setConflict(true);
+      setStale(null);
+    } else if (local && local.text !== saved) {
+      // Unsaved typing from an OLDER version (e.g. before AuraScript wrote the full script) never replaces the newer
+      // saved script: the editor, Scene Breakdown and Character Extraction all follow the current version, and the old
+      // typing is offered separately (regression, owner 2026-09-30: steps 5–7 showed an old one-scene draft).
+      setDraft(saved);
+      setRecovered(null);
+      setStale(local);
     } else {
       if (local) clearDraft(draftScope);
       setDraft(saved);
+      setStale(null);
     }
     ready.current = true;
   }, [projectId, draftScope]);
@@ -87,10 +97,10 @@ export function useScriptwriter(projectId: string) {
     if (!ready.current) return;
     const t = setTimeout(() => {
       if (dirty) writeDraft(draftScope, { text: draft, base_version_id: baseId, saved_at: new Date().toISOString() });
-      else clearDraft(draftScope);
+      else if (!stale) clearDraft(draftScope);
     }, 400);
     return () => clearTimeout(t);
-  }, [draft, dirty, baseId, draftScope]);
+  }, [draft, dirty, baseId, draftScope, stale]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => {
@@ -100,6 +110,19 @@ export function useScriptwriter(projectId: string) {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+
+  /** Puts the older unsaved typing into the editor; saving it later creates a newest version (nothing is overwritten). */
+  function restoreStale() {
+    if (!stale) return;
+    setDraft(stale.text);
+    setRecovered(stale.saved_at);
+    setConflict(true);
+    setStale(null);
+  }
+  function discardStale() {
+    clearDraft(draftScope);
+    setStale(null);
+  }
 
   function discardRecovered() {
     clearDraft(draftScope);
@@ -186,6 +209,9 @@ export function useScriptwriter(projectId: string) {
     reload: load,
     conflict,
     recovered,
+    stale,
+    restoreStale,
+    discardStale,
     discardRecovered,
     importFile,
     project,

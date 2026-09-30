@@ -32,9 +32,12 @@ describe("AuraScript job runner (with the labelled test writer)", () => {
   });
   it("resumes a restarted script job without rewriting scenes it already has", async () => {
     const outline = [1, 2, 3].map((n) => ({ number: n, int_ext: "INT", location: "FLAT", time_of_day: "DAY", purpose: "", beat: "b", summary: "s", characters: [], est_minutes: 5 }));
-    const r = await runWritingJob({ id: "s", kind: "write_script", input: { story: { title: "T" }, outline }, output: { scenes: [{ number: 1, fountain: "INT. FLAT - DAY\n\nKept from before." }] } }, deps());
+    const progress: any[] = [];
+    const r = await runWritingJob({ id: "s", kind: "write_script", input: { story: { title: "T" }, outline }, output: { scenes: [{ number: 1, fountain: "INT. FLAT - DAY\n\nKept from before." }] } }, deps(progress));
     expect(r.output.scenes[0].fountain).toBe("INT. FLAT - DAY\n\nKept from before.");
     expect(r.usage.calls).toBe(2);
+    // Regression (owner, 2026-09-30): a resumed script said "Writing 63 scenes … starting with" scene 1.
+    expect(progress[0]).toMatchObject({ done: 1, total: 3, stage: "Continuing: 1 of 3 scenes already written — writing the last 2, starting with INT. FLAT - DAY" });
   });
   it("rewrites: expand grows the scene and keeps its heading; no backend is a plain error", async () => {
     const scene = "INT. FLAT - NIGHT\n\nTunde paces.\n\nTUNDE\nThey buried it.";
