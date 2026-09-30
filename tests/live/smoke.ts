@@ -1129,12 +1129,15 @@ async function written(id: string, minutes = 8) {
 let wProject = "";
 await check("aurascript: develop a story from a brief; apply the logline and synopsis to the project", async () => {
   const p = await api("POST", "/api/projects", { org_id: orgId, title: "Smoke: The Last Ferry", genre: "Drama", setting: "Lagos lagoon", time_period: "Present day",
-    logline: "An old ferryman's last crossing reunites him with the son he abandoned.", target_runtime_minutes: 3 }, [201]);
+    logline: "Chief Adebayo Olumide, an old ferryman, makes his last crossing and is reunited with Kunle Olumide, the son he abandoned.", target_runtime_minutes: 3 }, [201]);
   wProject = p.id;
   const q = await api("POST", `/api/projects/${wProject}/script/writing`, { kind: "develop_story" }, [201]);
   const g = await written(q.id);
   assert(g.status === "succeeded", `${g.status}: ${g.error ?? ""}`);
   assert(g.output.characters.length >= 1 && g.output.beats.length >= 3 && g.output.synopsis.length > 50, "thin development");
+  // Regression (owner, 2026-09-30): people named in the logline are kept (a title like "Chief" doesn't make a new person).
+  const keeps = g.checks.find((c: any) => c.id === "keeps_names");
+  assert(keeps?.ok === true, `logline names: ${keeps?.evidence} — got ${g.output.characters.map((c: any) => c.name).join(", ")}`);
   const a = await api("POST", `/api/script-writing/${g.id}/apply-story`, { fields: ["synopsis"] });
   assert(a.applied.includes("synopsis"), "not applied");
   const proj = await api("GET", `/api/projects/${wProject}`);
