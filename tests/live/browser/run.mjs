@@ -81,6 +81,10 @@ await check("casting: find characters, reload: still there", async () => {
   await page.getByText(/Up to date with approved script version 1/).waitFor();
   await reload(/Up to date with approved script version 1/);
   await page.getByText("Tunde Okafor").first().waitFor();
+  // Item 12: the relationship map (free) opens and draws the cast.
+  const map = page.getByRole("region", { name: "Relationship map" });
+  await map.getByRole("button", { name: /Relationship map/ }).click();
+  await map.getByRole("img", { name: "Characters and how they are connected" }).waitFor();
 });
 await check("casting look panel: generate a character's reference views; images appear; reload: still there", async () => {
   await page.goto(projectUrl + "/casting");
@@ -143,7 +147,11 @@ await check("locations & props: find them in the script, describe one, make its 
   await page.getByTestId("world-summary").getByText("3 of 4 made").waitFor();
   await page.getByRole("tab", { name: /Props/ }).click();
   await page.getByRole("list", { name: "Props" }).getByRole("button", { name: /Laptop/ }).waitFor();
-  return "harbour: 3 views; props include Laptop";
+  // Item 12: set dressing & prop continuity (free) lists every dressed scene.
+  const cont = page.getByRole("region", { name: "Set dressing and continuity" });
+  await cont.getByRole("button", { name: /Set dressing & prop continuity/ }).click();
+  await cont.locator("tr", { hasText: "Scene" }).first().waitFor();
+  return "harbour: 3 views; props include Laptop; set dressing shown";
 });
 await check("locations & props: Describe from the script (free, built in) — Ask AuraStage suggests, apply shows it at once; reload: kept; undo: back", async () => {
   await page.goto(projectUrl + "/world");
