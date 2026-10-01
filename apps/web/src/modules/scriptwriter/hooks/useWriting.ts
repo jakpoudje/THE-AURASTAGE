@@ -54,7 +54,7 @@ export function useWriting(projectId: string) {
   };
   return {
     results, writer, busy, error, notice, latest, latestDone, reload: load, currentStoryId, currentStory: byId(currentStoryId), storyOf,
-    request: (kind: WritingKind, opts: { request?: string; parent_id?: string | null; scene?: { mode: RewriteMode; number: number; instruction?: string } } = {}) =>
+    request: (kind: WritingKind, opts: { request?: string; parent_id?: string | null; scene?: { mode: RewriteMode; number: number; instruction?: string }; engine?: "builtin" | "writer" } = {}) =>
       run(() => writingApi.request(projectId, { kind, ...opts }), () => ({ develop_story: "Developing the story…", outline: "Building the scene outline…", write_script: "Writing the script — scenes appear as they're written.", rewrite_scene: "Reworking the scene…" })[kind]),
     saveOutline: (parentId: string | null, scenes: Parameters<typeof writingApi.saveOutline>[2]) => run(() => writingApi.saveOutline(projectId, parentId, scenes), () => "Outline saved as your own version."),
     applyStory: (id: string, fields: string[], title?: string) =>

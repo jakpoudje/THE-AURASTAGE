@@ -6,7 +6,7 @@
 // version through the normal save path (base-version checked), which the writer approves as usual (rules 10–11).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { continuityCheckEngine, sceneBoundaryEngine, scriptWriting, storyDevelopment } from "@aurastage/engines";
+import { continuityCheckEngine, outlineScaffoldEngine, sceneBoundaryEngine, scriptWriting, storyDevelopment, storyScaffold, storyScaffoldEngine } from "@aurastage/engines";
 import { reasoningProvider } from "../../providers";
 import { editProject } from "../projects/projects.service";
 import { assertProjectAccess } from "./screenplay.permissions";
@@ -123,12 +123,20 @@ const RequestInput = z.object({
   parent_id: z.string().uuid().nullable().default(null),
   /** For rewrite_scene: which scene and how. For a new scene, `number` is the scene it goes after (0 = at the start). */
   scene: z.object({ mode: z.enum(scriptWriting.REWRITE_MODES), number: z.number().int().min(0).max(400), instruction: z.string().max(2000).default("") }).optional(),
+  /**
+   * Who does it. "builtin" (default for the story and the outline): AuraStage's own story engines — free, finished at
+   * once, reviewed like any proposal (owner, 2026-10-01). "writer": the connected AI writer (paid; the only choice for
+   * writing screenplay pages).
+   */
+  engine: z.enum(["builtin", "writer"]).optional(),
 }).strict();
 
 export async function requestWriting(db: SupabaseClient, projectId: string, body: unknown, env: Env = process.env) {
   const b = parse(RequestInput, body);
   const p = await project(db, projectId);
-  if (!reasoningProvider(env, { allowTest: true })) throw new ScriptNotReadyError("No writing backend is available on the server.");
+  const builtin = (b.engine ?? (b.kind === "develop_story" || b.kind === "outline" ? "builtin" : "writer")) === "builtin";
+  if (builtin && b.kind !== "develop_story" && b.kind !== "outline") throw new ScriptValidationError([], "The built-in engines make the story and the outline; writing screenplay pages uses the AI writer.");
+  if (!builtin && !reasoningProvider(env, { allowTest: true })) throw new ScriptNotReadyError("No writing backend is available on the server.");
   const cast = await rows(db.from("characters").select("name, role, age, description").eq("project_id", projectId).is("merged_into", null).limit(40));
   let input: Row, parent: string | null = b.parent_id ?? null, base: string | null = null, engineVersion: string = scriptWriting.ENGINE_VERSION;
   if (b.kind === "develop_story") {
@@ -162,6 +170,21 @@ export async function requestWriting(db: SupabaseClient, projectId: string, body
       scene_text: b.scene.mode === "new_scene" ? "" : around(i), before: b.scene.mode === "new_scene" ? around(at) : around(i - 1), after: b.scene.mode === "new_scene" ? around(at + 1) : around(i + 1),
       scene_number: b.scene.number,
     };
+  }
+  if (builtin) {
+    // Built-in story intelligence: computed here (deterministic, milliseconds), recorded as finished, checked like a model's.
+    let output: Row, checks: unknown[];
+    if (b.kind === "develop_story") {
+      const r = storyScaffoldEngine(input.brief);
+      output = r.story; checks = storyDevelopment.checkStoryDevelopment(input.brief, r.story);
+      input = { ...input, structure: r.structure };
+    } else {
+      const r = outlineScaffoldEngine(input.story);
+      output = r.outline; checks = scriptWriting.checkOutline(input.story, r.outline);
+    }
+    const g = await rpc<Row>(db, "request_script_generation", { p_project: projectId, p_kind: b.kind, p_parent: parent, p_request: b.request, p_input: input,
+      p_base_version: base, p_engine_version: storyScaffold.ENGINE_VERSION, p_source: "builtin", p_output: output });
+    return { ...dto(g), checks };
   }
   const g = await rpc<Row>(db, "request_script_generation", { p_project: projectId, p_kind: b.kind, p_parent: parent, p_request: b.request, p_input: input,
     p_base_version: base, p_engine_version: engineVersion, p_source: "model", p_output: null });

@@ -149,6 +149,17 @@ http.createServer((req, res) => {
         input = { story: wStory(wCurrent()), mode: b.scene.mode, instruction: b.scene.instruction || b.request || "",
           scene_text: nw ? "" : around(i), before: nw ? around(i) : around(i - 1), after: nw ? around(i + 1) : around(i + 1), scene_number: n };
       } else return wErr2(400, "AURA-SCR-400", "kind: unknown");
+      // Built-in story intelligence (default for the story and the outline): the REAL engines, finished at once.
+      const builtin = (b.engine || (b.kind === "develop_story" || b.kind === "outline" ? "builtin" : "writer")) === "builtin";
+      if (builtin && b.kind !== "develop_story" && b.kind !== "outline") return wErr2(400, "AURA-SCR-400", "The built-in engines make the story and the outline; writing screenplay pages uses the AI writer.");
+      if (builtin) {
+        let output, checks;
+        if (b.kind === "develop_story") { const r = eng.storyScaffoldEngine(input.brief); output = r.story; checks = eng.storyDevelopment.checkStoryDevelopment(input.brief, r.story); }
+        else { const r = eng.outlineScaffoldEngine(input.story); output = r.outline; checks = eng.scriptWriting.checkOutline(input.story, r.outline); }
+        const g = { id: crypto.randomUUID(), kind: b.kind, parent_id: parent, request: b.request || "", source: "builtin", status: "succeeded", progress: {}, output, checks, provider: "aurastage", model: "story-intelligence-1.0.0", test_output: false,
+          error: null, base_version_id: null, result_version_id: null, accepted: null, input, created_at: now(), completed_at: now() };
+        WR.unshift(g); return send(201, wrDto(g));
+      }
       const g = { id: crypto.randomUUID(), kind: b.kind, parent_id: parent, request: b.request || "", source: "model", status: "queued", progress: {}, output: null, checks: [], provider: null, model: null, test_output: null,
         error: null, base_version_id: base, result_version_id: null, accepted: null, input, created_at: now(), completed_at: null };
       WR.unshift(g); return send(201, wrDto(g));

@@ -63,7 +63,8 @@ function Status({ r }: { r: WritingResult }) {
         {r.status === "succeeded" ? (r.source === "user" ? "Yours" : "Done") : "Failed"}
       </span>
       {r.test_output && <span className="rounded bg-amber-500/90 px-1.5 font-semibold text-black" title="Made by the labelled test writer — connect Claude for real writing">TEST OUTPUT</span>}
-      {r.status === "succeeded" && r.source !== "user" && !r.test_output && r.provider && <span className="text-white/40">by {r.provider === "anthropic" ? "Claude" : r.provider}{r.model ? ` (${r.model})` : ""}</span>}
+      {r.status === "succeeded" && r.source === "builtin" && <span className="text-white/40">by AuraStage's built-in story engine (free)</span>}
+      {r.status === "succeeded" && r.source === "model" && !r.test_output && r.provider && <span className="text-white/40">by {r.provider === "anthropic" ? "Claude" : r.provider}{r.model ? ` (${r.model})` : ""}</span>}
       {r.status === "succeeded" && r.source !== "user" && r.completed_at && <span className="text-white/35">{clock(Date.parse(r.completed_at) - Date.parse(r.created_at))}</span>}
       {r.error && <span className="text-red-300">{r.error}</span>}
     </div>
@@ -170,17 +171,19 @@ export function StoryDevelopmentPanel({ w, canEdit, project, onApplied }: { w: W
   return (
     <section aria-label="Story Development" className="space-y-4">
       <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
-        <p className="text-sm text-white/60">AuraStage reads your Project Setup and proposes the story: title options, logline, synopsis, themes, characters (with why each name fits) and the beats across the acts. Nothing changes until you apply it — or write the story yourself.</p>
+        <p className="text-sm text-white/60">AuraStage reads your Project Setup and proposes the story: title options, logline, synopsis, themes, characters (with why each name fits) and the beats across the acts. The built-in story engine does it free and at once — it reads who is in your brief, what they want, what stands in the way and what is at stake, and builds the A-story, a B-story, the antagonist's plan, a set-up that pays off at the end, and every character's want, need and arc. The AI writer (paid) can give another take. Nothing changes until you apply it — or write the story yourself.</p>
         {decided.length > 0 && (
           <p className="mt-2 text-xs text-white/50" data-testid="decided-names">Names already decided (kept by every new development): <span className="text-white/80">{decided.map((c) => c.name).join(", ")}</span>. Ask for new names in the box below if you want them changed.</p>
         )}
         <textarea aria-label="What should the story do?" rows={2} value={req} onChange={(e) => setReq(e.target.value)} placeholder="Optional: e.g. make the antagonist sympathetic; end on a twist" className={`${input} mt-3`} />
         <div className="mt-2 flex flex-wrap gap-2">
-          <WriterCost label="Cost of developing the story" input_chars={8000} output_chars={14000} basis="a full story proposal" />
-          <button onClick={() => w.request("develop_story", { request: req })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
-            className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">{o ? "Develop again" : "Develop the story"}</button>
+          <button onClick={() => w.request("develop_story", { request: req, engine: "builtin" })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
+            className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">{o ? "Develop again (free)" : "Develop the story (free)"}</button>
+          <button onClick={() => w.request("develop_story", { request: req, engine: "writer" })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
+            className="rounded-md border border-aura-gold/60 px-4 py-2 text-sm text-aura-gold disabled:opacity-40">Develop with the AI writer (paid)</button>
           <button onClick={() => setEditing(current?.output ? { ...(current.output as StoryDraft) } : blankStory(project))} disabled={!canEdit || w.busy}
             className="rounded-md border border-aura-border px-4 py-2 text-sm disabled:opacity-40">{current ? "Edit the story myself" : "Write the story myself"}</button>
+          <WriterCost label="Cost with the AI writer (the built-in story engine is free)" input_chars={8000} output_chars={14000} basis="a full story proposal" />
         </div>
       </div>
       {editing && <StoryEditor start={editing} busy={w.busy} onCancel={() => setEditing(null)} onSave={async (story) => { if (await w.saveStory(current?.id ?? null, story)) setEditing(null); }} />}
@@ -270,9 +273,13 @@ export function OutlinePanel({ w, canEdit }: { w: W; canEdit: boolean }) {
       <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
         <p className="text-sm text-white/60">A scene-by-scene outline {dev ? `from your current story (${names(dev).slice(0, 4).join(", ") || "no named characters yet"})` : "from your Project Setup"}, sized to the target runtime. Edit anything — your edits are saved as your own version and the script is written from it. You can also build it scene by scene yourself: add scenes with “+ Scene”.</p>
         <textarea aria-label="Outline request" rows={2} value={req} onChange={(e) => setReq(e.target.value)} placeholder="Optional: e.g. open on the harbour; keep it under 25 scenes" className={`${input} mt-3`} />
-        <WriterCost label="Cost of building the outline" input_chars={16000} output_chars={30000} basis="a feature-length outline" />
-        <button onClick={() => w.request("outline", { request: req, parent_id: dev?.id ?? null })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
-          className="mt-2 rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">{done ? "Build a new outline" : "Build the scene outline"}</button>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button onClick={() => w.request("outline", { request: req, parent_id: dev?.id ?? null, engine: "builtin" })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
+            className="rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40">{done ? "Build a new outline (free)" : "Build the scene outline (free)"}</button>
+          <button onClick={() => w.request("outline", { request: req, parent_id: dev?.id ?? null, engine: "writer" })} disabled={!canEdit || w.busy || r?.status === "queued" || r?.status === "running"}
+            className="rounded-md border border-aura-gold/60 px-4 py-2 text-sm text-aura-gold disabled:opacity-40">Build with the AI writer (paid)</button>
+        </div>
+        <WriterCost label="Cost with the AI writer (the built-in outline is free)" input_chars={16000} output_chars={30000} basis="a feature-length outline" />
       </div>
       {r && r.id !== done?.id && <div className="rounded-xl border border-aura-border bg-aura-panel p-4"><Status r={r} /></div>}
       {!done && canEdit && (
@@ -282,7 +289,7 @@ export function OutlinePanel({ w, canEdit }: { w: W; canEdit: boolean }) {
       {mismatch && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-400/40 px-4 py-3 text-sm text-amber-200" data-testid="outline-story-mismatch">
           <span className="min-w-0 flex-1">This outline was built from an earlier story ({names(builtFrom).slice(0, 4).join(", ")}). The current story's characters are {names(dev).slice(0, 4).join(", ")}.</span>
-          <button onClick={() => w.request("outline", { request: req, parent_id: dev!.id })} disabled={!canEdit || w.busy} className="rounded border border-amber-400/60 px-3 py-1 text-xs">Rebuild from the current story</button>
+          <button onClick={() => w.request("outline", { request: req, parent_id: dev!.id, engine: "builtin" })} disabled={!canEdit || w.busy} className="rounded border border-amber-400/60 px-3 py-1 text-xs">Rebuild from the current story (free)</button>
         </div>
       )}
       {done && (

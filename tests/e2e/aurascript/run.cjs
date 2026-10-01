@@ -27,7 +27,7 @@ async function api(method, path, body) {
   await step("Story Development: develop the story from Project Setup; characters with name reasons; apply chosen fields; reload: applied", async () => {
     await page.goto(`${BASE}/projects/${P}/scriptwriter`);
     await stepTab("Story Development");
-    await page.getByRole("button", { name: "Develop the story" }).click();
+    await page.getByRole("button", { name: "Develop with the AI writer (paid)" }).click();
     await page.getByTestId("writing-status-develop_story").getByText("Done").waitFor({ timeout: 15000 });
     await page.getByTestId("writing-status-develop_story").getByText("TEST OUTPUT").waitFor();
     await page.getByRole("list", { name: "Proposed characters" }).getByText("Adaeze Okoro").waitFor();
@@ -44,7 +44,7 @@ async function api(method, path, body) {
   });
   await step("Outline: build it, edit a place, add a scene, save as your own version; reload: kept", async () => {
     await stepTab("Outline & Structure");
-    await page.getByRole("button", { name: "Build the scene outline" }).click();
+    await page.getByRole("button", { name: "Build with the AI writer (paid)" }).click();
     await page.getByTestId("outline-summary").getByText(/^6 scenes · 12 minutes/).waitFor({ timeout: 15000 });
     await page.getByLabel("Scene 1 place").fill("TUNDE'S FLAT");
     await page.getByRole("button", { name: "+ Scene" }).click();
@@ -102,7 +102,7 @@ async function api(method, path, body) {
     await page.getByTestId("current-story").waitFor();
     await page.getByRole("list", { name: "Proposed characters" }).getByText("Kemi Adeyemi").waitFor();
     await page.getByTestId("decided-names").getByText(/Kemi Adeyemi/).waitFor();
-    await page.getByRole("button", { name: "Develop again" }).click();
+    await page.getByRole("button", { name: "Develop with the AI writer (paid)" }).click();
     await page.getByTestId("writing-status-develop_story").getByText("Done").waitFor({ timeout: 15000 });
     await page.getByTestId("proposal-not-used").waitFor();
     await page.getByRole("list", { name: "Proposed characters" }).getByText("Kemi Adeyemi").waitFor();
@@ -114,7 +114,7 @@ async function api(method, path, body) {
   await step("the outline says when it was built from an earlier story and rebuilds from the current one (with a live working card)", async () => {
     await stepTab("Outline & Structure");
     await page.getByTestId("outline-story-mismatch").waitFor();
-    await page.getByRole("button", { name: "Rebuild from the current story" }).click();
+    await page.getByRole("button", { name: "Rebuild from the current story (free)" }).click();
     await page.getByTestId("writing-status-outline").first().waitFor();
     await page.getByTestId("outline-summary").waitFor({ timeout: 15000 });
     await page.waitForFunction(() => !document.querySelector('[data-testid="outline-story-mismatch"]'), null, { timeout: 15000 });
@@ -141,6 +141,27 @@ async function api(method, path, body) {
     if (/\nFEMI\n/.test(text) || !/\nTAYO\n/.test(text)) throw new Error("rename not applied to the draft");
     await page.getByText("Unsaved changes", { exact: true }).waitFor();
     await page.screenshot({ path: `${OUT}/aurascript-names.png` });
+  });
+  await step("Built in and free (owner, 2026-10-01): develop the story and build the outline with AuraStage's own story engine — at once, no cost; reload: kept", async () => {
+    await stepTab("Story Development");
+    await page.getByRole("button", { name: /^Develop (the story|again) \(free\)$/ }).click();
+    const st = page.getByTestId("writing-status-develop_story");
+    await st.getByText("by AuraStage's built-in story engine (free)").waitFor({ timeout: 15000 });
+    if (await st.getByText("TEST OUTPUT").count()) throw new Error("built-in story must not be labelled test output");
+    const beats = page.getByRole("list", { name: "Story beats" });
+    await beats.getByText(/Midpoint/).first().waitFor();
+    await beats.getByText(/\(B-story\)/).first().waitFor();
+    await page.reload();
+    await stepTab("Story Development");
+    await page.getByTestId("writing-status-develop_story").getByText("by AuraStage's built-in story engine (free)").waitFor();
+    await stepTab("Outline & Structure");
+    await page.getByRole("button", { name: /^Build (the scene outline|a new outline) \(free\)$/ }).click();
+    await page.getByTestId("outline-summary").getByText(/scenes · \d+ minutes/).waitFor({ timeout: 15000 });
+    const list = await api("GET", `/api/projects/${P}/script/writing`);
+    const ol = list.results.find((r) => r.kind === "outline" && r.source === "builtin");
+    if (!ol || !ol.output.scenes.length || ol.provider !== "aurastage") throw new Error("built-in outline not recorded");
+    const total = ol.output.scenes.reduce((a, x) => a + x.est_minutes, 0);
+    if (Math.abs(total - 12) > 0.05) throw new Error("outline should add up to the 12-minute runtime: " + total);
   });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();

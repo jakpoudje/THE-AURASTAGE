@@ -27,6 +27,13 @@ Scene DNA (Phase 5 reads `scenes` and `review_state`).
 engines/story/** — `screenplayFormatEngine`, `sceneBoundaryEngine`,
 `runtimeScopeEngine`. Pure derivation lives in `screenplay.derive.ts`.
 
+## Built-in story engine (migration 0047)
+`POST /api/projects/:id/script/writing` with `kind` `develop_story` or `outline` uses AuraStage's own story engine by default
+(`engine: "builtin"`, free): `storyScaffoldEngine` / `outlineScaffoldEngine` 1.0.0 compute the result at once and it is
+recorded as succeeded with `source: "builtin"`, provider `aurastage` — reviewed, edited and applied exactly like a model's,
+with the same checks. `engine: "writer"` asks the AI writer (paid). Writing screenplay pages (`write_script`,
+`rewrite_scene`) is always the AI writer.
+
 ## API endpoints
 - `GET  /api/projects/:id/script` — script, latest version, version list, scenes, analysis
 - `POST /api/projects/:id/script/versions` — `{source_text, base_version_id, note?}` → new version (409 if someone saved first)

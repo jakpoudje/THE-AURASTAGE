@@ -1338,13 +1338,15 @@ async function written(id: string, minutes = 8) {
   throw new Error(`writing job ${id} still running after ${minutes} minutes`);
 }
 let wProject = "";
-await check("aurascript: develop a story from a brief; apply the logline and synopsis to the project", async () => {
+await check("aurascript: develop a story from a brief with the built-in story engine (free); apply the logline and synopsis to the project", async () => {
   const p = await api("POST", "/api/projects", { org_id: orgId, title: "Smoke: The Last Ferry", genre: "Drama", setting: "Lagos lagoon", time_period: "Present day",
     logline: "Chief Adebayo Olumide, an old ferryman, makes his last crossing and is reunited with Kunle Olumide, the son he abandoned.", target_runtime_minutes: 3 }, [201]);
   wProject = p.id;
   const q = await api("POST", `/api/projects/${wProject}/script/writing`, { kind: "develop_story" }, [201]);
   const g = await written(q.id);
   assert(g.status === "succeeded", `${g.status}: ${g.error ?? ""}`);
+  // Built in and free by default (owner, 2026-10-01): AuraStage's own story engine, finished at once.
+  assert(g.source === "builtin" && g.provider === "aurastage" && g.test_output === false, `should be the built-in story engine: ${g.source} ${g.provider}`);
   assert(g.output.characters.length >= 1 && g.output.beats.length >= 3 && g.output.synopsis.length > 50, "thin development");
   // Regression (owner, 2026-09-30): people named in the logline are kept (a title like "Chief" doesn't make a new person).
   const keeps = g.checks.find((c: any) => c.id === "keeps_names");
@@ -1356,11 +1358,12 @@ await check("aurascript: develop a story from a brief; apply the logline and syn
   return `${g.test_output ? "TEST OUTPUT" : g.provider + " " + g.model}; ${g.output.characters.map((c: any) => c.name).join(", ")}; checks ${g.checks.filter((c: any) => c.ok).length}/${g.checks.length}`;
 });
 let wOutline: any = null;
-await check("aurascript: outline the story scene by scene, sized to the runtime", async () => {
+await check("aurascript: outline the story scene by scene with the built-in engine (free), sized to the runtime", async () => {
   const q = await api("POST", `/api/projects/${wProject}/script/writing`, { kind: "outline" }, [201]);
   wOutline = await written(q.id);
   assert(wOutline.status === "succeeded", `${wOutline.status}: ${wOutline.error ?? ""}`);
   assert(wOutline.output.scenes.length >= 1 && wOutline.output.scenes.every((s: any, i: number) => s.number === i + 1), "bad outline");
+  assert(wOutline.source === "builtin" && wOutline.checks.every((c: any) => c.ok), "built-in outline checks: " + wOutline.checks.filter((c: any) => !c.ok).map((c: any) => c.id).join(","));
   return `${wOutline.output.scenes.length} scenes; ${wOutline.checks.map((c: any) => `${c.id}:${c.ok ? "ok" : "!"}`).join(" ")}`;
 });
 await check("aurascript: write the full script in the worker; progress recorded; opens as a DRAFT version (not approved) that parses into scenes", async () => {

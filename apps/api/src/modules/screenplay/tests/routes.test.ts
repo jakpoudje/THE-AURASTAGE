@@ -22,6 +22,8 @@ function fakeDb(rows: Rows, rpc: (fn: string, args: Record<string, unknown>) => 
       select: () => q,
       eq: (k: string, v: unknown) => (filters.push([k, v]), q),
       order: () => q,
+      limit: () => q,
+      is: () => q,
       result: () => (rows[table] ?? []).filter((r) => filters.every(([k, v]) => r[k] === v)),
       maybeSingle: async () => ({ data: q.result()[0] ?? null, error: null }),
       single: async () => ({ data: q.result()[0], error: null }),
@@ -162,5 +164,32 @@ describe("Scriptwriter routes", () => {
     const app = await appWith(fakeDb(rows, () => ({})));
     const res = await app.inject({ method: "GET", url: `/api/projects/${PROJECT}/scope-plan` });
     expect(res.json()).toEqual({ plan: null });
+  });
+  it("story development and the outline are made by the built-in engines by default — free, finished at once, checked; screenplay pages need the AI writer", async () => {
+    rows.projects[0] = { ...rows.projects[0], title: "Shadows of Lagos", setting: "Lagos, Nigeria", genre: "Political thriller", target_runtime_minutes: 110,
+      logline: "When her brother Tunde vanishes, Amara Bello, a fearless journalist, must expose the rigged election before the polls close — but Governor Adeyemi will kill to keep it buried." };
+    rows.characters = [];
+    rows.script_generations = [];
+    let n = 0;
+    const fake = fakeDb(rows, (fn, a) => (fn === "request_script_generation" ? { data: { id: `55555555-5555-4555-8555-55555555555${n++}`, kind: a.p_kind, parent_id: a.p_parent, source: a.p_source, status: "succeeded", output: a.p_output, provider: "aurastage" } } : {}));
+    const app = await appWith(fake);
+    const dev = await app.inject({ method: "POST", url: `/api/projects/${PROJECT}/script/writing`, payload: { kind: "develop_story" } });
+    expect(dev.statusCode).toBe(201);
+    const call = fake.calls.find((c) => c.fn === "request_script_generation")!;
+    expect(call.args).toMatchObject({ p_kind: "develop_story", p_source: "builtin" });
+    const story = call.args.p_output as { characters: { name: string; role: string }[]; beats: unknown[] };
+    expect(story.characters.find((c) => c.role === "protagonist")!.name).toBe("Amara Bello");
+    expect(story.beats.length).toBeGreaterThan(10);
+    expect(dev.json().checks.every((c: { ok: boolean }) => c.ok)).toBe(true);
+    // The outline from that story, built in as well.
+    rows.script_generations = [{ id: "55555555-5555-4555-8555-555555555550", project_id: PROJECT, kind: "develop_story", status: "succeeded", source: "builtin", output: story, parent_id: null }];
+    const ol = await app.inject({ method: "POST", url: `/api/projects/${PROJECT}/script/writing`, payload: { kind: "outline" } });
+    expect(ol.statusCode).toBe(201);
+    const oc = fake.calls.filter((c) => c.fn === "request_script_generation")[1];
+    expect(oc.args).toMatchObject({ p_kind: "outline", p_source: "builtin", p_parent: "55555555-5555-4555-8555-555555555550" });
+    expect((oc.args.p_output as { scenes: unknown[] }).scenes.length).toBeGreaterThan(20);
+    // Pages are written by the AI writer only.
+    const bad = await app.inject({ method: "POST", url: `/api/projects/${PROJECT}/script/writing`, payload: { kind: "write_script", engine: "builtin", parent_id: "55555555-5555-4555-8555-555555555551" } });
+    expect(bad.statusCode).toBe(400);
   });
 });

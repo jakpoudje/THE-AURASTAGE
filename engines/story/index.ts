@@ -17,3 +17,5 @@ export * as characterRename from "./characterRenameEngine";
 export { renameCharacter } from "./characterRenameEngine";
 export * as storySetup from "./storySetupEngine";
 export { storySetupEngine } from "./storySetupEngine";
+export * as storyScaffold from "./storyScaffoldEngine";
+export { storyScaffoldEngine, outlineScaffoldEngine } from "./storyScaffoldEngine";
