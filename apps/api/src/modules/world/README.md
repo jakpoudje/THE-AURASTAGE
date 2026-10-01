@@ -19,5 +19,12 @@ Canonical owner of **Location** and **Prop** (SRS §4: "Scene/Asset domain"). Mi
 ## Permissions
 Writes are gated like Scene DNA edits: `gate_write(project, 'scene_dna', 'edit')`. Reads are project-scoped by RLS.
 
+## Set dressing and prop continuity (BUILD_PLAN §8 item 12)
+The workspace's `continuity` (`propContinuityEngine` 1.0.0, free): each prop's state scene by scene from the words next to it on
+its script lines (broken, bloodied, burnt, torn, missing; passing states wet/open), lasting states carried forward until the
+script restores them ("new", "repaired", "finds"), warnings where a later scene may forget one, and the set dressing of every
+scene. Read-only; nothing is stored.
+
 ## Downstream consumers
-Assets Library (links, usage), AI & Generation readiness, and next the prompt compiler (reference images per shot).
+Assets Library (links, usage), AI & Generation readiness, and the prompt compiler (reference images per shot, and each prop's
+state in the scene — promptCompilerEngine 1.5.0).

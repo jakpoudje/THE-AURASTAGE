@@ -22,6 +22,8 @@ export const CharacterProfileFieldsSchema = z.object({
   accent: z.string().max(120).nullable().optional(),
   /** Languages the character speaks, most used first (e.g. "English, Yoruba, Nigerian Pidgin"). */
   languages: z.string().max(200).nullable().optional(),
+  /** How the name is said, as a sound-it-out spelling ("ah-deh-bah-yoh") the voices read instead of the written name. */
+  pronunciation: z.string().max(200).nullable().optional(),
   occupation: z.string().max(150).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
   personality: z.string().max(4000).nullable().optional(),

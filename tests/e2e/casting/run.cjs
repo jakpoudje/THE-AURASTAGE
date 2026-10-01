@@ -18,7 +18,7 @@ EXT. LAGOS HARBOUR - DAWN
 AMARA BELLO (32) waits by the water. DETECTIVE RAMOS watches from a car.
 
 AMARA
-You came.
+Tunde, my brother. You came.
 
 DET. RAMOS
 (into radio)
@@ -406,6 +406,39 @@ async function api(method, path, body) {
     await page.waitForFunction((n) => ![...document.querySelectorAll("h2")].some((h) => h.textContent.trim() === n), first);
     const ws = await api("GET", `/api/projects/${P}/characters`);
     if (!ws.characters.some((c) => c.name === first && c.occupation === "Harbour pilot")) throw new Error("Save & next didn't save " + first);
+  });
+  await step("item 12: the relationship map shows who shares scenes and suggests what the dialogue says (free); Add saves it; reload keeps it", async () => {
+    await page.goto(`${BASE}/projects/${P}/casting`);
+    const map = page.getByRole("region", { name: "Relationship map" });
+    await map.getByRole("button", { name: /Relationship map/ }).click();
+    await map.getByRole("img", { name: "Characters and how they are connected" }).waitFor();
+    await map.getByText(/Scene 2: Amara Bello to Tunde Okafor/).waitFor();
+    await map.getByRole("button", { name: /^Add Siblings: / }).click();
+    await page.getByText("Relationship saved.").waitFor();
+    await page.reload();
+    const map2 = page.getByRole("region", { name: "Relationship map" });
+    await map2.getByText(/1 saved · 0 suggested/).waitFor();
+    await map2.getByRole("button", { name: /Relationship map/ }).click();
+    await map2.locator("svg text", { hasText: "Siblings" }).waitFor();
+  });
+  await step("item 12: pronunciation guide — filled for free by the whole-cast fill, editable, saved; reload keeps it", async () => {
+    const ws = await api("GET", `/api/projects/${P}/characters`);
+    const amara = ws.characters.find((c) => c.name === "Amara Bello");
+    if (!/^ah-mah-rah/.test(amara.pronunciation || "")) throw new Error("whole-cast fill should have filled the pronunciation: " + amara.pronunciation);
+    if (amara.status === "approved") await api("PATCH", `/api/characters/${amara.id}`, { status: "draft" });
+    await page.reload();
+    await page.getByRole("button", { name: /Amara Bello/ }).first().click();
+    await page.getByRole("button", { name: "Profile", exact: true }).click();
+    const box = page.getByTestId("pronunciation").getByRole("textbox");
+    if (!/^ah-mah-rah/.test(await box.inputValue())) throw new Error("pronunciation not shown");
+    await box.fill("ah-MAH-rah BEH-loh");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText("Character saved.").waitFor();
+    await page.reload();
+    await page.getByRole("button", { name: /Amara Bello/ }).first().click();
+    await page.getByRole("button", { name: "Profile", exact: true }).click();
+    const v = await page.getByTestId("pronunciation").getByRole("textbox").inputValue();
+    if (v !== "ah-MAH-rah BEH-loh") throw new Error("pronunciation not kept: " + v);
   });
   await page.screenshot({ path: `${OUT}/casting.png` });
   console.log("ERRORS:", errors);

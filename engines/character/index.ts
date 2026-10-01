@@ -19,3 +19,7 @@ export * as characterProfile from "./characterProfileEngine";
 export { characterProfileEngine } from "./characterProfileEngine";
 export * as wardrobeSuggestion from "./wardrobeSuggestionEngine";
 export { wardrobeSuggestionEngine } from "./wardrobeSuggestionEngine";
+export * as relationshipMap from "./relationshipMapEngine";
+export { relationshipMapEngine } from "./relationshipMapEngine";
+export * as pronunciation from "./pronunciationEngine";
+export { pronunciationEngine, sayNames } from "./pronunciationEngine";

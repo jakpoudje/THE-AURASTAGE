@@ -64,6 +64,9 @@ export const listWorldItems = async (db: SupabaseClient, projectId: string) => (
 });
 export const listSceneAppearances = (db: SupabaseClient, sceneId: string) =>
   rows(db.from("world_appearances").select("object_type, object_id").eq("scene_id", sceneId));
+/** Every prop's lines across the film (Locations & Props, read-only) — for the prop's state in a scene (continuity). */
+export const listPropAppearances = (db: SupabaseClient, projectId: string) =>
+  rows(db.from("world_appearances").select("object_id, scene_number, evidence").eq("project_id", projectId).eq("object_type", "prop"));
 export const listWorldRefs = (db: SupabaseClient, projectId: string) =>
   rows(db.from("world_reference_images").select("object_type, object_id, view_key, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").not("asset_id", "is", null).order("created_at", { ascending: false }));
 export const listCharacterRefs = (db: SupabaseClient, projectId: string) =>

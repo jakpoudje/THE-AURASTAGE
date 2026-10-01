@@ -201,6 +201,12 @@ await check("casting: relationship + wardrobe look", async () => {
   const after = await api("GET", `/api/projects/${projectId}/characters`);
   assert(after.relationships.length === 1 && after.relationships[0].relationship === "Partner", "relationship not upserted");
   assert(after.wardrobe_looks.some((l: any) => l.id === look.id), "look missing");
+  // Item 12: the relationship map (who shares scenes, saved relationships) and the pronunciation guide (saved, read back).
+  const edge = after.relationship_map?.edges.find((e: any) => [e.a, e.b].sort().join() === [tundeId, amaraId].sort().join());
+  assert(edge && edge.relationship === "Partner" && edge.shared_scenes >= 1 && after.relationship_map.nodes.length >= 2, "relationship map: " + JSON.stringify(after.relationship_map?.edges ?? null).slice(0, 300));
+  await api("PATCH", `/api/characters/${amaraId}`, { pronunciation: "ah-mah-rah beh-loh" });
+  const pr = (await api("GET", `/api/projects/${projectId}/characters`)).characters.find((c: any) => c.id === amaraId);
+  assert(pr.pronunciation === "ah-mah-rah beh-loh", "pronunciation not saved: " + pr.pronunciation);
   await api("DELETE", `/api/looks/${look.id}`);
   const final = await api("GET", `/api/projects/${projectId}/characters`);
   assert(!final.wardrobe_looks.some((l: any) => l.id === look.id), "look not deleted");
@@ -889,6 +895,8 @@ await check("locations & props: found in the approved script (names are never pr
   const car = ws.props.find((p: any) => p.key === "car");
   assert(car && car.category === "vehicle" && car.scenes[0]?.evidence.includes("a car"), JSON.stringify(ws.props.map((p: any) => p.key)));
   assert(!ws.props.some((p: any) => /tunde|amara|ramos/i.test(p.name)), "a character was taken for a prop");
+  // Item 12: set dressing and prop continuity (free) — every prop's scenes are dressed, with a state when the script gives one.
+  assert(ws.continuity && /^\d+\.\d+\.\d+$/.test(ws.continuity.engine_version) && ws.continuity.set_dressing.some((d: any) => d.items.some((it: any) => it.prop_id === car.id)), "continuity: " + JSON.stringify(ws.continuity ?? null).slice(0, 300));
   const saved = await api("PATCH", `/api/world/location/${harbour.id}`, { revision: harbour.revision, description: "Rusting cranes, stacked containers", status: "confirmed" });
   await api("PATCH", `/api/world/location/${harbour.id}`, { revision: harbour.revision, description: "stale" }, [409]);
   const again = await api("POST", `/api/projects/${projectId}/world/sync`, {});

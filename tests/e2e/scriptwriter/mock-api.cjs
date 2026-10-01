@@ -225,6 +225,19 @@ http.createServer((req, res) => {
         // Mirrors characters.service: accent suggestions from the story (storyAccentEngine), never from a name.
         accent_suggestions: Object.fromEntries(chars.map((c) => [c.id, eng.storyAccentEngine({ character: { nationality: c.nationality ?? null, description: c.description ?? null, backstory: c.backstory ?? null },
           scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => (scenes.find((x) => x.id === a.scene_id) || {}).location).filter(Boolean), project: { setting: project.setting ?? null, logline: project.logline ?? null } })])),
+        // Mirrors characters.service relationshipMap: shared scenes + relationships the dialogue states (relationshipMapEngine).
+        relationship_map: (() => {
+          const act2 = chars.filter((c) => !c.merged_into); const byAlias = new Map();
+          for (const a of aliases) byAlias.set(norm(a.alias), a.character_id); for (const c of act2) byAlias.set(norm(c.name), c.id);
+          const sceneId = new Map(apps.map((a) => [a.scene_number, a.scene_id])); const lines = []; let n = 0, sp = null;
+          for (const e of ((r && r.v.elements) || [])) {
+            if (e.type === "scene_heading") { n++; sp = null; continue; }
+            if (e.type === "character") { sp = e.speaker ? byAlias.get(norm(e.speaker)) ?? null : null; continue; }
+            if (e.type === "dialogue" && sceneId.has(n)) lines.push({ scene_id: sceneId.get(n), scene_number: n, speaker_id: sp, text: e.text });
+          }
+          return eng.relationshipMapEngine({ characters: act2.map((c) => ({ id: c.id, name: c.name })), appearances: apps.map((a) => ({ character_id: a.character_id, scene_id: a.scene_id })), lines,
+            relationships: rels.map((x) => ({ character_a: x.character_a, character_b: x.character_b, relationship: x.relationship })) });
+        })(),
         // Mirrors characters.service: characters named twice (characterDuplicateEngine).
         duplicates: eng.characterDuplicateEngine({ characters: chars.filter((c) => !c.merged_into).map((c) => ({ id: c.id, name: c.name, aliases: aliases.filter((a) => a.character_id === c.id && a.source !== "name").map((a) => a.alias),
           scene_count: new Set(apps.filter((a) => a.character_id === c.id).map((a) => a.scene_id)).size, approved: c.status === "approved", distinct_from: c.distinct_from || [] })) }).pairs });
@@ -241,6 +254,7 @@ http.createServer((req, res) => {
           scene_locations: apps.filter((a) => a.character_id === c.id).map((a) => (scenes.find((x) => x.id === a.scene_id) || {}).location).filter(Boolean), project: { setting: project.setting ?? null, logline: project.logline ?? null } }).suggestion;
         if (sug && blank(c.accent)) patch.accent = sug.accent;
         if (sug && blank(c.languages) && sug.languages.length) patch.languages = sug.languages.join(", ");
+        if (blank(c.pronunciation)) { const pr = eng.pronunciationEngine({ name: c.name, languages: patch.languages ?? c.languages ?? null, accent: patch.accent ?? c.accent ?? null }).pronunciation; if (pr) patch.pronunciation = pr; }
         if (!Object.keys(patch).length) continue;
         Object.assign(c, patch, { updated_at: now() }); updated.push({ id: c.id, name: c.name, fields: Object.keys(patch) });
       }
@@ -370,7 +384,8 @@ http.createServer((req, res) => {
     const wDto = (kind, r) => { const g = W.refs.filter((x) => x.kind === kind && x.item_id === r.id && x.status === "succeeded"); const t = g.find((x) => /^(establishing|hero)/.test(x.view_key)) || g[0];
       return { ...r, kind, archived: !!r.archived_at, missing_from_script: !!r.missing_since, thumbnail_asset_id: t ? t.asset_id : null }; };
     if (u === `/api/projects/${P}/world` && req.method === "GET") {
-      return send(200, { locations: W.location.map((r) => wDto("location", r)), props: W.prop.map((r) => wDto("prop", r)),
+      const continuity = eng.propContinuityEngine({ props: W.prop.filter((r) => !r.archived_at).map((r) => ({ id: r.id, name: r.name, appearances: (r.scenes || []).map((x) => ({ scene_number: x.scene_number, evidence: x.evidence || "" })) })) });
+      return send(200, { continuity, locations: W.location.map((r) => wDto("location", r)), props: W.prop.map((r) => wDto("prop", r)),
         sync: { state: !approved() ? "no_script" : !W.sync ? "never" : W.sync.version === script.approved_version_id ? "current" : "stale", synced_at: W.sync ? W.sync.at : null, summary: W.sync ? W.sync.summary : null } });
     }
     if (u === `/api/projects/${P}/world/sync` && req.method === "POST") {

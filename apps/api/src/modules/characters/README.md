@@ -18,6 +18,11 @@ person), aliases, per-scene appearances stamped with `source_version_id`.
 ## Relevant engines
 `engines/character/characterCandidateExtractionEngine` (evidence + confidence,
 SRS §6.1) and `characterIdentityResolutionEngine` (alias/merge-aware matching, §6.2).
+`relationshipMapEngine` 1.0.0 — the workspace's `relationship_map`: characters who share scenes (approved script appearances),
+saved relationships, and relationships the dialogue states, suggested with their line (free; "Add" saves through
+`set_relationship`). `pronunciationEngine` 1.0.0 — a sound-it-out spelling for a name (`pronunciation`, migration 0046,
+saved through `update_character`); suggested in the profile and filled by the whole-cast fill when empty. Audio Studio's
+voice generation speaks names this way (`sayNames`); the script is never changed.
 
 ## API endpoints
 - `GET  /api/projects/:id/characters` — characters, aliases, appearances, sync state (never/current/stale, from MOS job records), candidates needing confirmation

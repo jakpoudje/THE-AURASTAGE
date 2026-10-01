@@ -8,7 +8,7 @@
 //    stale / review_required with a reason; nothing is deleted.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ProviderId, ProviderStatus } from "@aurastage/contracts";
-import { promptCompiler, promptCompilerEngine } from "@aurastage/engines";
+import { promptCompiler, promptCompilerEngine, propContinuityEngine } from "@aurastage/engines";
 import { getAdapter, providerStatuses } from "../../providers";
 import { mediaConfigured, signedMediaUrl } from "../../storage/media";
 // Storyboard owns plan review state; we ask it to refresh (it refreshes Scene DNA first).
@@ -166,12 +166,16 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
     return id ? ageStates.find((a) => a.id === id && follow(a.character_id) === cid) ?? null : null;
   };
   // Locations & Props for this scene, and finished reference images (consistency from the first frame to the last).
-  const [worldItems, appearances, worldRefs, charRefs] = await Promise.all([
+  const [worldItems, appearances, worldRefs, charRefs, propApps] = await Promise.all([
     repo.listWorldItems(db, projectId), repo.listSceneAppearances(db, scene.id), repo.listWorldRefs(db, projectId), repo.listCharacterRefs(db, projectId),
+    repo.listPropAppearances(db, projectId),
   ]);
   const here = (type: string) => new Set(appearances.filter((a) => a.object_type === type).map((a) => a.object_id as string));
   const loc = worldItems.locations.find((l) => here("location").has(l.id) && !l.archived_at) ?? null;
   const props = worldItems.props.filter((x) => here("prop").has(x.id) && !x.archived_at);
+  // Each prop's state in this scene, from the script's continuity (Locations & Props lines): "Laptop — broken".
+  const continuity = propContinuityEngine({ props: props.map((x) => ({ id: x.id as string, name: String(x.name), appearances: propApps.filter((a) => a.object_id === x.id).map((a) => ({ scene_number: Number(a.scene_number), evidence: String(a.evidence ?? "").slice(0, 4000) })) })) });
+  const propState = new Map((continuity.set_dressing.find((d) => d.scene_number === Number(scene.number))?.items ?? []).map((it) => [it.prop_id, it.state]));
   const tod = String(scene.time_of_day ?? "").toUpperCase();
   const pickRef = (type: string, id: string, prefer: string[]) => {
     const mine = worldRefs.filter((r) => r.object_type === type && r.object_id === id && r.asset_id);
@@ -224,7 +228,7 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
     }),
     dialogue: lines.filter((l) => (shot.dialogue_line_ids ?? []).includes(l.id)).map((l) => ({ id: l.id, speaker: l.speaker_name, text: l.text, emotion: l.emotion ?? null })),
     location: loc ? { id: loc.id, name: loc.name, description: loc.description ?? "", revision: Number(loc.revision) } : null,
-    props: props.map((x) => ({ id: x.id, name: x.name, description: x.description ?? "", category: x.category ?? "prop", revision: Number(x.revision) })),
+    props: props.map((x) => ({ id: x.id, name: x.name, description: x.description ?? "", category: x.category ?? "prop", revision: Number(x.revision), state: propState.get(x.id) ?? null })),
     references,
     aspect_ratio,
     provenance: {

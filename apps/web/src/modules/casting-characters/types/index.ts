@@ -20,5 +20,13 @@ export interface CastingWorkspace {
   /** How each character might speak, suggested from the story (never from a name), by character id. */
   accent_suggestions?: Record<string, StoryAccentOutput>;
   /** Characters that look like the same person, with why and which record to keep. */
+  /** Who shares scenes, saved relationships and what the dialogue states (built-in, free). */
+  relationship_map?: RelationshipMap;
   duplicates?: { keep_id: string; merge_id: string; keep_name: string; merge_name: string; reason: string; confidence: "high" | "medium" }[];
+}
+
+export interface RelationshipMap {
+  nodes: { id: string; name: string; scenes: number }[];
+  edges: { a: string; b: string; shared_scenes: number; relationship: string | null; suggestion: { relationship: string; evidence: string } | null }[];
+  engine_version: string;
 }

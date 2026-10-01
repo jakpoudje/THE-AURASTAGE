@@ -41,6 +41,7 @@ const TABS: { key: Tab | string; label: string; soon?: boolean }[] = [
   { key: "names", label: "Names & Merges" },
 ];
 const ROLES: CharacterRole[] = ["lead", "supporting", "minor", "extra"];
+import { pronunciationEngine } from "@aurastage/engines";
 import { PROFILE_FIELDS, STORY_FIELDS, type ProfileField as Field } from "../state/completeness";
 export const LABELS: Record<Field, string> = {
   name: "Name", age: "Age", gender: "Gender", nationality: "Nationality", accent: "Accent", languages: "Languages", occupation: "Occupation", description: "Description",
@@ -108,15 +109,20 @@ export function CharacterProfile({
   }, [character]);
   const [form, setForm] = useState(initial);
   const [role, setRole] = useState(character.role);
+  const [pron, setPron] = useState(character.pronunciation ?? "");
+  // Pronunciation guide (free, built-in): a sound-it-out spelling the voices read instead of the written name.
+  const pronSug = pronunciationEngine({ name: (form.name.trim() || character.name).slice(0, 200), languages: form.languages.trim().slice(0, 200) || null, accent: form.accent.trim().slice(0, 120) || null });
   const [newAlias, setNewAlias] = useState("");
   const [mergeFrom, setMergeFrom] = useState("");
 
   const changed = (Object.keys(form) as Field[]).filter((k) => form[k].trim() !== initial[k].trim());
-  const dirty = changed.length > 0 || role !== character.role;
+  const pronChanged = pron.trim() !== (character.pronunciation ?? "").trim();
+  const dirty = changed.length > 0 || role !== character.role || pronChanged;
   const patchOf = () => {
     const patch: Record<string, unknown> = {};
     for (const k of changed) patch[k] = k === "name" ? form[k].trim() : form[k].trim() || null;
     if (role !== character.role) patch.role = role;
+    if (pronChanged) patch.pronunciation = pron.trim() || null;
     return patch as UpdateCharacterInput;
   };
   const save = () => onSave(patchOf());
@@ -243,6 +249,19 @@ export function CharacterProfile({
                 {(accent?.alternatives.length ?? 0) > 0 && <p className="mt-1 text-white/40">Also possible: {accent!.alternatives.map((a) => a.accent).join(" · ")}</p>}
               </div>
             )}
+            <div data-testid="pronunciation" className="space-y-1">
+              <label className="block">
+                <span className="mb-1 block text-xs text-white/50">Pronunciation — how the name is said (the voices read this)</span>
+                <input value={pron} onChange={(e) => setPron(e.target.value)} maxLength={200} placeholder={pronSug.pronunciation ?? "As written"} className={input} />
+              </label>
+              {pronSug.pronunciation && pron.trim() !== pronSug.pronunciation && (
+                <p className="text-xs text-white/40">
+                  Suggested (free): <span className="text-white/80">{pronSug.pronunciation}</span>{" "}
+                  <button type="button" onClick={() => setPron(pronSug.pronunciation!)} className="rounded border border-aura-gold/60 px-2 py-0.5 text-aura-gold">Use this</button>{" "}
+                  {pronSug.why}
+                </p>
+              )}
+            </div>
             {field("description", true)}
             <div data-testid="profile-completeness" className="flex flex-wrap items-center gap-2 rounded-md border border-aura-border p-3 text-xs">
               {empty.length === 0 ? <span className="text-emerald-300">Every field is filled in.</span> : (

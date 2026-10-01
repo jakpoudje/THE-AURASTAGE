@@ -152,6 +152,21 @@ describe("Casting routes", () => {
     expect((await (await appWith(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/characters` })).json().duplicates).toEqual([]);
   });
 
+  it("item 12: the relationship map links characters who share scenes and suggests what the dialogue states, with the line (free)", async () => {
+    const AMARA = "66666666-6666-4666-8666-666666666666", S1 = "77777777-7777-4777-8777-777777777776", S2 = "77777777-7777-4777-8777-777777777777";
+    rows.script_versions[0].elements = screenplayFormatEngine({ source_text: `INT. NEWSROOM - MORNING\n\nTUNDE OKAFOR (35) reviews documents.\n\nTUNDE\nSomeone has to tell the truth.\n\nEXT. HARBOUR - DAWN\n\nAMARA and TUNDE wait.\n\nAMARA\nTunde, my brother, you came.\n` }).elements;
+    rows.characters = [character(), character({ id: AMARA, name: "Amara Bello" })];
+    rows.character_aliases = [{ id: "88888888-8888-4888-8888-888888888881", project_id: P, character_id: TUNDE, alias: "TUNDE", normalized: "TUNDE", source: "script" }, { id: "88888888-8888-4888-8888-888888888882", project_id: P, character_id: AMARA, alias: "AMARA", normalized: "AMARA", source: "script" }];
+    rows.character_appearances = [
+      { id: "88888888-8888-4888-8888-888888888883", project_id: P, character_id: TUNDE, scene_id: S1, scene_number: 1, source_version_id: V, speaking: true, voice_only: false, line_count: 1, confidence: 1, evidence: [] },
+      { id: "88888888-8888-4888-8888-888888888884", project_id: P, character_id: TUNDE, scene_id: S2, scene_number: 2, source_version_id: V, speaking: true, voice_only: false, line_count: 1, confidence: 1, evidence: [] }, { id: "88888888-8888-4888-8888-888888888885", project_id: P, character_id: AMARA, scene_id: S2, scene_number: 2, source_version_id: V, speaking: true, voice_only: false, line_count: 1, confidence: 1, evidence: [] },
+    ];
+    const ws = (await (await appWith(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/characters` })).json();
+    expect(ws.relationship_map.nodes.find((n: Row) => n.id === TUNDE).scenes).toBe(2);
+    expect(ws.relationship_map.edges).toEqual([expect.objectContaining({ shared_scenes: 1, relationship: null, suggestion: expect.objectContaining({ relationship: "Siblings" }) })]);
+    expect(ws.relationship_map.edges[0].suggestion.evidence).toContain("Scene 2: Amara Bello to Tunde Okafor");
+  });
+
   it("one click fills only EMPTY profile fields for the whole cast from the script and story (owner request 2026-09-30); written fields are never changed", async () => {
     const AMARA = "66666666-6666-4666-8666-666666666666";
     rows.projects = [{ id: P, org_id: ORG, setting: "Lagos, Nigeria", time_period: "Present day", logline: null }];

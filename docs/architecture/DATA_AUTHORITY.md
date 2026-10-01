@@ -10,7 +10,7 @@ character, scene, shot or technical truth.
 | Project | Project Settings + Scriptwriter-owned story fields | Production root |
 | ProjectSettings / ProjectSettingsVersion | Project Settings | Versioned production-wide choices (loudness standard, frame shape, look, providers, paid-take cap, required deliverables, credits); migration 0023 |
 | Script / Act / Sequence / Scene | Scriptwriter | Versioned screenplay + narrative hierarchy |
-| Character | Casting | Canonical identity |
+| Character | Casting | Canonical identity, including how the name is said (`pronunciation`, migration 0046 — the voices read it) |
 | CharacterState | Casting + Scene DNA resolution | Story-time look/condition/knowledge/emotion |
 | DialogueLine | Dialogue Intelligence | Approved spoken/written line + semantics |
 | Location / Prop | Locations & Props (`apps/api/src/modules/world`) | Canonical place/set/prop, found in the approved script (migration 0028) |

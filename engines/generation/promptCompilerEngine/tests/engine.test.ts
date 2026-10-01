@@ -66,7 +66,7 @@ describe("promptCompilerEngine", () => {
   it("applies the Project Settings look and records its settings version (1.1.0)", () => {
     const withLook = { ...base(), project: { ...base().project, look: "Desaturated teal-and-amber, handheld" }, provenance: { ...base().provenance, settings_version: 3 } };
     const { package: p, engine_version } = promptCompilerEngine(withLook);
-    expect(engine_version).toBe("1.4.0");
+    expect(engine_version).toBe("1.5.0");
     expect(p.prompt).toContain("Look: Desaturated teal-and-amber, handheld.");
     expect(p.provenance.settings_version).toBe(3);
     expect(p.checks.find((c) => c.id === "style")).toMatchObject({ ok: true, evidence: expect.stringContaining("settings v3") });
@@ -94,6 +94,11 @@ describe("promptCompilerEngine", () => {
     const c = Object.fromEntries(p.checks.map((x) => [x.id, x]));
     expect(c.location_described.ok).toBe(true);
     expect(c.references).toMatchObject({ ok: true, evidence: "Amara Bello · front · MS, Lagos Harbour · wide · NIGHT" });
+  });
+  it("1.5.0: a prop's state in this scene (continuity) is in the prompt", () => {
+    const PR = "88888888-8888-4888-8888-888888888888";
+    const { package: p } = promptCompilerEngine({ ...base(), props: [{ id: PR, name: "Laptop", description: "Silver, stickered", category: "prop", revision: 1, state: "broken" }] });
+    expect(p.prompt).toContain("Props in the scene: Laptop (Silver, stickered) — broken.");
   });
   it("1.2.0: without Locations & Props records it still compiles and says what's missing", () => {
     const { package: p } = promptCompilerEngine(base());

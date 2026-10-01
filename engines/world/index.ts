@@ -4,3 +4,5 @@ export * as worldLook from "./worldLookEngine";
 export { worldLookEngine } from "./worldLookEngine";
 export * as worldDescribe from "./worldDescribeEngine";
 export { worldDescribeEngine } from "./worldDescribeEngine";
+export * as propContinuity from "./propContinuityEngine";
+export { propContinuityEngine } from "./propContinuityEngine";

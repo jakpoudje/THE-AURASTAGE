@@ -11,6 +11,8 @@ import {
   sceneBoundaryEngine,
   storyAccentEngine,
   characterDuplicateEngine,
+  relationshipMapEngine,
+  pronunciationEngine,
   type Resolution,
 } from "@aurastage/engines";
 import { z } from "zod";
@@ -106,6 +108,10 @@ export async function applySuggestedProfiles(db: SupabaseClient, projectId: stri
     const sug = accents[c.id as string]?.suggestion;
     if (sug && blank(c.accent)) patch.accent = sug.accent.slice(0, 120);
     if (sug && blank(c.languages) && sug.languages.length) patch.languages = sug.languages.join(", ").slice(0, 200);
+    if (blank(c.pronunciation)) {
+      const pr = pronunciationEngine({ name: String(c.name).slice(0, 200), languages: (patch.languages ?? c.languages ?? null) as string | null, accent: (patch.accent ?? c.accent ?? null) as string | null }).pronunciation;
+      if (pr) patch.pronunciation = pr;
+    }
     if (!Object.keys(patch).length) continue;
     await editCharacter(db, c.id as string, patch);
     updated.push({ id: c.id as string, name: c.name as string, fields: Object.keys(patch) });
@@ -136,6 +142,32 @@ export async function profileEvidence(db: SupabaseClient, projectId: string) {
       return [c.id as string, { introduction: (cand?.introduction as string | null) ?? null, age: (cand?.age as string | null) ?? null, accent: accents[c.id as string]?.suggestion ?? null }];
     })) as Record<string, { introduction: string | null; age: string | null; accent: { accent: string; languages: string[]; evidence: string[] } | null }>,
   };
+}
+
+
+/**
+ * The relationship map (BUILD_PLAN §8 item 12): who shares scenes (the approved script's appearances) and relationships
+ * the dialogue states, as suggestions with their line. Free, built-in; a person adds one with "Add" (setRelationship).
+ */
+function relationshipMap(chars: Record<string, unknown>[], aliases: Record<string, unknown>[], apps: Record<string, unknown>[], relationships: Record<string, unknown>[], elements: { type: string; text: string; speaker?: string }[]) {
+  const active = chars.filter((c) => !c.merged_into);
+  const byAlias = new Map<string, string>();
+  for (const a of aliases) byAlias.set(a.normalized as string, a.character_id as string);
+  for (const c of active) byAlias.set(normalizeCharacterName(c.name as string), c.id as string);
+  const sceneId = new Map(apps.map((a) => [Number(a.scene_number), a.scene_id as string]));
+  const lines: { scene_id: string; scene_number: number; speaker_id: string | null; text: string }[] = [];
+  let scene = 0, speaker: string | null = null;
+  for (const e of elements) {
+    if (e.type === "scene_heading") { scene++; speaker = null; continue; }
+    if (e.type === "character") { speaker = e.speaker ? byAlias.get(normalizeCharacterName(e.speaker)) ?? null : null; continue; }
+    if (e.type === "dialogue" && sceneId.has(scene)) lines.push({ scene_id: sceneId.get(scene)!, scene_number: scene, speaker_id: speaker, text: e.text.slice(0, 4000) });
+  }
+  return relationshipMapEngine({
+    characters: active.map((c) => ({ id: c.id as string, name: String(c.name).slice(0, 200) })),
+    appearances: apps.map((a) => ({ character_id: a.character_id as string, scene_id: a.scene_id as string })),
+    lines: lines.slice(0, 50000),
+    relationships: relationships.map((r) => ({ character_a: r.character_a as string, character_b: r.character_b as string, relationship: r.relationship as string })),
+  });
 }
 
 export async function getCastingWorkspace(db: SupabaseClient, projectId: string) {
@@ -171,6 +203,7 @@ export async function getCastingWorkspace(db: SupabaseClient, projectId: string)
     },
     pending,
     accent_suggestions,
+    relationship_map: relationshipMap(chars, aliases, apps, relationships, (resolved?.version.elements ?? []) as { type: string; text: string; speaker?: string }[]),
     // Characters that look like the same person (owner report: "characters named twice") — merge or "not the same".
     duplicates: characterDuplicateEngine({
       characters: chars.filter((c) => !c.merged_into).map((c) => ({

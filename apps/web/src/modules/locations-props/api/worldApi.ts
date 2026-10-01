@@ -12,6 +12,14 @@ export interface WorldItem {
 export interface WorldWorkspace {
   locations: WorldItem[]; props: WorldItem[];
   sync: { state: "no_script" | "never" | "current" | "stale"; synced_at: string | null; summary: Record<string, number> | null };
+  /** Set dressing and prop continuity (propContinuityEngine, free): each prop's state scene by scene, warnings, props per scene. */
+  continuity?: WorldContinuity;
+}
+export interface WorldContinuity {
+  props: { id: string; name: string; states: { scene_number: number; state: string | null; changed_here: boolean; evidence: string }[] }[];
+  warnings: { prop_id: string; scene_number: number; message: string }[];
+  set_dressing: { scene_number: number; items: { prop_id: string; name: string; state: string | null }[] }[];
+  engine_version: string;
 }
 export interface WorldView {
   key: string; view: string; time: string | null; label: string; prompt: string; aspect_ratio: "16:9" | "1:1"; in_default_set: boolean; versions: number;

@@ -38,7 +38,7 @@ export function promptCompilerEngine(raw: unknown): PromptCompilerOutput {
   // The canonical location (described once in Locations & Props) is named and described in every shot of the scene.
   const placeName = location ? location.name : scene.location;
   const place = `${scene.int_ext === "EXT" ? "Exterior" : scene.int_ext === "INT" ? "Interior" : "Location"}: ${placeName}${scene.time_of_day ? `, ${scene.time_of_day.toLowerCase()}` : ""}${location && clean(location.description) ? ` — ${clean(location.description)}` : ""}`;
-  const propLine = props.map((p) => (clean(p.description) ? `${p.name} (${clean(p.description)})` : p.name)).join("; ");
+  const propLine = props.map((p) => `${clean(p.description) ? `${p.name} (${clean(p.description)})` : p.name}${p.state ? ` — ${p.state}` : ""}`).join("; ");
   const inFrameIds = new Set(inFrame.map((c) => c.id));
   // Only references that belong to this shot: characters in frame, this scene's location and props.
   const refs = references.filter((r) => (r.kind === "character" ? inFrameIds.has(r.object_id) : r.kind === "location" ? r.object_id === location?.id : props.some((p) => p.id === r.object_id)));

@@ -8,7 +8,7 @@ const OUT = process.env.E2E_OUT || require("os").tmpdir();
 
 const SCRIPT = `INT. TUNDE'S FLAT - KITCHEN - NIGHT
 
-TUNDE OKAFOR (35) paces. He grabs a battered NOTEBOOK and his phone.
+TUNDE OKAFOR (35) paces. He tears a page from a battered NOTEBOOK, then grabs his phone.
 
 TUNDE
 They buried it.
@@ -155,6 +155,17 @@ async function api(method, path, body) {
     const empty = [...w1.locations, ...w1.props].filter((x) => !x.archived && !x.description);
     if (empty.length) throw new Error("still empty: " + empty.map((x) => x.name).join(", "));
     if (written && w1.locations.find((l) => l.id === written.id).description !== written.description) throw new Error("a written description was replaced");
+  });
+  await step("item 12: set dressing and prop continuity (free) — the notebook torn in scene 1 is flagged in scene 3; each scene's props with their state; reload: kept", async () => {
+    await reload();
+    const panel = page.getByRole("region", { name: "Set dressing and continuity" });
+    await panel.getByText(/1 to check/).waitFor();
+    await panel.getByRole("button", { name: /Set dressing & prop continuity/ }).click();
+    await panel.getByRole("list", { name: "Continuity to check" }).getByText("Notebook was torn in scene 1 — keep it torn in scene 3, or show it repaired or replaced.").waitFor();
+    const row1 = panel.locator("tr", { hasText: "Scene 1" });
+    if (!/Notebook \(torn\)/.test(await row1.innerText()) || /Phone \(/.test(await row1.innerText())) throw new Error("scene 1 dressing: " + (await row1.innerText()));
+    await panel.getByRole("button", { name: "Open prop" }).click();
+    await page.getByRole("list", { name: "Scenes" }).getByText("torn").first().waitFor();
   });
   await step("a script change flags what's gone (kept, with its views) instead of deleting it", async () => {
     const v2 = await api("POST", `/api/projects/${P}/script/versions`, { source_text: SCRIPT.replace(/EXT\. LAGOS HARBOUR[\s\S]*?You came\.\n/, ""), base_version_id: v.id });

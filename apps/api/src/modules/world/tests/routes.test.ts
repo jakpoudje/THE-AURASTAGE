@@ -65,6 +65,15 @@ describe("Locations & Props API", () => {
     expect(r.props[0]).toMatchObject({ name: "Danfo", category: "vehicle", missing_from_script: true });
     expect(r.sync.state).toBe("never");
   });
+  it("item 12: set dressing and prop continuity — a crashed danfo stays crashed in later scenes, with a warning (free)", async () => {
+    const r = (await (await app(fakeDb(base({ world_appearances: [
+      { project_id: P, object_type: "prop", object_id: PR, scene_id: "sc1", scene_number: 1, line: 3, evidence: "A DANFO crashes into the gate and is crushed.", source: "script" },
+      { project_id: P, object_type: "prop", object_id: PR, scene_id: "sc4", scene_number: 4, line: 20, evidence: "The DANFO waits by the road.", source: "script" },
+    ] })))).inject({ method: "GET", url: `/api/projects/${P}/world` })).json();
+    expect(r.continuity.props[0].states.map((x: Row) => x.state)).toEqual(["broken", "broken"]);
+    expect(r.continuity.warnings[0]).toMatchObject({ prop_id: PR, scene_number: 4, message: expect.stringContaining("Danfo was broken in scene 1") });
+    expect(r.continuity.set_dressing).toEqual([{ scene_number: 1, items: [{ prop_id: PR, name: "Danfo", state: "broken" }] }, { scene_number: 4, items: [{ prop_id: PR, name: "Danfo", state: "broken" }] }]);
+  });
   it("location look: views for each time of day; generate asks for the recommended set with the built-in sketch", async () => {
     const f = fakeDb(base());
     const a = await app(f);

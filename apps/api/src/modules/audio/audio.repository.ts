@@ -50,7 +50,7 @@ export async function scriptElementLines(db: SupabaseClient, versionId: string):
   if (error) throw error;
   return new Map(((data?.elements ?? []) as { index: number; line: number }[]).map((e) => [e.index, e.line]));
 }
-export const listCharacters = (db: SupabaseClient, p: string) => rows(db.from("characters").select("id, name").eq("project_id", p));
+export const listCharacters = (db: SupabaseClient, p: string) => rows(db.from("characters").select("id, name, pronunciation").eq("project_id", p));
 export const listSessions = (db: SupabaseClient, p: string) => rows(db.from("audio_sessions").select("*").eq("project_id", p));
 export const listTracks = (db: SupabaseClient, p: string) => rows(db.from("audio_tracks").select("*").eq("project_id", p).order("ordinal", { ascending: true }));
 export const listClips = (db: SupabaseClient, p: string) => rows(db.from("audio_clips").select("*").eq("project_id", p).order("start_seconds", { ascending: true }));

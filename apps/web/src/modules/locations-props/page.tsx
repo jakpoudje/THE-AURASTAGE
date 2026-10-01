@@ -6,6 +6,7 @@
 // apps/api/src/modules/world (migration 0028). Script facts refresh on "Find in the script"; names and descriptions are
 // the team's and are never overwritten; anything no longer in the script is flagged, never deleted.
 
+import { ContinuityPanel } from "./components/ContinuityPanel";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -118,6 +119,10 @@ export default function LocationsPropsPage() {
         {notice && <p role="status" className="rounded-md border border-emerald-400/40 px-4 py-2 text-sm text-emerald-300">{notice}</p>}
         {error && <p role="alert" className="rounded-md border border-red-400/40 px-4 py-2 text-sm text-red-300">{error}</p>}
 
+        {ws.continuity && ws.continuity.set_dressing.length > 0 && (
+          <ContinuityPanel c={ws.continuity} onOpen={(pid) => { setTab("prop"); setSelId(pid); }} />
+        )}
+
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
           <aside className="rounded-xl border border-aura-border bg-aura-panel">
             <div role="tablist" aria-label="Kind" className="flex border-b border-aura-border">
@@ -220,9 +225,13 @@ export default function LocationsPropsPage() {
                 <div className="mb-1 text-[11px] uppercase tracking-wider text-white/50">Where it appears</div>
                 {sel.scenes.length === 0 ? <p className="text-sm text-white/40">Not linked to a scene yet.</p> : (
                   <ul aria-label="Scenes" className="space-y-1 text-sm">
-                    {sel.scenes.map((s) => (
-                      <li key={s.scene_id} className="flex gap-3"><span className="w-20 shrink-0 text-white/50">Scene {s.scene_number}</span><span className="text-white/75">“{s.evidence}”{s.line ? <span className="text-white/35"> — line {s.line}</span> : null}</span></li>
-                    ))}
+                    {sel.scenes.map((s) => {
+                      const st = sel.kind === "prop" ? ws.continuity?.props.find((p) => p.id === sel.id)?.states.find((x) => x.scene_number === s.scene_number)?.state ?? null : null;
+                      return (
+                        <li key={s.scene_id} className="flex gap-3"><span className="w-20 shrink-0 text-white/50">Scene {s.scene_number}</span><span className="text-white/75">“{s.evidence}”{s.line ? <span className="text-white/35"> — line {s.line}</span> : null}</span>
+                          {st && <span className="ml-auto shrink-0 rounded bg-amber-500/15 px-2 text-xs text-amber-200">{st}</span>}</li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>

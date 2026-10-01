@@ -3,7 +3,7 @@
 // Generated files land in the Assets Library linked to the scene; using one on a cue is the person's choice (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { proceduralAudio, voiceCasting } from "@aurastage/engines";
+import { proceduralAudio, sayNames, voiceCasting } from "@aurastage/engines";
 import { audioBackendsFor, audioStatuses, getAudioAdapter, type AudioKind } from "../../providers";
 import { assertProjectAccess, assertSceneInProject } from "./audio.permissions";
 import * as repo from "./audio.repository";
@@ -75,8 +75,10 @@ export async function generateSound(db: SupabaseClient, projectId: string, scene
     const voice = voiceCasting.voiceCastingEngine({ character: who, line: { emotion: ls.line.emotion, intensity: ls.line.intensity } });
     // The base voice (profile only) picks the speaker, so a character sounds like the same person in every line.
     const voice_base = voiceCasting.voiceCastingEngine({ character: who });
-    description = String(ls.line.text).slice(0, 500);
-    params = { voice, voice_base, character_name: who.name, line_id: lineId, character_id: ls.line.character_id ?? null };
+    // Pronunciation guide (Casting): names in the line are spoken as their sound-it-out spelling; the script is unchanged.
+    const names = (await repo.listCharacters(db, projectId)).map((c) => ({ name: String(c.name), pronunciation: (c.pronunciation as string | null) ?? null }));
+    description = sayNames(String(ls.line.text), names).slice(0, 500);
+    params = { voice, voice_base, character_name: who.name, line_id: lineId, character_id: ls.line.character_id ?? null, ...(description !== String(ls.line.text).slice(0, 500) ? { script_text: String(ls.line.text).slice(0, 500) } : {}) };
     engineVersion = voice.engine_version;
   } else if (!description) throw new AudioValidationError([], "Describe the sound");
   const g = await repo.requestGeneration(db, {

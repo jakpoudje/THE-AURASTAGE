@@ -6,7 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { ScreenplayElementSchema } from "@aurastage/contracts";
-import { sceneBoundaryEngine, worldExtraction, worldLook } from "@aurastage/engines";
+import { propContinuityEngine, sceneBoundaryEngine, worldExtraction, worldLook } from "@aurastage/engines";
 import { stillBackends, stillBackendStatuses } from "../../providers";
 import { readProjectSettings } from "../settings/settings.read";
 import { mapDbError, WorldNotFoundError, WorldNotReadyError, WorldValidationError } from "./world.errors";
@@ -90,7 +90,15 @@ export async function getWorldWorkspace(db: SupabaseClient, projectId: string) {
   }
   const approved = script[0]?.approved_version_id ?? null;
   const synced = sync[0]?.input_snapshot?.script_version_id ?? null;
+  // Set dressing and prop continuity (free, built-in): each prop's state scene by scene, and where a later scene may forget it.
+  const continuity = propContinuityEngine({
+    props: props.filter((r) => !r.archived_at).map((r) => ({
+      id: r.id as string, name: String(r.name),
+      appearances: apps.filter((a) => a.object_type === "prop" && a.object_id === r.id).map((a) => ({ scene_number: Number(a.scene_number), evidence: String(a.evidence ?? "").slice(0, 4000) })),
+    })),
+  });
   return {
+    continuity,
     locations: locs.map((r) => dto("location", r, apps, thumbs)),
     props: props.map((r) => dto("prop", r, apps, thumbs)),
     sync: {
