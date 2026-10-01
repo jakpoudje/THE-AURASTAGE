@@ -55,6 +55,8 @@ export interface MusicSuggestion {
   placement: string;
   level_db: number;
   why: string[];
+  /** A soft ambient version of the style for any scene — even one that needs no score — free with the built-in generator (1.1.0). */
+  ambient: { description: string; level_db: number; why: string };
   engine_version: string;
 }
 
@@ -99,5 +101,11 @@ export function musicSuggestionEngine(raw: MusicSuggestionInput): MusicSuggestio
   const placement = !needed ? "No score — dialogue and sound carry the scene" : talky ? "Under the dialogue, low; swell between lines" : first ? "From the first frame; settle under the first line" : last ? "Build to the end of the scene and into the credits" : "Across the scene at a bed level";
   const level_db = !needed ? -60 : talky ? -18 : -12;
   const description = `${style.name} (${style.words}) in ${style.key}, ${style.bpm} BPM — ${style.feel}${first ? "; main theme" : ""}`;
-  return { needed, style: { id: style.id, name: style.name }, key: style.key, tempo_bpm: style.bpm, description, instruments, placement, level_db, why, engine_version: ENGINE_VERSION };
+  // The ambient bed keeps the style's mood words (so the generator picks the same harmony) and adds "ambient".
+  const ambient = {
+    description: `Ambient bed — ${style.words}: ${style.name.toLowerCase()} in ${style.key}, slowed, no pulse`,
+    level_db: talky ? -28 : -22,
+    why: talky ? "Very low under the dialogue: a mood, not a melody" : "A soft bed that holds the scene's mood without a tune",
+  };
+  return { needed, style: { id: style.id, name: style.name }, key: style.key, tempo_bpm: style.bpm, description, instruments, placement, level_db, why, ambient, engine_version: ENGINE_VERSION };
 }

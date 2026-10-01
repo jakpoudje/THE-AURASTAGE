@@ -42,3 +42,25 @@ describe("proceduralAudioEngine 1.1.0: a main theme for titles and credits", () 
     expect(plain.layers[0].name).toBe("tense minor pulse");
   });
 });
+
+describe("proceduralAudioEngine 1.2.0: ambient beds (owner request 2026-10-01)", () => {
+  const sr = 44100;
+  it("an ambient cue keeps the mood's harmony but plays as a slow, soft bed — no pulse, swelling in", () => {
+    const bed = proceduralAudioEngine({ kind: "score", description: "Ambient bed — tense, suspense", duration_seconds: 12, seed: 3, sample_rate: sr });
+    expect(bed.layers[0].name).toBe("tense minor pulse — ambient bed");
+    // Swells in: the first 50 ms are far quieter than the middle (a pulse score starts at full level).
+    const L = bed.channels[0];
+    const head = rms(L.slice(0, sr * 0.05)), mid = rms(L.slice(sr * 5, sr * 6));
+    expect(head).toBeLessThan(mid * 0.2);
+    // No pulse: short-window energy barely changes across a bar (a pulse score jumps at every eighth note).
+    const win = Math.floor(sr * 0.05), energies: number[] = [];
+    for (let i = sr * 4; i < sr * 6; i += win) energies.push(rms(L.slice(i, i + win)));
+    const spread = Math.max(...energies) / Math.min(...energies);
+    expect(spread).toBeLessThan(1.6);
+  });
+  it("is deterministic and peaks safely like every generated file", () => {
+    const a = proceduralAudioEngine({ kind: "score", description: "Ambient bed — calm", duration_seconds: 4, seed: 1, sample_rate: sr });
+    expect(a.peak_db).toBe(-3);
+    expect(Array.from(a.channels[1].slice(0, 2000))).toEqual(Array.from(proceduralAudioEngine({ kind: "score", description: "Ambient bed — calm", duration_seconds: 4, seed: 1, sample_rate: sr }).channels[1].slice(0, 2000)));
+  });
+});

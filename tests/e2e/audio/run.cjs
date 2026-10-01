@@ -290,22 +290,33 @@ async function api(method, p, body) {
     await tl.getByRole("group", { name: "Track Radio news" }).locator("button[aria-pressed]").first().click();
     await page.getByRole("button", { name: "+ Add clip on Radio news at playhead" }).click();
     await page.getByText("Clip added.").waitFor();
-    await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip" }).waitFor();
+    await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip", exact: true }).waitFor();
+    // Owner request 2026-10-01: split a clip at the playhead (the second half continues the same recording).
+    await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip", exact: true }).click();
+    const split = page.getByRole("button", { name: "✂ Split selected clip at playhead" });
+    if (!(await split.isDisabled())) throw new Error("split must need the playhead inside the clip");
+    const pps = Number(await page.getByLabel("Zoom").inputValue());
+    const startX = await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip", exact: true }).evaluate((el) => el.offsetLeft);
+    await page.getByLabel("Ruler").click({ position: { x: startX + pps, y: 4 } });
+    await split.click();
+    await page.getByText(/^Split “New clip” at \d+\.\d\ds\./).waitFor();
+    await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip (2)" }).waitFor();
+    await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip (2)" }).click();
     // Re-spotting keeps both tracks and the clip placed by hand.
     await page.getByRole("button", { name: /Re-spot from upstream/ }).click();
     await page.getByText(/Spotted \d+ cues/).waitFor();
-    await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip" }).waitFor();
+    await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip", exact: true }).waitFor();
     await tl.getByRole("group", { name: "Track Market walla" }).waitFor();
     // A track with clips can't be removed; an empty one can. Spotted tracks have no remove button.
     await tl.getByRole("button", { name: "Remove Radio news" }).click();
-    await page.getByText(/still holds 1 clip/).waitFor();
+    await page.getByText(/still holds 2 clip/).waitFor();
     await tl.getByRole("button", { name: "Remove Market walla" }).click();
     await page.getByText("Track removed.").waitFor();
     if (await tl.getByRole("group", { name: "Track Market walla" }).count()) throw new Error("walla track still there");
     if (await tl.getByRole("button", { name: /^Remove (DX|BG|MX)/ }).count()) throw new Error("spotted tracks must not be removable");
     await page.screenshot({ path: `${OUT}/audio-tracks.png` });
     await page.reload();
-    await page.getByLabel("Timeline").getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip" }).waitFor();
+    await page.getByLabel("Timeline").getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip", exact: true }).waitFor();
   });
   await step("Ask AuraStage in Audio Studio: (un)mute the music in the scene; only the Score track changes, at once; reload: kept; undo: back", async () => {
     const ws = await api("GET", `/api/projects/${P}/audio`);
@@ -332,6 +343,16 @@ async function api(method, p, body) {
     await ask.getByTestId("proposal-status").getByText("Undone").waitFor();
     await waitFor(start, "undo didn't restore the Score track");
     await ask.getByRole("button", { name: "Close" }).click();
+  });
+  await step("owner request 2026-10-01: a free ambient bed in the scene's mood — added as a clip across the scene, made by the built-in generator; reload: kept", async () => {
+    await reload();
+    const bed = page.getByRole("region", { name: "Suggested music" }).getByTestId("ambient-bed");
+    await bed.getByText(/^Ambient bed — /).waitFor();
+    await bed.getByRole("button", { name: "Add an ambient bed (free)" }).click();
+    await page.getByText(/^Generating — it will appear here/).waitFor();
+    await page.getByRole("button", { name: "Clip Ambient bed" }).waitFor();
+    await reload();
+    await page.getByRole("button", { name: "Clip Ambient bed" }).waitFor();
   });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();

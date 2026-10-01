@@ -99,6 +99,16 @@ function tone(b: Buf, at: number, secs: number, freq: number, amp: number, pan =
     add(b, at + k, s * (1 - pan), s * pan);
   }
 }
+/** A pad voice that swells in and out (slow attack and release) with a slight detune — for ambient beds (1.2.0). */
+function pad(b: Buf, at: number, secs: number, freq: number, amp: number, pan = 0.5, swell = 1.5) {
+  const len = Math.floor(secs * b.sr), a = Math.max(1, Math.floor(swell * b.sr));
+  for (let k = 0; k < len; k++) {
+    const env = Math.min(1, k / a, (len - k) / a);
+    const t = k / b.sr;
+    const s = amp * env * env * (Math.sin(TAU * freq * t) + 0.6 * Math.sin(TAU * freq * 1.003 * t) + 0.15 * Math.sin(TAU * 2 * freq * t));
+    add(b, at + k, s * (1 - pan), s * pan);
+  }
+}
 function thump(b: Buf, at: number, amp: number, freq = 70, secs = 0.25, noise = 0.3) {
   const len = Math.floor(secs * b.sr), f = lp(1500, b.sr);
   for (let k = 0; k < len; k++) {
@@ -177,7 +187,21 @@ function score(b: Buf, text: string, mood: string[]) {
   // i–VI–III–VII (minor) or I–V–vi–IV (major), in semitones from the root.
   const prog = m.minor ? [[0, 3, 7], [8, 12, 15], [3, 7, 10], [10, 14, 17]] : [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]];
   if (/sevenths/.test(m.name)) prog.forEach((c) => c.push(c[0] + (m.minor ? 10 : 11)));
-  const bar = (60 / m.bpm) * 4, total = b.n / b.sr;
+  const total = b.n / b.sr;
+  // Ambient bed (1.2.0, owner request 2026-10-01): the same harmony, slowed to one chord every two bars, no pulse, a
+  // soft low drone and a high airy shimmer — music that sits under dialogue without asking for attention.
+  if (/\bambient\b/i.test(text)) {
+    const slow = (60 / m.bpm) * 8;
+    for (let t = 0, idx = 0; t < total; t += slow, idx++) {
+      const chord = prog[idx % prog.length];
+      const at = Math.floor(t * b.sr), len = Math.min(slow + 1.5, total - t);
+      chord.forEach((st, j) => pad(b, at, len, m.root * Math.pow(2, st / 12), 0.03, 0.25 + 0.25 * j, Math.min(2.5, len / 3)));
+      pad(b, at, len, m.root * 4 * Math.pow(2, chord[2 % chord.length] / 12), 0.006, idx % 2 ? 0.2 : 0.8, Math.min(3, len / 2));
+    }
+    pad(b, 0, Math.floor(total * b.sr) / b.sr, m.root / 2, 0.025, 0.5, Math.min(4, total / 4));
+    return `${m.name} — ambient bed`;
+  }
+  const bar = (60 / m.bpm) * 4;
   for (let t = 0, idx = 0; t < total; t += bar, idx++) {
     const chord = prog[idx % prog.length];
     const at = Math.floor(t * b.sr), len = Math.min(bar + 0.3, total - t);

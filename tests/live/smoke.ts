@@ -35,11 +35,18 @@ async function api<T = any>(method: string, path: string, body?: unknown, expect
   return apiAs<T>(token, method, path, body, expect);
 }
 async function apiAs<T = any>(tok: string, method: string, path: string, body?: unknown, expect = [200, 201]): Promise<T> {
-  const res = await fetch(API + path, {
+  const send = () => fetch(API + path, {
     method,
     headers: { Authorization: `Bearer ${tok}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  let res = await send();
+  // The API's per-person safety limit (120 changes a minute) answers 429 with Retry-After; wait as a real client
+  // would, unless the check is about the limit itself.
+  for (let i = 0; i < 2 && res.status === 429 && !expect.includes(429); i++) {
+    await Bun.sleep((Number(res.headers.get("Retry-After")) || 10) * 1000 + 250);
+    res = await send();
+  }
   const text = await res.text();
   if (!expect.includes(res.status)) throw new Error(`${method} ${path} -> ${res.status} ${text.slice(0, 300)}`);
   return text ? JSON.parse(text) : (undefined as T);
@@ -436,8 +443,12 @@ await check("audio: place the recording on the dialogue cue; mixer change saved;
 });
 // ---- Completion pass 12b: Assets Library ----
 const PNG_1PX = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
-const rawPost = (path: string, type: string, body: Uint8Array) =>
-  fetch(API + path, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": type }, body });
+const rawPost = async (path: string, type: string, body: Uint8Array) => {
+  const send = () => fetch(API + path, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": type }, body });
+  let res = await send();
+  for (let i = 0; i < 2 && res.status === 429; i++) { await Bun.sleep((Number(res.headers.get("Retry-After")) || 10) * 1000 + 250); res = await send(); }
+  return res;
+};
 await check("assets: the recording is in the library with its real usage (Audio Studio clip)", async () => {
   const lib = await api("GET", `/api/projects/${projectId}/library?category=audio`);
   const a = lib.assets.find((x: any) => x.id === assetId);

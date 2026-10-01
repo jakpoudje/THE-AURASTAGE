@@ -14,7 +14,7 @@ describe("musicSuggestionEngine", () => {
     expect(m.key).toBe("D minor");
     expect(m.why[0]).toContain("Scene DNA mood");
     expect(m.instruments).toContain("talking drum");
-    expect(m.engine_version).toBe("1.0.0");
+    expect(m.engine_version).toBe("1.1.0");
   });
 
   it("falls back to the dialogue's emotions, then the film's tone", () => {
@@ -42,5 +42,16 @@ describe("musicSuggestionEngine", () => {
       const played = JSON.stringify(out.layers).toLowerCase();
       expect(played, s.id).toContain(s.id === "neutral_pad" ? "neutral pad" : s.name.toLowerCase());
     }
+  });
+
+  it("1.1.0: every scene gets a free ambient bed in its mood — even a talky one with no score — and the generator plays it as a bed", () => {
+    const talky = musicSuggestionEngine({ scene: { number: 4, mood: ["tense"], seconds: 40, dialogue_seconds: 38 }, position: { index: 3, total: 8 } });
+    expect(talky.ambient.description).toMatch(/^Ambient bed — tense, suspense/);
+    expect(talky.ambient.level_db).toBe(-28);
+    const quiet = musicSuggestionEngine({ scene: { number: 4, seconds: 40, dialogue_seconds: 38 }, position: { index: 3, total: 8 } });
+    expect(quiet.needed).toBe(false);
+    expect(quiet.ambient.description).toMatch(/^Ambient bed — calm/);
+    const played = proceduralAudioEngine({ kind: "score", description: talky.ambient.description, duration_seconds: 3, sample_rate: 44100 });
+    expect(played.layers[0].name).toBe("tense minor pulse — ambient bed");
   });
 });

@@ -191,6 +191,14 @@ export default function AudioStudioPage() {
                       >
                         + Add clip on {clipTrack?.name ?? "a track"} at playhead
                       </button>
+                      <button
+                        onClick={() => clip && d.splitClip(s.session!.id, clip, pos)}
+                        disabled={d.busy !== null || !clip || pos <= clip.start_seconds + 0.05 || pos >= clip.start_seconds + clip.duration_seconds - 0.05}
+                        title={clip ? "Put the playhead inside the selected clip" : "Select a clip first"}
+                        className="rounded border border-aura-border px-3 py-1.5 text-xs disabled:opacity-40"
+                      >
+                        ✂ Split selected clip at playhead
+                      </button>
                     </>
                   )}
                   {!s.plan?.usable && <span className="text-xs text-aura-gold">Approve this scene's shot plan again in Storyboard to (re-)spot.</span>}
@@ -252,7 +260,19 @@ export default function AudioStudioPage() {
                 {s.session && (
                   <DeliveryPanel s={s} target={ws.target} busy={d.busy} onMeasure={() => d.measure(s)} onApprove={() => d.approve(s.scene.id)} onExport={(bus) => d.exportStem(s, bus)} />
                 )}
-                {s.music_suggestion && <MusicSuggestionPanel m={s.music_suggestion} spotted={!!s.session} />}
+                {s.music_suggestion && (
+                  <MusicSuggestionPanel m={s.music_suggestion} spotted={!!s.session} busy={d.busy !== null}
+                    onAddAmbient={async () => {
+                      const amb = s.music_suggestion?.ambient;
+                      const track = s.tracks.find((t) => t.family === "SCORE") ?? s.tracks.find((t) => t.family === "MX");
+                      if (!amb || !s.session || !track || seconds <= 0) return;
+                      // A planned clip across the scene at bed level; the built-in generator makes the bed, and the person chooses “Use this”.
+                      const c = await d.createClip(s.session.id, { track_id: track.id, label: "Ambient bed", start_seconds: 0, duration_seconds: Math.min(3600, seconds), gain_db: amb.level_db });
+                      if (!c) return;
+                      setClipId(c.id);
+                      await d.generate(s.scene.id, { clip_id: c.id, kind: "score", description: amb.description, duration_seconds: Math.min(300, seconds) });
+                    }} />
+                )}
                 <GeneratorsPanel generators={ws.generators} canGenerate={canGenerate} busy={d.busy !== null} onGenerateCues={s.session ? () => d.generateCues(s.scene.id) : null} />
               </div>
             </div>

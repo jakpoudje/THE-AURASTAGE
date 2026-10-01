@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { AddAudioTrackInput, Project, SaveAudioClipInput, SessionMix, UpdateAudioTrackInput } from "@aurastage/contracts";
+import type { AddAudioTrackInput, AudioClip, Project, SaveAudioClipInput, SessionMix, UpdateAudioTrackInput } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet } from "@/lib/apiClient";
 import { audioApi } from "../api/audioApi";
@@ -111,6 +111,19 @@ export function useAudio(projectId: string) {
     createClip: (sessionId: string, patch: SaveAudioClipInput) => run("save", () => audioApi.createClip(sessionId, patch), () => "Clip added."),
     updateClip: (id: string, patch: SaveAudioClipInput, msg: string | null = "Clip saved.") => run("save", () => audioApi.updateClip(id, patch), () => msg),
     deleteClip: (id: string) => run("save", () => audioApi.deleteClip(id), () => "Clip removed."),
+    /** Splits a clip in two at `at` (scene seconds): the second half keeps playing the same recording from where the
+     *  first stops. The new half is created first, so a failure never loses the end of the clip. */
+    splitClip: (sessionId: string, c: AudioClip, at: number) =>
+      run("save", async () => {
+        const first = Math.round((at - c.start_seconds) * 100) / 100;
+        if (first <= 0.05 || first >= c.duration_seconds - 0.05) throw new Error("Put the playhead inside the clip to split it.");
+        await audioApi.createClip(sessionId, {
+          track_id: c.track_id, label: `${c.label} (2)`.slice(0, 200), asset_id: c.asset_id, start_seconds: Math.round(at * 100) / 100,
+          duration_seconds: Math.round((c.duration_seconds - first) * 100) / 100, offset_seconds: Math.round((c.offset_seconds + first) * 100) / 100,
+          gain_db: c.gain_db, fade_in_seconds: 0, fade_out_seconds: c.fade_out_seconds,
+        });
+        await audioApi.updateClip(c.id, { duration_seconds: first, fade_out_seconds: 0 });
+      }, () => `Split “${c.label}” at ${at.toFixed(2)}s.`),
     /** Uploads a recording (after decoding it locally to prove it's playable) and optionally places it on a clip. */
     upload: (file: File, placeOn?: { clipId: string }) =>
       run(
