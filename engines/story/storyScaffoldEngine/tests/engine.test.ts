@@ -63,6 +63,9 @@ describe("short films", () => {
     expect(checkStoryDevelopment(brief, story).every((c) => c.ok)).toBe(true);
     expect(story.beats.length).toBe(3);
     expect(story.characters.map((c) => c.name)).toEqual(expect.arrayContaining(["Adebayo Olumide", "Kunle Olumide"]));
+    // A father-and-son drama: no invented villain or mentor — the son is the opposing force (regression, live 2026-10-01).
+    expect(story.characters.map((c) => c.name).sort()).toEqual(["Adebayo Olumide", "Kunle Olumide"]);
+    expect(story.characters.find((c) => c.name === "Kunle Olumide")!.role).toBe("antagonist");
     const ctx = { title: brief.title, genre: story.genre, target_runtime_minutes: 3, characters: story.characters, beats: story.beats };
     const { outline } = outlineScaffoldEngine(ctx);
     expect(outline.scenes.length).toBeLessThanOrEqual(3);

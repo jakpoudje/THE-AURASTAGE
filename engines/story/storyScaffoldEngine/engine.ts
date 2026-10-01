@@ -54,7 +54,8 @@ const DEFAULTS: Record<Family, { goal: string; stakes: string; inciting: string;
   comedy: { goal: "pull off a plan that is far too big for them", stakes: "their pride, their job and their friendship", inciting: "a mistake snowballs into a disaster", obstacle: "everyone else wants the same thing", theme: "Being yourself", tone: "Playful" },
   drama: { goal: "hold the family together through what is coming", stakes: "the relationships that matter most", inciting: "news arrives that changes everything", obstacle: "the past and the people who won't let it go", theme: "Family and forgiveness", tone: "Intimate" },
 };
-const VILLAIN = /\b(governor|senator|minister|president|general|boss|chief|kingpin|warlord|cult|gang|rival|killer|landlord|tycoon|magnate|commissioner|warden|priest|chairman|godfather|enemy|villain|spirit|demon|creature|corrupt)\b/i;
+// Words that paint someone as the threat. Honorifics alone ("Chief", "Alhaji", "Pastor") don't — they're respect, not villainy.
+const VILLAIN = /\b(kingpin|warlord|cult|gang|rival|killer|murderer|tycoon|magnate|godfather|enemy|villain|demon|creature|corrupt|ruthless|kingmaker|tyrant|dictator|crime lord|trafficker|smuggler|predator|stalker|monster)\b/i;
 const roleOf = (r: string | null | undefined): "protagonist" | "antagonist" | "supporting" | "minor" => {
   const x = (r ?? "").toLowerCase();
   return /protag|lead|hero/.test(x) ? "protagonist" : /antag|villain/.test(x) ? "antagonist" : /minor|extra/.test(x) ? "minor" : "supporting";
@@ -107,14 +108,24 @@ export function storyScaffoldEngine(raw: StoryBrief): StoryScaffoldResult {
   P.role = "protagonist";
   // Antagonist: the writer's, else the person the brief paints as the threat, else one shaped from the obstacle.
   let A = people.find((p) => p !== P && p.role === "antagonist") ?? people.find((p) => p !== P && VILLAIN.test(`${p.description} ${p.name}`));
+  // In a drama or a romance the opposing force is usually someone already in the story (the estranged son, the rival
+  // family) — the person who most resists what the hero wants — not a villain we invent.
+  const intimate = family === "drama" || family === "romance";
+  const named = people.filter((p) => p !== P && !p.absent && p.role !== "minor");
+  let fromStory = false;
+  if (!A && intimate && named.length) { A = named[0]; fromStory = true; assumptions.push(`${A.name} is the opposing force — the person who most resists what ${first(P.name)} wants (no villain in a ${genre.toLowerCase()}).`); }
   if (!A) A = invent("antagonist", cap(pr.obstacle ? `The force behind it: ${pr.obstacle}.` : `The one who stands in the way — ${D.obstacle}.`));
   A.role = "antagonist";
   // B-story: someone close to the protagonist (a relation the brief names), else another named person, else new.
   // The one who vanishes or is taken is what's at stake — the B-story is someone who can walk beside the hero.
   const X = people.find((p) => p !== P && p !== A && p.absent) ?? null;
   let B = people.find((p) => p !== P && p !== A && !p.absent && p.relation && (!p.relation_to || first(p.relation_to) === first(P.name))) ?? people.find((p) => p !== P && p !== A && !p.absent && p.role !== "minor");
+  // When the opposing force is also the person closest to the hero, that relationship carries both threads.
+  if (!B && fromStory) B = A;
   if (!B) B = invent("supporting", `Closest to ${first(P.name)}.`);
   let M = people.find((p) => p !== P && p !== A && p !== B && !p.absent && p.role !== "minor");
+  // A short film doesn't gain a mentor it doesn't need: the closest person carries that voice too.
+  if (!M && runtime <= 20) M = B;
   if (!M) M = invent("supporting", `${first(P.name)}'s mentor or ally: the voice of experience.`);
 
   const fl = FLAWS[seed % FLAWS.length];

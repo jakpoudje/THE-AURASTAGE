@@ -186,14 +186,22 @@ export async function requestWriting(db: SupabaseClient, projectId: string, body
       p_base_version: base, p_engine_version: storyScaffold.ENGINE_VERSION, p_source: "builtin", p_output: output });
     return { ...dto(g), checks };
   }
+
   const g = await rpc<Row>(db, "request_script_generation", { p_project: projectId, p_kind: b.kind, p_parent: parent, p_request: b.request, p_input: input,
     p_base_version: base, p_engine_version: engineVersion, p_source: "model", p_output: null });
   return dto(g);
 }
 
+/** Built-in results aren't run through the worker, so their checks are worked out from the saved input on every read. */
+function builtinChecks(g: Row): unknown[] {
+  if (g.source !== "builtin" || g.status !== "succeeded" || !g.output) return [];
+  try {
+    return g.kind === "develop_story" ? storyDevelopment.checkStoryDevelopment(g.input?.brief, g.output) : scriptWriting.checkOutline(g.input?.story, g.output);
+  } catch { return []; }
+}
 const dto = (g: Row) => ({
   id: g.id, kind: g.kind, parent_id: g.parent_id, request: g.request, source: g.source, status: g.status, progress: g.progress ?? {}, output: g.output ?? null,
-  checks: g.checks ?? [], provider: g.provider ?? null, model: g.model ?? null, test_output: g.test_output ?? null, error: g.error ?? null,
+  checks: (g.checks ?? []).length ? g.checks : builtinChecks(g), provider: g.provider ?? null, model: g.model ?? null, test_output: g.test_output ?? null, error: g.error ?? null,
   base_version_id: g.base_version_id ?? null, result_version_id: g.result_version_id ?? null, accepted: g.accepted ?? null,
   scene: g.kind === "rewrite_scene" ? { number: g.input?.scene_number ?? null, mode: g.input?.mode ?? null, before_text: g.input?.scene_text ?? "" } : undefined,
   created_at: g.created_at, completed_at: g.completed_at,

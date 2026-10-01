@@ -181,6 +181,10 @@ describe("Scriptwriter routes", () => {
     expect(story.characters.find((c) => c.role === "protagonist")!.name).toBe("Amara Bello");
     expect(story.beats.length).toBeGreaterThan(10);
     expect(dev.json().checks.every((c: { ok: boolean }) => c.ok)).toBe(true);
+    // Regression (live check 2026-10-01): reading it back later still shows its checks (worked out from the saved input).
+    rows.script_generations = [{ id: "55555555-5555-4555-8555-555555555550", project_id: PROJECT, kind: "develop_story", status: "succeeded", source: "builtin", output: story, input: call.args.p_input, checks: [], parent_id: null }];
+    const back = (await app.inject({ method: "GET", url: "/api/script-writing/55555555-5555-4555-8555-555555555550" })).json();
+    expect(back.checks.find((c: { id: string }) => c.id === "keeps_names")).toMatchObject({ ok: true });
     // The outline from that story, built in as well.
     rows.script_generations = [{ id: "55555555-5555-4555-8555-555555555550", project_id: PROJECT, kind: "develop_story", status: "succeeded", source: "builtin", output: story, parent_id: null }];
     const ol = await app.inject({ method: "POST", url: `/api/projects/${PROJECT}/script/writing`, payload: { kind: "outline" } });
