@@ -77,6 +77,24 @@ describe("Editorial routes", () => {
     expect(ws.qc.ready_for_lock).toBe(false);
   });
 
+  it("owner request 2026-10-01: Audio Studio's effects and ambience show on the picture timeline at their frame; dialogue and music don't; trimmed-out sounds are left out", async () => {
+    withTimeline();
+    // The A1 mix starts 1 s (24 frames) into the scene's sound.
+    rows.timeline_clips = rows.timeline_clips.map((c) => (c.id === C3 ? { ...c, record_in: 0, source_in: 24, duration: 72 } : c));
+    rows.audio_tracks = [{ id: "t-fx", project_id: P, session_id: SES, family: "FX", name: "Effects" }, { id: "t-bg", project_id: P, session_id: SES, family: "BG", name: "Ambience" }, { id: "t-dx", project_id: P, session_id: SES, family: "DX", name: "Dialogue" }];
+    rows.audio_clips = [
+      { id: "door", project_id: P, session_id: SES, track_id: "t-fx", label: "Door slam", kind: "cue", asset_id: null, start_seconds: "2", duration_seconds: "0.5" },
+      { id: "rain", project_id: P, session_id: SES, track_id: "t-bg", label: "Rain", kind: "asset", asset_id: "a1", start_seconds: "0", duration_seconds: "4" },
+      { id: "early", project_id: P, session_id: SES, track_id: "t-fx", label: "Cut before the mix", kind: "cue", asset_id: null, start_seconds: "0", duration_seconds: "0.5" },
+      { id: "line", project_id: P, session_id: SES, track_id: "t-dx", label: "Tunde: You came", kind: "cue", asset_id: null, start_seconds: "1", duration_seconds: "1" },
+    ];
+    const ws = (await (await app(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/editorial` })).json();
+    expect(ws.sound_cues).toEqual([
+      { scene_id: S1, clip_id: "rain", label: "Rain", family: "BG", planned: false, at: 0, frames: 96 },
+      { scene_id: S1, clip_id: "door", label: "Door slam", family: "FX", planned: true, at: 24, frames: 12 },
+    ]);
+  });
+
   it("won't assemble before any shot plan is approved (412)", async () => {
     rows.shot_plans = [];
     const res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/assemble`, payload: { base_revision: null } });

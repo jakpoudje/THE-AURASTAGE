@@ -998,6 +998,31 @@ await check("audio: built-in generation makes real WAVs for the planned cues and
   assert(new TextDecoder().decode(vb.slice(0, 4)) === "RIFF" && vb.length > 44 + 8000, `voice not a real WAV (${vb.length} bytes)`);
   return `${done.length} sound(s): ${done.map((x: any) => `${x.kind} [${x.layers.map((l: any) => l.name).join(", ")}]`).join("; ")} · voice: ${spoken.layers[0]?.because ?? ""}`;
 });
+await check("voices: a Scottish accent in Casting is spoken by the free Scottish voice (CMU ARCTIC awb), or says plainly why not", async () => {
+  const ws0 = await api("GET", `/api/projects/${projectId}/audio`);
+  const dx = ws0.scenes.find((x: any) => x.scene.id === s1).clips.find((c: any) => c.source?.dialogue_line_id);
+  const chars = (await api("GET", `/api/projects/${projectId}/characters`)).characters;
+  const line = ws0.scenes.find((x: any) => x.scene.id === s1).lines?.find((l: any) => l.id === dx.source.dialogue_line_id);
+  const who = chars.find((c: any) => c.id === line?.character_id) ?? chars.find((c: any) => c.id === tundeId);
+  const before = who.accent ?? null;
+  if (who.status === "approved") await api("PATCH", `/api/characters/${who.id}`, { status: "draft" });
+  await api("PATCH", `/api/characters/${who.id}`, { accent: "Scottish (Glasgow)" });
+  try {
+    const v = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { clip_id: dx.id, kind: "voice", duration_seconds: 2 });
+    let g: any;
+    for (let i = 0; i < 40; i++) {
+      g = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1).generations.find((x: any) => x.id === v.id);
+      if (g.status === "succeeded" || g.status === "failed") break;
+      await Bun.sleep(1500);
+    }
+    assert(g.status === "succeeded", `voice ${g.status} ${g.error ?? ""}`);
+    const why = g.layers[0]?.because ?? "";
+    assert(/Scottish English speaker awb|no free Scottish female voice is installed/.test(why), "accent not used: " + why);
+    return why.split(";")[0];
+  } finally {
+    await api("PATCH", `/api/characters/${who.id}`, { accent: before });
+  }
+});
 // ---- Studio mixing (migration 0029): channel strips and routing saved, validated, revision-checked ----
 await check("studio mixer: a channel strip (HPF, EQ, compressor, send, automation) and routing (buses, reverb, master) save and read back; bad values 400, stale routing 409; the measurement goes stale", async () => {
   const ws = await api("GET", `/api/projects/${projectId}/audio`);

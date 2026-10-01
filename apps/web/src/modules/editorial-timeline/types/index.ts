@@ -19,8 +19,13 @@ export interface BinScene {
 export interface MixSnapshot { id: string; scene_id: string | null; version_number: number; seconds: number; tracks: AudioTrack[]; clips: AudioClip[]; mix?: SessionMix }
 
 /** Response of GET /api/projects/:id/editorial (apps/api/src/modules/editorial). */
+/** A sound from Audio Studio at the frame it happens in the cut (planned = no audio chosen yet). */
+export interface SoundCue { scene_id: string; clip_id: string; label: string; family: string; planned: boolean; at: number; frames: number }
+
 export interface EditorialWorkspace {
   fps: number;
+  /** Effects, Foley, ambience and crowd from Audio Studio, placed on the cut (read-only here; owner request 2026-10-01). */
+  sound_cues?: SoundCue[];
   project: { title: string; target_runtime_minutes: number | null };
   timeline: {
     id: string; status: "draft" | "locked"; revision: string; review_state: "current" | "review_required"; review_reason: string | null;

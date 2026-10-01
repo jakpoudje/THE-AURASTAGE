@@ -253,6 +253,7 @@ export default function EditorialPage() {
                     clips={clips} fps={fps} ppf={ppf} frame={frame} length={length} selectedId={selected} tool={tool} issueIds={issueIds} media={ws.media}
                     busy={d.busy !== null} onSeek={seek} onSelect={setSelected} onOp={edit}
                     scenes={spans} automation={automation} onAutomation={(pts, summary) => d.saveAutomation(pts, summary)}
+                    cues={ws.sound_cues ?? []} audioHref={`/projects/${id}/audio`}
                   />
                   <p className="text-[11px] text-white/40">
                     {TOOLS.find((x) => x.id === tool)!.hint}. Space plays, ←/→ step a frame (Shift: a second), B cuts at the playhead, Delete lifts and Shift+Delete extracts the selected clip. Sync lock is on: ripple edits move picture and sound together.

@@ -116,6 +116,36 @@ function runQC(ctx: Ctx, clips: TimelineClip[], issues: ReturnType<typeof clipIs
   });
 }
 
+/** Sound families shown as cues on the picture timeline (owner request 2026-10-01): effects, Foley, ambience, crowd. */
+const CUE_FAMILIES = new Set(["FX", "FOLEY", "BG", "WALLA"]);
+
+/**
+ * Each scene's planned and placed sounds from Audio Studio, at the frame where they happen in the cut (owner request
+ * 2026-10-01: "marked the identified area, timelength and type of sound"). A scene's sound starts where its A1 mix sits
+ * (minus any trim at its head); a scene with no mix on A1 yet starts at its first picture clip. Sounds trimmed out of
+ * the cut are left out. Read-only: choosing or uploading the sound happens in Audio Studio.
+ */
+async function soundCues(db: SupabaseClient, projectId: string, ctx: Awaited<ReturnType<typeof load>>) {
+  const [clips, tracks] = await Promise.all([repo.listAudioClips(db, projectId), repo.listAudioTracks(db, projectId)]);
+  const fam = new Map(tracks.map((t) => [t.id as string, t.family as string]));
+  const sceneOf = new Map(ctx.sessions.map((s) => [s.id as string, s.scene_id as string]));
+  const out: { scene_id: string; clip_id: string; label: string; family: string; planned: boolean; at: number; frames: number }[] = [];
+  for (const c of clips) {
+    const family = fam.get(c.track_id as string);
+    const scene = sceneOf.get(c.session_id as string);
+    if (!family || !CUE_FAMILIES.has(family) || !scene) continue;
+    const a1 = ctx.clips.find((x) => x.track === "A1" && x.scene_id === scene);
+    const v1 = ctx.clips.filter((x) => x.track === "V1" && x.scene_id === scene).sort((a, b) => a.record_in - b.record_in)[0];
+    if (!a1 && !v1) continue;
+    const start = Math.round(Number(c.start_seconds) * fps), len = Math.max(1, Math.round(Number(c.duration_seconds) * fps));
+    const at = a1 ? a1.record_in + (start - a1.source_in) : v1!.record_in + start;
+    // Outside the scene's mix as cut: not in the film.
+    if (a1 && (start + len <= a1.source_in || start >= a1.source_in + a1.duration)) continue;
+    out.push({ scene_id: scene, clip_id: c.id as string, label: String(c.label), family, planned: c.kind === "cue" || !c.asset_id, at: Math.max(0, at), frames: len });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+
 export async function getEditorialWorkspace(db: SupabaseClient, projectId: string, env: Env = process.env) {
   const ctx = await load(db, projectId);
   const up = upstream(ctx);
@@ -156,8 +186,10 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
   const audio = await repo.listAudioAssets(db, projectId);
   const music_library = audio.map((a) => ({ asset_id: a.id as string, name: a.name as string, category: (a.category ?? null) as string | null, seconds: Number(a.metadata?.duration_seconds ?? 0) || null }))
     .sort((a, b) => Number(b.category === "music") - Number(a.category === "music"));
+  const sound_cues = await soundCues(db, projectId, ctx);
   return {
     fps,
+    sound_cues,
     project: { title: ctx.project.title, target_runtime_minutes: ctx.project.target_runtime_minutes ?? null },
     timeline: timeline
       ? {

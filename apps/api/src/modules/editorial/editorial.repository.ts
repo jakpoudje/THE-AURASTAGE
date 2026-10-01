@@ -40,6 +40,11 @@ export const listTakes = (db: SupabaseClient, p: string) =>
   rows(db.from("takes").select("id, scene_id, shot_id, take_number, capability, params, status, approval, storage_key, media_type").eq("project_id", p));
 export const listSessions = (db: SupabaseClient, p: string) =>
   rows(db.from("audio_sessions").select("id, scene_id, status, review_state, review_reason, approved_version_id, scene_seconds").eq("project_id", p));
+/** Audio Studio's live clips and tracks (read-only; Audio Studio owns them) — sound cues shown on the picture timeline. */
+export const listAudioClips = (db: SupabaseClient, p: string) =>
+  rows(db.from("audio_clips").select("id, session_id, track_id, label, kind, asset_id, start_seconds, duration_seconds").eq("project_id", p));
+export const listAudioTracks = (db: SupabaseClient, p: string) =>
+  rows(db.from("audio_tracks").select("id, session_id, family, name").eq("project_id", p));
 export const listMixVersions = (db: SupabaseClient, p: string) =>
   rows(db.from("audio_session_versions").select("id, session_id, version_number, tracks, clips, measurement, mix").eq("project_id", p));
 /** An audio file from this project's Assets Library (read-only; the Assets Library owns it), for the music track. */

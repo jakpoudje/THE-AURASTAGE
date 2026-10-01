@@ -7,7 +7,7 @@ import { useRef, useState } from "react";
 import type { AutomationPoint, EditOperation, TimelineClip, TimelineTrack } from "@aurastage/contracts";
 import { AutomationLane, LANE_HEIGHT } from "./AutomationLane";
 import { clipEnd, onTrack, tc } from "../state/timelineMath";
-import type { EditorialWorkspace, Tool } from "../types";
+import type { EditorialWorkspace, SoundCue, Tool } from "../types";
 
 const HEADER = 96;
 const EDGE = 7;
@@ -21,9 +21,14 @@ const LANES: { track: TimelineTrack; name: string; note: string; h: string }[] =
   { track: "A2", name: "Music", note: "runs across scenes", h: "h-10" },
 ];
 
+const CUE_NAME: Record<string, string> = { FX: "Effect", FOLEY: "Foley", BG: "Ambience", WALLA: "Crowd" };
+const CUE_COLOR: Record<string, string> = {
+  FX: "border-orange-400/70 bg-orange-900/40", FOLEY: "border-lime-400/70 bg-lime-900/40", BG: "border-cyan-400/70 bg-cyan-900/30", WALLA: "border-violet-400/70 bg-violet-900/40",
+};
+
 export function TimelineView({
   clips, fps, ppf, frame, length, selectedId, tool, issueIds, media, busy, onSeek, onSelect, onOp,
-  scenes, automation, onAutomation,
+  scenes, automation, onAutomation, cues = [], audioHref,
 }: {
   clips: TimelineClip[]; fps: number; ppf: number; frame: number; length: number; selectedId: string | null; tool: Tool;
   issueIds: Set<string>; media: EditorialWorkspace["media"]; busy: boolean;
@@ -32,6 +37,9 @@ export function TimelineView({
   scenes: { scene_id: string; number: number; heading: string; from: number; to: number }[];
   automation: AutomationPoint[];
   onAutomation: (next: AutomationPoint[], summary: string) => void;
+  /** Sounds from Audio Studio at their frame in the cut; a planned one links to Audio Studio to choose or upload it. */
+  cues?: SoundCue[];
+  audioHref?: string;
 }) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const lane = useRef<HTMLDivElement>(null);
@@ -106,6 +114,25 @@ export function TimelineView({
             ))}
           </div>
         </div>
+        {cues.length > 0 && (
+          <div className="flex h-6 border-b border-aura-border/60 text-[10px]" role="group" aria-label="Sound cues">
+            <div style={{ width: HEADER }} className="shrink-0 border-r border-aura-border bg-aura-panel px-2 py-1 text-white/50" title="Effects, Foley, ambience and crowd from Audio Studio">Sound cues</div>
+            <div className="relative flex-1">
+              {cues.map((c) => (
+                <a
+                  key={c.clip_id}
+                  href={audioHref}
+                  aria-label={`Sound cue ${c.label}${c.planned ? " (planned)" : ""}`}
+                  title={`${CUE_NAME[c.family] ?? c.family} · ${c.label}\n${tc(c.at, fps)} – ${tc(c.at + c.frames, fps)} (${(c.frames / fps).toFixed(1)} s)\n${c.planned ? "Planned — choose a sound from the library, generate one free or upload one in Audio Studio" : "Sound placed in Audio Studio"}`}
+                  style={{ left: c.at * ppf, width: Math.max(6, c.frames * ppf) }}
+                  className={`absolute inset-y-0.5 truncate rounded-sm border px-1 ${c.planned ? "border-dashed" : ""} ${CUE_COLOR[c.family] ?? "border-white/30 bg-white/10"} text-white/80`}
+                >
+                  {c.planned ? "◌ " : "♪ "}{c.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {LANES.map(({ track, name, note, h }) => (
           <div key={track} role="group" aria-label={`Track ${track}`} className={`flex border-b border-aura-border/60 ${h}`}>
             <div style={{ width: HEADER }} className="flex shrink-0 flex-col justify-center border-r border-aura-border bg-aura-panel px-2 text-xs">

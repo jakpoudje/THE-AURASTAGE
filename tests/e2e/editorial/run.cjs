@@ -94,6 +94,14 @@ async function approveTakeFor(shotId) {
     await page.getByRole("group", { name: "Track V1" }).getByText("OFFLINE").first().waitFor();
     await page.getByRole("group", { name: "Track A1" }).getByRole("button", { name: "Clip Scene 1 mix v1" }).waitFor();
     await page.getByRole("img", { name: /Scene 1 · Shot 1/ }).waitFor();
+    // Owner request 2026-10-01: Audio Studio's planned effects and ambience are marked on the picture timeline at their
+    // moment, with their length and type; a planned one opens Audio Studio to choose, generate or upload the sound.
+    const cues = page.getByRole("group", { name: "Sound cues" }).getByRole("link");
+    await cues.first().waitFor();
+    const first = cues.first();
+    if (!/^Sound cue .+/.test((await first.getAttribute("aria-label")) || "")) throw new Error("cue label");
+    if (!/\/audio$/.test((await first.getAttribute("href")) || "")) throw new Error("cue should open Audio Studio");
+    if (!/(Effect|Foley|Ambience|Crowd) · .+\n\d\d:\d\d:\d\d:\d\d – \d\d:\d\d:\d\d:\d\d \(\d+\.\d s\)/.test((await first.getAttribute("title")) || "")) throw new Error("cue title: " + (await first.getAttribute("title")));
   });
   await step("checks block Picture Lock while shots are offline; the timecode link jumps to the problem", async () => {
     if (!(await page.getByRole("button", { name: "Lock picture" }).isDisabled())) throw new Error("lock should be disabled");

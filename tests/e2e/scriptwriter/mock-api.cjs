@@ -1090,7 +1090,20 @@ http.createServer((req, res) => {
       const media = {}; for (const t of takes) if (t.status === "succeeded") media[t.id] = { url: t.media_url, media_type: t.media_type, capability: t.capability, take_number: t.take_number };
       const mixes = {}; for (const v of aversions) { const ses = asessions.find((x) => x.id === v.session_id); mixes[v.id] = { id: v.id, scene_id: ses.scene_id, version_number: v.version_number, seconds: v.measurement.duration_seconds, tracks: v.tracks, clips: v.clips }; }
       const lock = timeline && timeline.current_lock_id ? locks.find((l) => l.id === timeline.current_lock_id) : null;
-      return send(200, { fps: FPS, project: { title: project.title, target_runtime_minutes: null },
+      // Sound cues on the picture timeline (mirrors editorial.service soundCues).
+      const sound_cues = [];
+      for (const c of aclips) {
+        const tr = atracks.find((t) => t.id === c.track_id), ses = asessions.find((x) => x.id === c.session_id);
+        if (!tr || !ses || !["FX", "FOLEY", "BG", "WALLA"].includes(tr.family)) continue;
+        const a1 = tclips.find((x) => x.track === "A1" && x.scene_id === ses.scene_id);
+        const v1 = tclips.filter((x) => x.track === "V1" && x.scene_id === ses.scene_id).sort((a, z) => a.record_in - z.record_in)[0];
+        if (!a1 && !v1) continue;
+        const start = Math.round(Number(c.start_seconds) * FPS), len = Math.max(1, Math.round(Number(c.duration_seconds) * FPS));
+        if (a1 && (start + len <= a1.source_in || start >= a1.source_in + a1.duration)) continue;
+        sound_cues.push({ scene_id: ses.scene_id, clip_id: c.id, label: c.label, family: tr.family, planned: c.kind === "cue" || !c.asset_id, at: Math.max(0, a1 ? a1.record_in + start - a1.source_in : v1.record_in + start), frames: len });
+      }
+      sound_cues.sort((a, z) => a.at - z.at);
+      return send(200, { fps: FPS, sound_cues, project: { title: project.title, target_runtime_minutes: null },
         timeline: timeline ? { ...timeline, lock: lock ? { lock_number: lock.lock_number, locked_at: lock.locked_at } : null } : null,
         clips: tclips, issues, conformable: edConform(rows).length, qc: edQC(rows, tclips),
         versions: [...tversions].reverse().map(({ clips, qc, ...v }) => v), locks: [...locks].reverse(),
