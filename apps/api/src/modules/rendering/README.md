@@ -26,7 +26,7 @@ can't call them).
 `engines/rendering`: `deliveryProfileEngine` (versioned profiles; unavailable ones
 say why), `renderManifestEngine` 1.7.0 (gap-free picture with V2 inserts cut in over V1, mixes with real recordings,
 the A2 music track in `music[]` mixed into the mix/MX/M&E stems by the worker,
-subtitles, EDL, exact source ids; refuses with reasons when a master file is
+subtitles, EDL, exact source ids; 1.8.0: text cards at fixed places; refuses with reasons when a master file is
 missing), `subtitleTimelineEngine`, `timelineAudioMixEngine`, `finalQCEngine`.
 
 ## API endpoints
@@ -51,3 +51,10 @@ AURA-EXP-002 invalid input · 400 manifest/lock mismatch · 403 · 404 · 409 ca
 ## Not built yet (tracked)
 DCP, 4K HDR, MXF broadcast masters, social vertical reframes, localisation/dubbing,
 delivery to YouTube/Vimeo/Frame.io/S3 (need account connections), multipart upload for files over 5 GB.
+
+## Social cut-downs and trailers (BUILD_PLAN §8 item 13)
+Profiles `social_vertical` (1080×1920, centre-cropped — `video.fit: "fill"`, 15–60 s) and `trailer` (1920×1080, 60–180 s) take
+`options.length_seconds`. `cutdownEngine` 1.0.0 cuts them from the Picture Lock: scenes are scored by their dialogue (the
+strongest line's intensity, plus tense emotions); social = the strongest moment as the hook, then the strongest scenes in story
+order; trailer = setup from the opening, an escalation montage, the climax tease. Every track inside a window comes along
+re-timed (picture and sound in sync); text cards (logline phrases, the title) go into the manifest's overlays.

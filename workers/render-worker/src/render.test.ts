@@ -198,6 +198,16 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
     expect(mid).toBeLessThan(245);
     expect(luma(r.store, 1.9)).toBeLessThan(luma(r.store, 1.5) - 30); // fades out at the end
   }, 240000);
+  it("social cut-down (manifest 1.8.0): vertical 1080×1920, centre-cropped (no black bars), text card burned in; QC passes", async () => {
+    const r = await render("social_vertical", { cards: [{ record_in: 24, duration: 24, text: "Watch Render Test", position: "center" }] });
+    expect(failing(r.qc).filter((f) => !/^(loudness|true_peak)/.test(f))).toEqual([]);
+    expect(r.outputs.map((o) => o.name)).toEqual(["social_9x16.mp4"]);
+    const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", join(r.store, "social_9x16.mp4")]).toString());
+    expect(probe.streams[0]).toMatchObject({ width: 1080, height: 1920 });
+    // Filled, not letterboxed: the top of the frame is picture (grey), not black.
+    const top = execFileSync("ffmpeg", ["-v", "error", "-ss", "0.5", "-i", join(r.store, "social_9x16.mp4"), "-frames:v", "1", "-vf", "crop=100:100:0:0,scale=1:1", "-f", "rawvideo", "-pix_fmt", "gray", "-"])[0];
+    expect(top).toBeGreaterThan(60);
+  }, 120000);
   it("subtitles and EDL", async () => {
     const s = await render("subtitles");
     expect(s.qc.passed).toBe(true);

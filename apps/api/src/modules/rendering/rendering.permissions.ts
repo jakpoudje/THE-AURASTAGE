@@ -16,5 +16,5 @@ async function visible<T>(db: SupabaseClient, table: string, id: string, cols: s
   if (!data) throw new RenderingForbiddenError();
   return data as T;
 }
-export const assertProjectAccess = (db: SupabaseClient, id: string) => visible<{ id: string; title: string; org_id: string; genre: string | null; tone: string | null }>(db, "projects", id, "id, title, org_id, genre, tone");
+export const assertProjectAccess = (db: SupabaseClient, id: string) => visible<{ id: string; title: string; org_id: string; genre: string | null; tone: string | null; logline: string | null }>(db, "projects", id, "id, title, org_id, genre, tone, logline");
 export const assertRenderAccess = (db: SupabaseClient, id: string) => visible<Record<string, any>>(db, "renders", id, "*");

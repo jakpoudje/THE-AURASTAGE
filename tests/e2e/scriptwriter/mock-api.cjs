@@ -1172,6 +1172,13 @@ http.createServer((req, res) => {
       if (!l) return send(412, { error: { code: "AURA-EXP-412", message: "Lock the picture in Editorial first — deliverables are made from a Picture Lock." } });
       const prof = eng.getDeliveryProfile(b.profile_id);
       const { input } = lockInput(b.profile_id, { watermark: (b.options && b.options.watermark) || null, burn_timecode: !!(b.options && b.options.burn_timecode) });
+      // Mirrors rendering.service: social cut-downs and trailers are cut from the lock by the REAL cutdownEngine.
+      if (b.profile_id === "social_vertical" || b.profile_id === "trailer") {
+        const kind = b.profile_id === "trailer" ? "trailer" : "social", secs = (b.options && b.options.length_seconds) || (kind === "trailer" ? 90 : 30);
+        const sc = scenes.map((x) => ({ scene_id: x.id, number: x.number, intensity: Math.min(10, Math.max(4, ...dlines.filter((d) => d.scene_id === x.id).map((d) => Number(d.intensity) || 4))) }));
+        const c = eng.cutdownEngine({ kind, seconds: secs, fps: input.fps, clips: input.clips, scenes: sc, title: project.title, logline: project.logline || null });
+        Object.assign(input, { clips: c.clips, cards: c.cards, titles: null, captions: {} });
+      }
       const out = eng.renderManifestEngine(input);
       if (!out.manifest) return send(412, { error: { code: "AURA-EXP-412", message: `Can't render yet: ${out.missing.join("; ")}.`, issues: out.missing } });
       const sha = crypto.createHash("sha256").update(JSON.stringify(out.manifest)).digest("hex");

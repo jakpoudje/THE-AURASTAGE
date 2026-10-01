@@ -46,6 +46,8 @@ export const RenderManifestInputSchema = z.object({
   }).nullable().default(null),
   /** On-screen text per scene from Scene DNA (e.g. "LAGOS — 1995"), shown over the start of the scene's picture (manifest ≥ 1.5.0). */
   captions: z.record(z.object({ text: z.string().min(1).max(200), position: z.enum(["lower_third", "top", "center"]).default("lower_third") })).default({}),
+  /** Text cards at fixed places in the cut (trailers and social cut-downs, manifest ≥ 1.8.0): the logline's phrases, the title. */
+  cards: z.array(z.object({ record_in: z.number().int().min(0), duration: z.number().int().min(1), text: z.string().min(1).max(200), position: z.enum(["lower_third", "top", "center"]).default("center") })).max(50).default([]),
   /** The built-in main theme under the titles (proceduralAudioEngine "theme" score), when Project Settings asks for it. */
   title_music: z.object({ description: z.string().max(300), mood: z.array(z.string().max(40)).max(8), seed: z.number().int().min(0) }).nullable().default(null),
 });

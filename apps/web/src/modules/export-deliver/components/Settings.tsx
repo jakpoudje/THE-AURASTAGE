@@ -7,10 +7,14 @@ import type { DeliveryProfile } from "../types";
 
 export function Settings({ profile, lockLabel, canRender, busy, onRender }: {
   profile: DeliveryProfile; lockLabel: string | null; canRender: boolean; busy: boolean;
-  onRender: (options: { watermark: string | null; burn_timecode: boolean }) => void;
+  onRender: (options: { watermark: string | null; burn_timecode: boolean; length_seconds?: number }) => void;
 }) {
   const [watermark, setWatermark] = useState("");
   const [tc, setTc] = useState(true);
+  // Cut-downs and trailers are cut from the Picture Lock to a length (cutdownEngine): the strongest scenes by their dialogue.
+  const cutKind = profile.id === "trailer" ? "trailer" : profile.id === "social_vertical" ? "social" : null;
+  const LENGTHS = cutKind === "trailer" ? [60, 90, 120, 150] : [15, 30, 60];
+  const [len, setLen] = useState(cutKind === "trailer" ? 90 : 30);
   const rows: [string, string][] = [];
   if (profile.container) rows.push(["Format", profile.container.toUpperCase()]);
   if (profile.video) {
@@ -49,8 +53,23 @@ export function Settings({ profile, lockLabel, canRender, busy, onRender }: {
               )}
             </div>
           )}
+          {cutKind && (
+            <div className="mt-3 space-y-1 border-t border-aura-border pt-3 text-xs" role="group" aria-label="Length">
+              <span className="text-white/60">Length</span>
+              <div className="flex flex-wrap gap-2">
+                {LENGTHS.map((s) => (
+                  <label key={s} className={`cursor-pointer rounded border px-2 py-1 ${len === s ? "border-aura-gold text-aura-gold" : "border-aura-border text-white/70"}`}>
+                    <input type="radio" name="cut-length" className="sr-only" checked={len === s} onChange={() => setLen(s)} />{s} s
+                  </label>
+                ))}
+              </div>
+              <p className="text-white/40">{cutKind === "trailer"
+                ? "Built from your locked cut (free): the opening sets up the world, a montage of the most intense scenes builds, the climax is teased, text cards come from your logline, and it ends on the title."
+                : "Built from your locked cut (free): the strongest moment first as the hook, then the best scenes in order, ending on the title. Centre-cropped to vertical."}</p>
+            </div>
+          )}
           <button
-            onClick={() => onRender({ watermark: profile.supports.watermark && watermark.trim() ? watermark.trim() : null, burn_timecode: profile.supports.burn_timecode && tc })}
+            onClick={() => onRender({ watermark: profile.supports.watermark && watermark.trim() ? watermark.trim() : null, burn_timecode: profile.supports.burn_timecode && tc, ...(cutKind ? { length_seconds: len } : {}) })}
             disabled={!canRender || busy}
             className="mt-4 w-full rounded-md bg-aura-gold px-4 py-2 text-sm font-medium text-black disabled:opacity-40"
           >

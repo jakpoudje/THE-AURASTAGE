@@ -12,6 +12,9 @@ export const DeliveryProfileIdSchema = z.enum([
   "audio_package",
   "subtitles",
   "edit_decision_list",
+  // Cut from the Picture Lock by cutdownEngine (BUILD_PLAN §8 item 13).
+  "social_vertical",
+  "trailer",
 ]);
 export type DeliveryProfileId = z.infer<typeof DeliveryProfileIdSchema>;
 
@@ -21,6 +24,8 @@ export const RenderOptionsSchema = z
     watermark: z.string().trim().max(60).nullable(),
     /** Burn the running timecode into the picture (review copies only). */
     burn_timecode: z.boolean(),
+    /** Social cut-downs and trailers: how long (seconds). */
+    length_seconds: z.number().int().min(6).max(300).nullable().optional(),
   })
   .strict();
 export type RenderOptions = z.infer<typeof RenderOptionsSchema>;

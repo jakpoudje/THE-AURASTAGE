@@ -135,6 +135,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
       overlays.push({ record_in: c.record_in + offset, duration: Math.min(end - c.record_in, CAPTION_SECONDS * i.fps), text: cap.text, position: cap.position, scene_id: c.scene_id });
     }
   }
+  if (p0.video) for (const c of i.cards) overlays.push({ record_in: c.record_in + offset, duration: c.duration, text: c.text, position: c.position, scene_id: null });
   const automation = offset ? { A1: i.automation.A1.map((pt) => ({ ...pt, frame: pt.frame + offset })) } : i.automation;
   const totalFrames = offset + cutEnd + (roll?.frames ?? 0);
 
@@ -178,7 +179,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
       asset_ids: Object.keys(assets),
       dialogue_line_ids: [...new Set(subtitles.cues.map((c) => c.line_id))],
       automation_revision: i.automation.A1.length ? i.automation_revision : null,
-      ...(overlays.length ? { scene_captions: overlays.map((o) => o.scene_id) } : {}),
+      ...(overlays.some((o) => o.scene_id) ? { scene_captions: overlays.filter((o) => o.scene_id).map((o) => o.scene_id as string) } : {}),
     },
     title_music: titled ? i.title_music : null,
     overlays,

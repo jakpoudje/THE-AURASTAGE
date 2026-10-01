@@ -134,6 +134,19 @@ async function api(method, p, body) {
     await d.getByText("QC passed").waitFor();
     for (const f of ["mix.wav", "stem_DX.wav", "stem_FX.wav", "stem_BG.wav", "stem_MX.wav", "ME.wav"]) await d.getByRole("cell", { name: f, exact: true }).waitFor();
   });
+  await step("item 13: a 30-second vertical social cut-down and a 60-second trailer, cut from the Picture Lock (free); real files; kept after reload", async () => {
+    await selectPreset("Social Cut-down");
+    await page.getByRole("group", { name: "Length" }).getByText("30 s").click();
+    await renderAndWait("Social Cut-down (9:16)");
+    const d = deliverable("Social Cut-down (9:16)");
+    await d.getByRole("cell", { name: "social_9x16.mp4", exact: true }).waitFor();
+    await selectPreset("Trailer");
+    await page.getByRole("group", { name: "Length" }).getByText("60 s").click();
+    await renderAndWait("Trailer");
+    await deliverable("Trailer").getByRole("cell", { name: "trailer_1080p.mp4", exact: true }).waitFor();
+    await page.reload();
+    await deliverable("Trailer").getByRole("cell", { name: "trailer_1080p.mp4", exact: true }).waitFor();
+  });
   await step("cancel a waiting render", async () => {
     await selectPreset("Mezzanine Master");
     await page.getByRole("button", { name: "Render Mezzanine Master (ProRes)" }).click();

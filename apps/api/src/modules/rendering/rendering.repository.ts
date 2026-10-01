@@ -51,6 +51,9 @@ export const listLines = (db: SupabaseClient, ids: string[]) => rows(db.from("di
 export const listCast = (db: SupabaseClient, p: string) =>
   rows(db.from("characters").select("name, role, kind").eq("project_id", p).is("merged_into", null).order("name", { ascending: true }));
 /** On-screen text per scene (read-only; Scene DNA owns it, migration 0040). */
+/** How intense each scene is, from its dialogue (Dialogue owns the lines; read-only) — for cut-downs and trailers. */
+export const listSceneIntensity = (db: SupabaseClient, p: string) =>
+  Promise.all([rows(db.from("scenes").select("id, number").eq("project_id", p)), rows(db.from("dialogue_lines").select("scene_id, intensity, emotion").eq("project_id", p))]);
 export const listCaptions = (db: SupabaseClient, p: string) =>
   rows(db.from("scene_dna").select("scene_id, on_screen_text, on_screen_position").eq("project_id", p).not("on_screen_text", "is", null));
 export const listRenders =(db: SupabaseClient, p: string) =>

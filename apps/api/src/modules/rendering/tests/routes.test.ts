@@ -97,6 +97,31 @@ describe("Export & Deliver routes", () => {
     expect(a.p_manifest.assets[AS1]).toEqual({ storage_key: "o/p/assets/a.wav", media_type: "audio/wav" });
   });
 
+  it("item 13: a social cut-down (9:16, centre-cropped) and a trailer are cut from the Picture Lock, with text cards; lengths are checked", async () => {
+    locked();
+    rows.projects[0].logline = "When her brother vanishes, a journalist must expose the rigged election — but the governor will kill to keep it buried.";
+    rows.timeline_versions[0].clips = Array.from({ length: 8 }, (_, k) => [
+      { id: `c0c0c0c0-c0c0-4c0c-8c0c-c0c0c0c0c1${k}0`, track: "V1", kind: "take", record_in: k * 480, duration: 480, source_in: 0, source_frames: null, scene_id: S1, shot_id: SH1, take_id: TK1, audio_session_version_id: null, label: `Shot ${k}`, grade: {} },
+      { id: `c0c0c0c0-c0c0-4c0c-8c0c-c0c0c0c0c2${k}0`, track: "A1", kind: "audio_mix", record_in: k * 480, duration: 480, source_in: 0, source_frames: 480, scene_id: S1, shot_id: null, take_id: null, audio_session_version_id: AV1, label: "Scene 1 mix v1", grade: {} },
+    ]).flat();
+    rows.timeline_versions[0].duration_frames = 3840;
+    const fake = fakeDb(rows, () => ({ data: { id: R1 } }));
+    const a = await app(fake);
+    const social = await a.inject({ method: "POST", url: `/api/projects/${P}/delivery/renders`, payload: { profile_id: "social_vertical", options: { length_seconds: 30 } } });
+    expect(social.statusCode).toBe(200);
+    expect(social.json().files).toEqual(["social_9x16.mp4"]);
+    const sm = fake.calls[0].args.p_manifest;
+    expect(sm.profile.video).toMatchObject({ width: 1080, height: 1920, fit: "fill" });
+    expect(sm.duration_frames).toBeLessThanOrEqual(30 * 24);
+    expect(sm.overlays.at(-1)).toMatchObject({ text: "Watch Shadows of Lagos", position: "center" });
+    const trailer = await a.inject({ method: "POST", url: `/api/projects/${P}/delivery/renders`, payload: { profile_id: "trailer", options: { length_seconds: 90 } } });
+    expect(trailer.statusCode).toBe(200);
+    const tm = fake.calls[1].args.p_manifest;
+    expect(tm.overlays.map((o: Row) => o.text)).toContain("SHADOWS OF LAGOS");
+    expect(tm.picture.every((x: Row) => x.kind === "take")).toBe(true);
+    expect((await a.inject({ method: "POST", url: `/api/projects/${P}/delivery/renders`, payload: { profile_id: "trailer", options: { length_seconds: 20 } } })).statusCode).toBe(400);
+  });
+
   it("refuses to render when a file is missing (masters, never placeholders) and rejects unknown formats", async () => {
     locked();
     rows.takes[0].storage_key = null;

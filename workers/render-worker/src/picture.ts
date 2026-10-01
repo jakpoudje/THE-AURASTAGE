@@ -34,7 +34,10 @@ export async function renderPicture(
 ) {
   const { width: W, height: H } = m.profile.video!;
   // Size and grade in RGB, then convert once with the Rec.709 matrix (the default for RGB would be BT.601).
-  const fit = `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=gbrp`;
+  // "fill" (vertical social): centre-crop the picture to the frame; otherwise fit it inside (letterbox).
+  const fit = (m.profile.video as { fit?: string }).fit === "fill"
+    ? `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,format=gbrp`
+    : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=gbrp`;
   const toYuv = "scale=out_color_matrix=bt709:out_range=tv,format=yuv444p";
   const cache = new Map<string, string>();
   const list: string[] = [];

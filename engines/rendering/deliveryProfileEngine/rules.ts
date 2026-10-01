@@ -69,9 +69,19 @@ export const PROFILES: DeliveryProfile[] = [
     container: null, video: null, audio: null, loudness: null, files: [], supports: none,
   },
   {
-    id: "social_vertical", version: V, label: "Social Pack (9:16)", category: "social",
-    description: "Vertical 1080×1920 cut-downs", available: false,
-    unavailable_reason: "Needs per-shot vertical reframing, which isn't built yet.",
-    container: null, video: null, audio: null, loudness: null, files: [], supports: none,
+    id: "social_vertical", version: V, label: "Social Cut-down (9:16)", category: "social",
+    description: "MP4 · H.264 · 1080×1920 vertical, centre-cropped from the cut · 15–60 s: the strongest moment first, then the best scenes in order, ending on the title",
+    available: true, unavailable_reason: null, container: "mp4",
+    video: { codec: "h264", width: 1080, height: 1920, pix_fmt: "yuv420p", quality: "CRF 20", color: "Rec.709 SDR", fit: "fill" },
+    audio: { codec: "aac", sample_rate: 48000, channels: 2, bitrate: "192k" }, loudness: { integrated_lufs: -14, tolerance_lu: 1, max_true_peak_dbtp: -1, standard: "Social platforms (−14 LUFS)" },
+    files: ["social_9x16.mp4"], supports: none,
+  },
+  {
+    id: "trailer", version: V, label: "Trailer", category: "trailer",
+    description: "MP4 · H.264 · 1920×1080 · 60–180 s cut from the Picture Lock: setup, escalation montage, climax tease, text cards from the logline, the title",
+    available: true, unavailable_reason: null, container: "mp4",
+    video: { codec: "h264", width: 1920, height: 1080, pix_fmt: "yuv420p", quality: "CRF 18, High profile", color: "Rec.709 SDR" },
+    audio: { codec: "aac", sample_rate: 48000, channels: 2, bitrate: "320k" }, loudness: R128,
+    files: ["trailer_1080p.mp4"], supports: none,
   },
 ];

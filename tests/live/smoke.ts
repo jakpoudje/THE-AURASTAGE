@@ -627,9 +627,10 @@ await check("editorial automation: draw/set the cut's volume after Picture Lock 
   assert(after.timeline.automation.A1.length === 3, "not kept");
   return `3 points saved on Picture Lock ${after.timeline.lock.lock_number}`;
 });
-await check("delivery: queue Streaming Master, Subtitles and Audio Package from the lock (checksummed manifests)", async () => {
-  for (const id of ["streaming_master", "subtitles", "audio_package"]) {
-    const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: id });
+await check("delivery: queue Streaming Master, Subtitles, Audio Package, a social cut-down and a trailer from the lock (checksummed manifests)", async () => {
+  // Item 13: a social cut-down (9:16) and a trailer are cut from the same lock (cutdownEngine) and rendered by the real worker.
+  for (const id of ["streaming_master", "subtitles", "audio_package", "social_vertical", "trailer"]) {
+    const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: id, ...(id === "trailer" ? { options: { length_seconds: 60 } } : id === "social_vertical" ? { options: { length_seconds: 15 } } : {}) });
     assert(/^[0-9a-f]{64}$/.test(r.manifest_sha256), "no manifest checksum");
     renderIds[id] = r.render_id;
   }

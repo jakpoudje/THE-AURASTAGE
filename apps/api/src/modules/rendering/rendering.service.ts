@@ -6,6 +6,7 @@
 // the render worker (workers/render-worker) does the heavy work (rule 8), runs
 // final QC and stores the files. Breaking the Picture Lock later marks existing
 // deliverables stale — their files are never deleted (rule 11).
+import { cutdownEngine } from "@aurastage/engines";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TIMELINE_FPS, type DeliveryProfileId } from "@aurastage/contracts";
@@ -14,7 +15,7 @@ import { mediaConfigured, signedMediaUrl } from "../../storage/media";
 import { assertProjectAccess, assertRenderAccess } from "./rendering.permissions";
 import * as repo from "./rendering.repository";
 import { toLockedClip } from "./rendering.mapper";
-import { RenderingNotReadyError, validateCreateRender } from "./rendering.validator";
+import { RenderingNotReadyError, RenderingValidationError, validateCreateRender } from "./rendering.validator";
 
 type Row = Record<string, any>;
 type Env = Record<string, string | undefined>;
@@ -76,13 +77,16 @@ function titlesFor(project: { title: string }, L: Locked, settings: ProjectSetti
   };
 }
 
-function manifestInput(project: { id: string; title: string; genre?: string | null; tone?: string | null }, L: Locked, profileId: string, options: { watermark: string | null; burn_timecode: boolean }, settings: ProjectSettings) {
+function manifestInput(project: { id: string; title: string; genre?: string | null; tone?: string | null }, L: Locked, profileId: string, options: { watermark: string | null; burn_timecode: boolean }, settings: ProjectSettings,
+  cut?: { clips: Locked["clips"]; cards: { record_in: number; duration: number; text: string; position: "center" | "lower_third" }[] }) {
   const profile = profileFor(profileId, settings);
   return {
     project: { id: project.id, title: project.title, credits: creditsOf(settings) },
-    titles: titlesFor(project, L, settings, profile, L.version?.fps ?? TIMELINE_FPS),
+    // A cut-down or trailer carries its own text cards instead of the title sequence and scene captions.
+    titles: cut ? null : titlesFor(project, L, settings, profile, L.version?.fps ?? TIMELINE_FPS),
+    cards: cut?.cards ?? [],
     // On-screen text from Scene DNA ("LAGOS — 1995"), over the start of each scene in video deliverables.
-    captions: Object.fromEntries((L.captions ?? []).filter((c) => String(c.on_screen_text ?? "").trim())
+    captions: cut ? {} : Object.fromEntries((L.captions ?? []).filter((c) => String(c.on_screen_text ?? "").trim())
       .map((c) => [c.scene_id, { text: String(c.on_screen_text).trim().slice(0, 200), position: c.on_screen_position ?? "lower_third" }])),
     // The film's own main theme (same tune every render: seeded by the project) in the story's genre and tone.
     title_music: settings.titles.music === "theme"
@@ -94,7 +98,7 @@ function manifestInput(project: { id: string; title: string; genre?: string | nu
     options,
     picture_lock: { id: L.lock!.id, lock_number: L.lock!.lock_number, timeline_version_id: L.version!.id },
     fps: L.version?.fps ?? TIMELINE_FPS,
-    clips: L.clips,
+    clips: cut?.clips ?? L.clips,
     takes: Object.fromEntries(L.takes.map((t) => [t.id, { storage_key: t.storage_key ?? null, media_type: t.media_type ?? null, capability: t.capability, duration_seconds: t.params?.duration_seconds ? Number(t.params.duration_seconds) : null }])),
     mixes: Object.fromEntries(
       L.mixes.map((m) => {
@@ -195,7 +199,25 @@ export async function createRender(db: SupabaseClient, projectId: string, payloa
   if (!L.lock || !L.version) throw new RenderingNotReadyError("Lock the picture in Editorial first — deliverables are made from a Picture Lock.");
   const options = { watermark: input.options?.watermark ?? null, burn_timecode: input.options?.burn_timecode ?? false };
   const { settings } = await readProjectSettings(db, projectId);
-  const r = renderManifestEngine(manifestInput(project, L, profile.id, options, settings));
+  // Social cut-downs and trailers are cut from the Picture Lock (cutdownEngine): the strongest scenes by their dialogue.
+  let cut: Parameters<typeof manifestInput>[5];
+  if (profile.id === "social_vertical" || profile.id === "trailer") {
+    const [scenes, lines] = await repo.listSceneIntensity(db, projectId);
+    const TENSE = /anger|fear|tension|determination|desperat|panic|rage|grief/i;
+    const score = (id: string) => {
+      const ls = lines.filter((l) => l.scene_id === id);
+      return ls.length ? Math.min(10, Math.max(...ls.map((l) => Number(l.intensity) || 4)) + (ls.some((l) => TENSE.test(String(l.emotion ?? ""))) ? 1 : 0)) : 4;
+    };
+    const kind = profile.id === "trailer" ? "trailer" : "social";
+    const seconds = input.options?.length_seconds ?? (kind === "trailer" ? 90 : 30);
+    if (kind === "trailer" && (seconds < 60 || seconds > 180)) throw new RenderingValidationError([], "A trailer is 60 to 180 seconds.");
+    if (kind === "social" && (seconds < 15 || seconds > 60)) throw new RenderingValidationError([], "A social cut-down is 15 to 60 seconds.");
+    const c = cutdownEngine({ kind, seconds, fps: L.version.fps ?? TIMELINE_FPS, clips: L.clips as never, scenes: scenes.map((s) => ({ scene_id: s.id as string, number: Number(s.number), intensity: score(s.id as string) })),
+      title: project.title, logline: project.logline ?? null });
+    if (!c.clips.length) throw new RenderingNotReadyError("The locked cut has no picture to cut from.");
+    cut = { clips: c.clips as never, cards: c.cards };
+  }
+  const r = renderManifestEngine(manifestInput(project, L, profile.id, options, settings, cut));
   if (!r.manifest) throw new RenderingNotReadyError(`Can't render yet: ${r.missing.join("; ")}.`, r.missing);
   const sha256 = createHash("sha256").update(JSON.stringify(r.manifest)).digest("hex");
   const row = await repo.createRender(db, {

@@ -8,6 +8,8 @@ export const VideoSpecSchema = z.object({
   /** Human description of quality settings. */
   quality: z.string(),
   color: z.literal("Rec.709 SDR"),
+  /** "fill": centre-crop the 16:9 picture to the frame (vertical social); default "fit" (letterbox). */
+  fit: z.enum(["fit", "fill"]).optional(),
 });
 export const AudioSpecSchema = z.object({
   codec: z.enum(["aac", "pcm_s24le"]),
@@ -19,7 +21,7 @@ export const DeliveryProfileSchema = z.object({
   id: z.string(),
   version: z.string(),
   label: z.string(),
-  category: z.enum(["streaming", "review", "master", "audio", "subtitles", "editorial", "cinema", "broadcast", "social"]),
+  category: z.enum(["streaming", "review", "master", "audio", "subtitles", "editorial", "cinema", "broadcast", "social", "trailer"]),
   description: z.string(),
   available: z.boolean(),
   unavailable_reason: z.string().nullable(),
