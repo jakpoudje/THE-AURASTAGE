@@ -50,10 +50,13 @@ const main = () => {
   const speakers = [];
   for (const f of readdirSync(vdir).filter((x) => x.endsWith(".onnx"))) {
     const model = f.replace(/\.onnx$/, ""), cfg = JSON.parse(readFileSync(join(vdir, f + ".json"), "utf8"));
-    const ids = Object.values(cfg.speaker_id_map ?? {}).map(Number).sort((a, b) => a - b);
+    // Speaker names (e.g. "awb") let accents be matched to a corpus's published speaker list; a single-speaker model is id 0.
+    const names = new Map(Object.entries(cfg.speaker_id_map ?? {}).map(([n, id]) => [Number(id), n]));
+    const single = names.size === 0;
+    const ids = single ? [0] : [...names.keys()].sort((a, b) => a - b);
     // Large catalogues are sampled evenly (about 150 voices) to keep the build short.
     const step = Math.max(1, Math.ceil(ids.length / 150)), chosen = ids.filter((_, i) => i % step === 0);
-    const lines = chosen.map((id) => JSON.stringify({ text: TEXT, speaker_id: id, output_file: join(tmp, `${model}-${id}.wav`) })).join("\n") + "\n";
+    const lines = chosen.map((id) => JSON.stringify({ text: TEXT, ...(single ? {} : { speaker_id: id }), output_file: join(tmp, `${model}-${id}.wav`) })).join("\n") + "\n";
     const r = spawnSync(join(root, "piper"), ["--model", join(vdir, f), "--json-input", "--quiet"], { input: lines, maxBuffer: 1 << 26 });
     if (r.status !== 0) throw new Error(`piper failed for ${model}: ${String(r.stderr).slice(-400)}`);
     for (const id of chosen) {
@@ -61,7 +64,7 @@ const main = () => {
       if (!existsSync(p)) continue;
       const { s, rate } = wav(readFileSync(p));
       const f0 = medianF0(s, rate);
-      if (f0) speakers.push({ model, id, f0: Math.round(f0 * 10) / 10 });
+      if (f0) speakers.push({ model, id, f0: Math.round(f0 * 10) / 10, ...(single ? { single: true } : { name: names.get(id) }) });
     }
   }
   if (speakers.length < 20) throw new Error(`only ${speakers.length} voices measured`);

@@ -52,6 +52,28 @@ describe("neural voice: measuring and matching voices", () => {
     expect(pickSpeaker(cat, { language: "en-us", gender: "female", pitch: 50 }, "Ramos")!.model).toBe("en_US-libritts_r-medium");
     expect(pickSpeaker({ speakers: [] }, { language: "en-gb", gender: "male", pitch: 5 }, "x")).toBeNull();
   });
+  it("owner request 2026-10-01: a character's accent picks a speaker the corpus lists with that accent; never the wrong gender; other accents say plainly", () => {
+    const acc: VoiceCatalogue = { speakers: [...cat.speakers,
+      { model: "en_US-arctic-medium", id: 0, f0: 118, name: "awb" }, { model: "en_US-arctic-medium", id: 1, f0: 112, name: "jmk" },
+      { model: "en_US-arctic-medium", id: 2, f0: 125, name: "ksp" }, { model: "en_US-arctic-medium", id: 3, f0: 190, name: "slt" },
+      { model: "en_GB-northern_english_male-medium", id: 0, f0: 115, single: true },
+    ] };
+    const man = { language: "en-gb", gender: "male" as const, pitch: 40 }, woman = { language: "en-gb", gender: "female" as const, pitch: 50 };
+    expect(pickSpeaker(acc, man, "Hamish", "Scottish")).toMatchObject({ model: "en_US-arctic-medium", speaker: 0, accent: "Scottish" });
+    expect(pickSpeaker(acc, man, "Raj", "Indian")).toMatchObject({ speaker: 2, accent: "Indian" });
+    expect(pickSpeaker(acc, man, "Luc", "Canadian")).toMatchObject({ speaker: 1, accent: "Canadian" });
+    const north = pickSpeaker(acc, man, "Jack", "Yorkshire")!;
+    expect(north).toMatchObject({ model: "en_GB-northern_english_male-medium", single: true, accent: "Northern English" });
+    // No Northern English woman's voice: a British Isles woman's voice, said plainly — never a man's voice.
+    const her = pickSpeaker(acc, woman, "Jess", "Yorkshire")!;
+    expect(her.model).toBe("en_GB-vctk-medium");
+    expect(her.f0).toBeGreaterThanOrEqual(165);
+    expect(her.reason).toMatch(/no free Northern English female voice is installed/);
+    // An accent no free model speaks: the default voice, and the reason says a paid provider can match it.
+    const lagos = pickSpeaker(acc, man, "Tunde", "Nigerian")!;
+    expect(lagos.accent).toBeNull();
+    expect(lagos.reason).toMatch(/no free voice speaks a Nigerian accent yet; a paid voice provider can match it/);
+  });
   it("delivery follows the line: slower and softer for sadness, faster and louder for anger", () => {
     const sad = prosody({ speed: 130, amplitude: 95 }), angry = prosody({ speed: 200, amplitude: 150 });
     expect(sad.length_scale).toBeGreaterThan(1);

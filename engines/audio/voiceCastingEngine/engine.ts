@@ -62,8 +62,13 @@ export function voiceCastingEngine(raw: VoiceInput): VoiceOutput {
   // The accent the writer chose in Casting leads; otherwise the stated nationality (1.0.0 behaviour).
   const nat = (c.accent || c.nationality || "").toLowerCase();
   const language = /americ|u\.?s\.?a?\b|canad/.test(nat) ? "en-us" : /scot/.test(nat) ? "en-gb-scotland" : /irish|ireland/.test(nat) ? "en-gb-x-rp" : "en-gb";
-  if (c.accent) why.push(`Accent (profile): ${c.accent} → built-in voice speaks ${language === "en-us" ? "American" : language === "en-gb-scotland" ? "Scottish" : "British"} English${/americ|scot|british|english \(southern|irish|london|northern english/.test(nat) ? "" : "; a paid voice provider matches the accent itself"}`);
-  else if (c.nationality) why.push(`${c.nationality} → ${language === "en-us" ? "American" : language === "en-gb-scotland" ? "Scottish" : "British"} English${/niger|ghan|kenya|south africa|africa|jamaica|india/.test(nat) ? " (the built-in voice has no " + c.nationality + " accent; a paid voice provider can match it)" : ""}`);
+  // Accents the free built-in voices speak from licence-clear corpora (1.2.0): Scottish, Northern English, Canadian,
+  // Indian (male voices) and American / British Isles; the voice says when it falls back.
+  const builtIn = /americ|u\.?s\.?a?\b|scot|british|england|northern english|english \(southern|irish|ireland|london|wales|welsh|canad|india|hindi|yorkshire|manchester|liverpool|geordie|newcastle/.test(nat)
+    && !/niger|ghan|kenya|africa|jamaica|caribbean|nigeria/.test(nat);
+  const spoken = language === "en-us" ? "American" : language === "en-gb-scotland" ? "Scottish" : "British";
+  if (c.accent) why.push(`Accent (profile): ${c.accent} → built-in voice speaks ${builtIn ? `${c.accent} English where a matching free voice is installed` : `${spoken} English`}${builtIn ? "" : "; a paid voice provider matches the accent itself"}`);
+  else if (c.nationality) why.push(`${c.nationality} → ${builtIn ? `${c.nationality} English where a matching free voice is installed` : `${spoken} English`}${builtIn ? "" : " (the built-in voice has no " + c.nationality + " accent; a paid voice provider can match it)"}`);
 
   let pitch = (sex === "female" ? 62 : 38) + (age_band === "child" ? 18 : age_band === "elder" ? -8 : age_band === "young" ? 4 : 0) + ((h >>> 3) % 13) - 6;
   let speed = 165 + ((h >>> 7) % 21) - 10;

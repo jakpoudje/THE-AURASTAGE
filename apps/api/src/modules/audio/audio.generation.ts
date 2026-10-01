@@ -78,7 +78,8 @@ export async function generateSound(db: SupabaseClient, projectId: string, scene
     // Pronunciation guide (Casting): names in the line are spoken as their sound-it-out spelling; the script is unchanged.
     const names = (await repo.listCharacters(db, projectId)).map((c) => ({ name: String(c.name), pronunciation: (c.pronunciation as string | null) ?? null }));
     description = sayNames(String(ls.line.text), names).slice(0, 500);
-    params = { voice, voice_base, character_name: who.name, line_id: lineId, character_id: ls.line.character_id ?? null, ...(description !== String(ls.line.text).slice(0, 500) ? { script_text: String(ls.line.text).slice(0, 500) } : {}) };
+    const accent = [(who as { accent?: string | null }).accent, (who as { nationality?: string | null }).nationality].find((x) => typeof x === "string" && x.trim()) ?? null;
+    params = { voice, voice_base, character_name: who.name, accent, line_id: lineId, character_id: ls.line.character_id ?? null, ...(description !== String(ls.line.text).slice(0, 500) ? { script_text: String(ls.line.text).slice(0, 500) } : {}) };
     engineVersion = voice.engine_version;
   } else if (!description) throw new AudioValidationError([], "Describe the sound");
   const g = await repo.requestGeneration(db, {

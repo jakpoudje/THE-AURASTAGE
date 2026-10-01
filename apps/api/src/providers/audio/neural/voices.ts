@@ -3,9 +3,32 @@
 // (median pitch of a test sentence, scripts/piper-install.sh + piper-measure.mjs), so matching a character's Voice DNA
 // to a speaker uses evidence, not guesses. Pure functions — unit-tested without the models.
 
-export interface Speaker { model: string; id: number; f0: number }
+export interface Speaker { model: string; id: number; f0: number; /** The speaker's name in the model (speaker_id_map), e.g. "awb". */ name?: string; /** A single-speaker model (no --speaker argument). */ single?: boolean }
 export interface VoiceCatalogue { speakers: Speaker[] }
-export interface VoicePick { model: string; speaker: number; f0: number; gender: "female" | "male"; reason: string }
+export interface VoicePick { model: string; speaker: number; f0: number; gender: "female" | "male"; reason: string; accent: string | null; single?: boolean }
+
+/**
+ * Accents the free, licence-clear voice models can actually speak (owner request 2026-10-01), from each corpus's
+ * PUBLISHED speaker list — never guessed. CMU ARCTIC (free for any use; Piper en_US-arctic-medium): awb Scottish,
+ * jmk Canadian, ksp Indian, bdl/clb/rms/slt American. OpenSLR 83 UK dialects (CC BY-SA 4.0; Piper
+ * en_GB-northern_english_male-medium): Northern English. VCTK (CC BY 4.0): British Isles. LibriTTS-R (CC BY 4.0):
+ * American. Corpora with non-commercial licences (e.g. L2-ARCTIC) are deliberately not used. Any other accent is said
+ * plainly to need a paid voice provider.
+ */
+export const ACCENTS: { id: string; label: string; match: RegExp; voices: { model: string; names?: string[] }[] }[] = [
+  { id: "scottish", label: "Scottish", match: /scot|glasgow|edinburgh|aberdeen|dundee/i, voices: [{ model: "en_US-arctic-medium", names: ["awb"] }] },
+  { id: "northern_english", label: "Northern English", match: /northern english|yorkshire|manchester|mancunian|liverpool|scouse|geordie|newcastle|leeds|lancashire/i, voices: [{ model: "en_GB-northern_english_male-medium" }] },
+  { id: "canadian", label: "Canadian", match: /canad|toronto|vancouver|montreal/i, voices: [{ model: "en_US-arctic-medium", names: ["jmk"] }] },
+  { id: "south_asian", label: "Indian", match: /india|hindi|punjab|mumbai|delhi|bengal|tamil|gujarat/i, voices: [{ model: "en_US-arctic-medium", names: ["ksp"] }] },
+  { id: "american", label: "American", match: /americ|\busa?\b|united states|new york|texas|california|chicago/i, voices: [{ model: "en_US-libritts_r-medium" }, { model: "en_US-arctic-medium", names: ["bdl", "clb", "rms", "slt"] }] },
+  { id: "british", label: "British Isles", match: /brit|english|england|wales|welsh|irish|ireland|london|\buk\b|united kingdom/i, voices: [{ model: "en_GB-vctk-medium" }] },
+];
+
+/** The accent a character's Casting accent/nationality asks for, if a free voice model can speak it. */
+export function accentFor(text: string | null | undefined) {
+  const t = (text ?? "").trim();
+  return t ? ACCENTS.find((a) => a.match.test(t)) ?? null : null;
+}
 
 /** Median F0 (Hz) of voiced 40 ms frames by normalised autocorrelation; null if too little voicing. */
 export function medianF0(samples: Float32Array, rate: number): number | null {
@@ -62,14 +85,20 @@ const hash = (s: string) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; 
  * Picks the speaker for a character from their BASE Voice DNA (profile only), so the same character keeps the same
  * speaker in every line; each line's emotion then changes delivery (pace, energy), never the person.
  */
-export function pickSpeaker(cat: VoiceCatalogue, dna: { language: string; gender: "female" | "male" | "unspecified"; pitch: number }, name: string): VoicePick | null {
+export function pickSpeaker(cat: VoiceCatalogue, dna: { language: string; gender: "female" | "male" | "unspecified"; pitch: number }, name: string, accentText: string | null = null): VoicePick | null {
   const model = dna.language === "en-us" ? "en_US-libritts_r-medium" : "en_GB-vctk-medium";
-  const pool0 = cat.speakers.filter((s) => s.model === model);
-  const pool1 = pool0.length ? pool0 : cat.speakers;
-  if (!pool1.length) return null;
+  // The character's accent first (only speakers a published corpus list says have it), then the language default.
+  const acc = accentFor(accentText);
   const h = hash(name.trim().toLowerCase());
   const gender = dna.gender === "unspecified" ? (h % 2 ? "female" : "male") : dna.gender;
-  const same = pool1.filter((s) => (gender === "female" ? s.f0 >= GENDER_SPLIT_HZ : s.f0 < GENDER_SPLIT_HZ));
+  const isGender = (x: Speaker) => (gender === "female" ? x.f0 >= GENDER_SPLIT_HZ : x.f0 < GENDER_SPLIT_HZ);
+  const inAccent = acc ? cat.speakers.filter((x) => acc.voices.some((v) => v.model === x.model && (!v.names || (x.name && v.names.some((n) => new RegExp(`(^|[^a-z])${n}([^a-z]|$)`, "i").test(x.name!)))))) : [];
+  // An accent is only used when it has a voice of the character's gender (never a man's voice for a woman to keep an accent).
+  const accented = inAccent.some(isGender) ? inAccent : [];
+  const pool0 = accented.length ? accented : cat.speakers.filter((x) => x.model === model);
+  const pool1 = pool0.length ? pool0 : cat.speakers;
+  if (!pool1.length) return null;
+  const same = pool1.filter(isGender);
   const pool = same.length ? same : pool1;
   // Voice DNA pitch 0–99 → a target register inside the gender's usual range.
   const [lo, hi] = gender === "female" ? [165, 255] : [85, 160];
@@ -78,9 +107,12 @@ export function pickSpeaker(cat: VoiceCatalogue, dna: { language: string; gender
   // Among the closest few, the character's name decides — so two similar characters don't share one voice.
   const near = ranked.slice(0, Math.min(4, ranked.length));
   const s = near[h % near.length];
+  const accentLabel = accented.length ? acc!.label : null;
+  const where = accentLabel ? `${accentLabel} English` : model.startsWith("en_US") ? "American" : "British Isles";
+  const note = acc && !accented.length ? ` — no free ${acc.label} ${gender} voice is installed on this server, so the nearest default is used` : !acc && accentText ? ` — no free voice speaks a ${accentText} accent yet; a paid voice provider can match it` : "";
   return {
-    model: s.model, speaker: s.id, f0: s.f0, gender,
-    reason: `${model.startsWith("en_US") ? "American" : "British Isles"} speaker ${s.id}, measured at ${Math.round(s.f0)} Hz (target ${Math.round(target)} Hz for a ${gender} voice at register ${dna.pitch}/99)`,
+    model: s.model, speaker: s.id, f0: s.f0, gender, accent: accentLabel, single: !!s.single,
+    reason: `${where} speaker ${s.name ?? s.id}, measured at ${Math.round(s.f0)} Hz (target ${Math.round(target)} Hz for a ${gender} voice at register ${dna.pitch}/99)${note}`,
   };
 }
 

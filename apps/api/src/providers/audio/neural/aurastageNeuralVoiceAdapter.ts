@@ -1,6 +1,7 @@
 // AuraStage neural voice (native, free): speaks a dialogue line with Piper, an open neural text-to-speech engine
 // (MIT), using multi-speaker voice models trained on the VCTK (British Isles accents) and LibriTTS-R (American English)
-// corpora — both CC BY 4.0, credited in docs. Natural-sounding, runs on AuraStage's own servers, costs nothing.
+// corpora — both CC BY 4.0 — plus accent voices from CMU ARCTIC (Scottish, Canadian, Indian, American) and OpenSLR 83
+// (Northern English), credited with every line. Natural-sounding, runs on AuraStage's own servers, costs nothing.
 // The speaker is matched to the character's Voice DNA by MEASURED pitch (voices.ts); the line's emotion shapes pace
 // and energy. Installed in the API and generation-worker images by apps/api/scripts/piper-install.sh; where it isn't
 // installed this backend reports "not configured" and the older built-in voice is used instead.
@@ -11,6 +12,14 @@ import { join } from "node:path";
 import { ProviderError } from "../../types";
 import type { AudioAdapter } from "../types";
 import { pickSpeaker, prosody, type VoiceCatalogue } from "./voices";
+
+/** Where each voice model's training data comes from, and its licence (shown with every generated line). */
+const VOICE_CREDITS: Record<string, string> = {
+  "en_US-libritts_r-medium": "Voice model trained on LibriTTS-R (CC BY 4.0)",
+  "en_GB-vctk-medium": "Voice model trained on VCTK (CC BY 4.0)",
+  "en_US-arctic-medium": "Voice model trained on CMU ARCTIC (free for any use)",
+  "en_GB-northern_english_male-medium": "Voice model trained on the OpenSLR 83 UK and Ireland English dialect corpus (CC BY-SA 4.0)",
+};
 
 const dir = (env: Record<string, string | undefined>) => env.PIPER_DIR || "/opt/piper";
 function catalogue(env: Record<string, string | undefined>): VoiceCatalogue | null {
@@ -57,14 +66,14 @@ export const aurastageNeuralVoiceAdapter: AudioAdapter = {
     if (!line || !base) throw new ProviderError("No Voice DNA for this line.");
     const text = req.description.replace(/\s+/g, " ").trim().slice(0, 1000);
     if (!text) throw new ProviderError("Nothing to say.");
-    const pick = pickSpeaker(cat, base, String(req.params.character_name ?? base.description));
+    const pick = pickSpeaker(cat, base, String(req.params.character_name ?? base.description), typeof req.params.accent === "string" ? req.params.accent : null);
     if (!pick) throw new ProviderError("No neural voice matches this character.");
     const p = prosody(line);
     const tmp = mkdtempSync(join(tmpdir(), "aura-voice-"));
     const out = join(tmp, "line.wav");
     try {
       // Arguments as an array and the text on stdin (no shell): the line can't be interpreted as a command.
-      const args = ["--model", join(dir(env), "voices", `${pick.model}.onnx`), "--speaker", String(pick.speaker), "--length_scale", String(p.length_scale),
+      const args = ["--model", join(dir(env), "voices", `${pick.model}.onnx`), ...(pick.single ? [] : ["--speaker", String(pick.speaker)]), "--length_scale", String(p.length_scale),
         "--noise_scale", String(p.noise_scale), "--noise_w", "0.8", "--sentence_silence", "0.25", "--output_file", out, "--quiet"];
       await new Promise<void>((resolve, reject) => {
         const proc = spawn(join(dir(env), "piper"), args, { stdio: ["pipe", "ignore", "pipe"] });
@@ -82,8 +91,8 @@ export const aurastageNeuralVoiceAdapter: AudioAdapter = {
         bytes: new Uint8Array(wav), media_type: "audio/wav", duration_seconds: Math.round(((wav.length - 44) / (rate * channels * 2)) * 1000) / 1000, sample_rate: rate, channels,
         detail: {
           layers: [{ name: `Voice: ${line.description}`, because: [pick.reason, ...(line.why ?? [])].join("; ") }],
-          voice: { model: pick.model, speaker: pick.speaker, measured_f0: pick.f0, length_scale: p.length_scale, noise_scale: p.noise_scale, gain: p.gain },
-          credits: pick.model.startsWith("en_US") ? "Voice model trained on LibriTTS-R (CC BY 4.0)" : "Voice model trained on VCTK (CC BY 4.0)",
+          voice: { model: pick.model, speaker: pick.speaker, measured_f0: pick.f0, accent: pick.accent, why: pick.reason, length_scale: p.length_scale, noise_scale: p.noise_scale, gain: p.gain },
+          credits: VOICE_CREDITS[pick.model] ?? "Piper voice model",
         },
         provider_request_id: null, cost_usd: 0,
       };
