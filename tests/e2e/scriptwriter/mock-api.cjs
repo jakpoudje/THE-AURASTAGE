@@ -1507,15 +1507,25 @@ http.createServer((req, res) => {
         category: a.category, description: a.description, tags: a.tags, current_version: a.current_version, versions: a.versions.length, archived: !!a.archived_at, updated_at: a.updated_at || a.created_at,
         specs: { media_type: cur.media_type, size_bytes: cur.bytes.length, duration_seconds: a.duration_seconds || null, sample_rate: null, channels: null, width: a.width || null, height: a.height || null }, usage: usageOf(a) };
     };
-    const detailOf = (a) => ({ asset: libDTO(a), versions: [...a.versions].reverse().map((v) => ({ version_number: v.version_number, checksum: v.checksum, note: v.note, created_at: v.created_at, current: v.version_number === a.current_version, size_bytes: v.bytes.length, media_type: v.media_type })),
+    // The "render worker" for video edits (migration 0050): a queued edit is done the next time the asset is read.
+    const runVideoEdits = (a) => {
+      for (const e of a.video_edits || []) if (e.status === "queued") {
+        const n = a.versions.length + 1;
+        a.versions.push({ version_number: n, bytes: Buffer.concat([a.bytes, Buffer.from("edited")]), media_type: "video/mp4", note: e.note || "Edited video", created_at: now(), checksum: crypto.randomUUID() });
+        a.current_version = n; a.history.push({ action: "AssetVersionAdded", metadata: { version: n }, created_at: now() });
+        Object.assign(e, { status: "succeeded", result_version: n, completed_at: now() });
+      }
+    };
+    const detailOf = (a) => (runVideoEdits(a), { video_edits: [...(a.video_edits || [])].reverse(), asset: libDTO(a), versions: [...a.versions].reverse().map((v) => ({ version_number: v.version_number, checksum: v.checksum, note: v.note, created_at: v.created_at, current: v.version_number === a.current_version, size_bytes: v.bytes.length, media_type: v.media_type })),
       links: usageOf(a).filter((x) => x.kind === "link"), history: [...a.history].reverse() });
     const sniffLib = (ct) => {
       const t = (ct || "").split(";")[0];
       const ok = { "image/png": () => raw[0] === 0x89 && raw.slice(1, 4).toString() === "PNG", "image/jpeg": () => raw[0] === 0xff && raw[1] === 0xd8, "application/pdf": () => raw.slice(0, 5).toString() === "%PDF-",
-        "text/plain": () => true, "audio/wav": () => raw.slice(0, 4).toString() === "RIFF" && raw.slice(8, 12).toString() === "WAVE" }[t];
+        "text/plain": () => true, "audio/wav": () => raw.slice(0, 4).toString() === "RIFF" && raw.slice(8, 12).toString() === "WAVE",
+        "video/mp4": () => raw.slice(4, 8).toString() === "ftyp", "video/webm": () => raw[0] === 0x1a && raw[1] === 0x45 && raw[2] === 0xdf && raw[3] === 0xa3 }[t];
       if (!ok) return { error: "That kind of file can't be added yet." };
       if (!ok()) return { error: "That file's contents don't match its type." };
-      return { type: t.startsWith("image/") ? "image" : t.startsWith("audio/") ? "audio" : "document", media_type: t };
+      return { type: t.startsWith("image/") ? "image" : t.startsWith("audio/") ? "audio" : t.startsWith("video/") ? "video" : "document", media_type: t };
     };
     const assetById = (id) => { const a = assets.find((x) => x.id === id); return a && libShape(a); };
     if (u === `/api/projects/${P}/library` && req.method === "GET") {
@@ -1573,6 +1583,18 @@ http.createServer((req, res) => {
       const n = a.versions.length + 1; a.versions.push({ version_number: n, bytes: raw, media_type: k.media_type, note: new URL(req.url, "http://x").searchParams.get("note") || "", created_at: now(), checksum: sum });
       a.current_version = n; a.bytes = raw; a.updated_at = now(); a.history.push({ action: "AssetVersionAdded", metadata: { version: n }, created_at: now() });
       return send(201, detailOf(a));
+    }
+    if ((m = u.match(/^\/api\/assets\/([0-9a-f-]{36})\/video-edit$/)) && req.method === "POST") {
+      const a = assetById(m[1]); if (astGate("edit")) return;
+      if (a.type !== "video") return astErr(400, "Only video files are edited this way.");
+      const sp = b.speed ?? 1, st = b.trim_start ?? 0, en = b.trim_end ?? null;
+      if (![0.5, 0.75, 1, 1.25, 1.5, 2].includes(sp)) return astErr(400, "speed: invalid");
+      if (en !== null && en <= st + 0.1) return astErr(400, "The end must come after the start.");
+      if (st === 0 && en === null && !b.mute && sp === 1) return astErr(400, "Nothing to change — trim, mute or change the speed first.");
+      a.video_edits = a.video_edits || [];
+      if (a.video_edits.some((e) => e.status === "queued" || e.status === "running")) return astErr(409, "an edit of this video is already being made — wait for it to finish");
+      const e = { id: crypto.randomUUID(), source_version: a.current_version, params: { trim_start: st, trim_end: en, mute: !!b.mute, speed: sp }, note: b.note || "", status: "queued", error: null, result_version: null, created_at: now(), completed_at: null };
+      a.video_edits.push(e); return send(201, e);
     }
     if ((m = u.match(/^\/api\/assets\/([0-9a-f-]{36})\/links$/)) && req.method === "POST") {
       const a = assetById(m[1]); if (astGate("edit")) return;

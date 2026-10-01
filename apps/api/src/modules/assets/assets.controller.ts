@@ -2,7 +2,7 @@
 // HTTP/API transport only; validation/auth context; no business logic.
 // Domain: Assets Library
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { deleteAsset, editAsset, getAssetDetail, getLibrary, linkAsset, listProjectAssets, readAssetContent, readAssetVersionContent, replaceAsset, uploadAsset, uploadAudio } from "./assets.service";
+import { deleteAsset, editAsset, getAssetDetail, getLibrary, linkAsset, listProjectAssets, readAssetContent, readAssetVersionContent, replaceAsset, requestVideoEdit, uploadAsset, uploadAudio } from "./assets.service";
 import { AssetConflictError, AssetNotFoundError, AssetNotReadyError, AssetValidationError, MAX_ASSET_BYTES, MAX_AUDIO_BYTES } from "./assets.validator";
 import { AssetForbiddenError } from "./assets.permissions";
 
@@ -40,6 +40,7 @@ export async function registerAssetsRoutes(app: FastifyInstance) {
   app.post("/api/assets/:id/versions", { bodyLimit: MAX_ASSET_BYTES + 1024 }, route(async (r, reply) =>
     reply.code(201).send(await replaceAsset(r.db, P(r).id, r.body, String(r.headers["content-type"] ?? ""), r.query as Record<string, string>))));
   app.post("/api/assets/:id/links", route(async (r) => linkAsset(r.db, P(r).id, r.body)));
+  app.post("/api/assets/:id/video-edit", route(async (r, reply) => reply.code(201).send(await requestVideoEdit(r.db, P(r).id, r.body))));
 
   app.post("/api/projects/:id/assets/audio", { bodyLimit: MAX_AUDIO_BYTES + 1024 }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {

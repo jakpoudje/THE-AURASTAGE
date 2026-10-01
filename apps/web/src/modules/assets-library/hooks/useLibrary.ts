@@ -9,7 +9,7 @@ import type { Project } from "@aurastage/contracts";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { apiGet } from "@/lib/apiClient";
 import { assetsApi, readFileSpecs } from "../api/assetsApi";
-import type { AssetDetail, Filters, Library } from "../types";
+import type { AssetDetail, Filters, Library, VideoEditParams } from "../types";
 
 export const EMPTY_FILTERS: Filters = { q: "", category: null, type: null, usage: "any", scene_id: null, archived: false, sort: "newest" };
 
@@ -124,6 +124,13 @@ export function useLibrary(projectId: string) {
       }
     },
     link: (type: "scene" | "character", id: string, linked: boolean) => run(linked ? "Linked." : "Link removed.", () => assetsApi.link(selected!, type, id, linked)),
+    videoEdit: (body: VideoEditParams & { note: string }) =>
+      run("Video edit queued — the render worker saves it as a new version in a moment. Earlier versions are kept.", async () => {
+        await assetsApi.videoEdit(selected!, body);
+        return assetsApi.detail(selected!);
+      }),
+    /** Re-reads the open asset (e.g. while a video edit is being made). */
+    refreshDetail: async () => { if (selected) setDetail(await assetsApi.detail(selected)); },
     clearError: () => setError(null),
   };
 }

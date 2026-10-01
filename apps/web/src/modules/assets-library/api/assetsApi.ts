@@ -1,7 +1,7 @@
 "use client";
 
 import { apiGet, apiGetBytes, apiPatch, apiPost, apiUpload } from "@/lib/apiClient";
-import type { AssetDetail, Filters, Library } from "../types";
+import type { AssetDetail, Filters, Library, VideoEditParams } from "../types";
 
 const qs = (f: Filters) => {
   const p = new URLSearchParams();
@@ -30,6 +30,8 @@ export const assetsApi = {
   update: (assetId: string, patch: Record<string, unknown>) => apiPatch<AssetDetail>(`/api/assets/${assetId}`, patch),
   link: (assetId: string, object_type: "scene" | "character", object_id: string, linked: boolean) =>
     apiPost<AssetDetail>(`/api/assets/${assetId}/links`, { object_type, object_id, linked }),
+  /** Queues a trim / mute / speed edit of a video; the render worker saves it as a new version (migration 0050). */
+  videoEdit: (assetId: string, body: VideoEditParams & { note: string }) => apiPost<{ id: string }>(`/api/assets/${assetId}/video-edit`, body),
   bytes: (assetId: string, version?: number) => apiGetBytes(`/api/assets/${assetId}/content${version ? `?version=${version}` : ""}`),
 };
 

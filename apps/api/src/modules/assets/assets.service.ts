@@ -4,6 +4,7 @@
 // private media bucket and registered with an audit event. Bytes are only ever
 // served back to project members through this API.
 import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { deleteMedia, getMedia, mediaConfigured, putMedia } from "../../storage/media";
 import { assertAssetAccess, assertProjectAccess } from "./assets.permissions";
@@ -170,7 +171,8 @@ export async function getLibrary(db: SupabaseClient, projectId: string, query: R
 
 export async function getAssetDetail(db: SupabaseClient, assetId: string) {
   const a = await assertAssetAccess(db, assetId);
-  const [versions, idx, history] = await Promise.all([repo.listVersions(db, assetId), usageIndex(db, a.project_id), repo.listHistory(db, assetId)]);
+  const [versions, idx, history, edits] = await Promise.all([repo.listVersions(db, assetId), usageIndex(db, a.project_id), repo.listHistory(db, assetId),
+    a.type === "video" ? repo.listVideoEdits(db, assetId) : Promise.resolve([])]);
   const usage = idx.map.get(assetId) ?? [];
   return {
     asset: toLibraryDTO(a, versions.length || 1, usage),
@@ -180,7 +182,29 @@ export async function getAssetDetail(db: SupabaseClient, assetId: string) {
     })),
     links: usage.filter((u) => u.kind === "link"),
     history: history.map((h) => ({ action: h.action, metadata: h.metadata, created_at: h.created_at })),
+    // Video edits made by the render worker (migration 0050), so the page can show progress and results.
+    video_edits: edits,
   };
+}
+
+const VideoEditInput = z.object({
+  trim_start: z.number().min(0).max(36000).default(0),
+  trim_end: z.number().min(0.1).max(36000).nullable().default(null),
+  mute: z.boolean().default(false),
+  speed: z.union([z.literal(0.5), z.literal(0.75), z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]).default(1),
+  note: z.string().trim().max(500).default(""),
+}).strict();
+
+/** Queues a video edit (trim, mute, speed) for the render worker; the result becomes a new version (rule 11). */
+export async function requestVideoEdit(db: SupabaseClient, assetId: string, body: unknown) {
+  const a = await assertAssetAccess(db, assetId);
+  if (a.type !== "video") throw new AssetValidationError("Only video files are edited this way.");
+  const p = VideoEditInput.safeParse(body ?? {});
+  if (!p.success) throw new AssetValidationError(p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
+  const { note, ...params } = p.data;
+  if (params.trim_end !== null && params.trim_end <= params.trim_start + 0.1) throw new AssetValidationError("The end must come after the start.");
+  if (params.trim_start === 0 && params.trim_end === null && !params.mute && params.speed === 1) throw new AssetValidationError("Nothing to change — trim, mute or change the speed first.");
+  return repo.requestVideoEdit(db, assetId, params, note);
 }
 
 export async function uploadAsset(

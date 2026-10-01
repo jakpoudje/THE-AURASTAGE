@@ -90,7 +90,8 @@ export default function AssetsLibraryPage() {
           </div>
           {L.detail && (
             <AssetDetailPanel key={L.detail.asset.id} d={L.detail} lib={lib} projectId={id} canEdit={canEdit} busy={L.busy} onDelete={L.remove}
-              onUpdate={L.update} onReplace={L.replace} onLink={L.link} onClose={() => L.select(null)} />
+              onUpdate={L.update} onReplace={L.replace} onLink={L.link} onClose={() => L.select(null)}
+              onVideoEdit={L.videoEdit} onRefresh={L.refreshDetail} />
           )}
         </div>
       </div>

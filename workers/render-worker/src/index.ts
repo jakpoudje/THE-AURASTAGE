@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getMedia, putMediaFile, renderStorageKey } from "@aurastage/api/dist/storage/media";
 import { ffmpeg } from "./ffmpeg";
 import { runOnce, type WorkerDeps } from "./worker";
+import { runVideoEditOnce, type VideoEditDeps } from "./videoEdit";
 
 const env = process.env;
 for (const k of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "WORKER_TOKEN", "MEDIA_BUCKET"]) if (!env[k]) throw new Error(`missing env ${k}`);
@@ -29,6 +30,16 @@ const deps: WorkerDeps = {
   log,
 };
 
+// Video edits from the Assets Library (migration 0050) share this worker's ffmpeg and media access.
+const editDeps: VideoEditDeps = {
+  claimEdit: () => rpc("worker_claim_video_edit", { p_token: token }),
+  completeEdit: (id, path, checksum, metadata) => rpc("worker_complete_video_edit", { p_token: token, p_id: id, p_storage_path: path, p_checksum: checksum, p_metadata: metadata }),
+  failEdit: (id, error) => rpc("worker_fail_video_edit", { p_token: token, p_id: id, p_error: error }),
+  fetchMedia: (key) => getMedia(key),
+  putFile: (key, path, type) => putMediaFile(key, path, type),
+  log,
+};
+
 let stopping = false;
 process.on("SIGTERM", () => (stopping = true));
 process.on("SIGINT", () => (stopping = true));
@@ -38,7 +49,7 @@ process.on("SIGINT", () => (stopping = true));
   log("worker.started", { ffmpeg: stdout.toString().split("\n")[0] });
   while (!stopping) {
     try {
-      const worked = await runOnce(deps);
+      const worked = (await runOnce(deps)) || (await runVideoEditOnce(editDeps));
       if (!worked) await new Promise((r) => setTimeout(r, 3000));
     } catch (e) {
       log("worker.error", { error: (e as Error).message });

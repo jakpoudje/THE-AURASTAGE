@@ -42,6 +42,14 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   if (msg.startsWith("AURA-AST-400") || error.code === "23514") return new AssetValidationError(text || "That value isn't allowed");
   return Object.assign(new Error(msg || "Database error"), { cause: error });
 }
+/** Video edits of an asset, newest first (migration 0050). */
+export async function listVideoEdits(db: SupabaseClient, assetId: string) {
+  const { data, error } = await db.from("video_edits").select("id, source_version, params, note, status, error, result_version, created_at, completed_at").eq("asset_id", assetId).order("created_at", { ascending: false }).limit(20);
+  if (error) throw mapDbError(error);
+  return (data ?? []) as Row[];
+}
+export const requestVideoEdit = (db: SupabaseClient, assetId: string, params: Row, note: string) => rpc(db, "request_video_edit", { p_asset: assetId, p_params: params, p_note: note });
+
 async function rpc<T = Row>(db: SupabaseClient, fn: string, args: Row): Promise<T> {
   const { data, error } = await db.rpc(fn, args);
   if (error) throw mapDbError(error);

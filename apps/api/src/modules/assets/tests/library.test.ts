@@ -183,4 +183,25 @@ describe("Assets Library routes", () => {
     expect(ok.json()).toEqual({ deleted: true, name: "Tunde line 1", files_removed: 1, files_left: 0 });
     expect(stored["k/wav1.wav"]).toBeUndefined();
   });
+
+  it("video edits (migration 0050): trim / mute / speed are queued for the render worker; nothing-to-do, bad ranges and non-video are refused; the detail shows the edits", async () => {
+    const VID = "88888888-8888-4888-8888-888888888888";
+    rows.assets.push({ id: VID, org_id: ORG, project_id: P, type: "video", category: "visual_references", name: "Harbour plate", description: "", tags: [], storage_path: "k/v1.mp4",
+      checksum: "b".repeat(64), metadata: { media_type: "video/mp4", duration_seconds: 8 }, current_version: 1, created_at: "2026-09-27T10:00:00Z" });
+    rows.asset_versions.push({ asset_id: VID, project_id: P, version_number: 1, storage_path: "k/v1.mp4", checksum: "b".repeat(64), metadata: {}, note: "", created_at: "2026-09-27T10:00:00Z" });
+    rows.video_edits = [{ asset_id: VID, id: "e1", source_version: 1, params: { trim_start: 1, trim_end: 3, mute: false, speed: 1 }, status: "running", created_at: "2026-10-01T10:00:00Z" }];
+    const calls: any[] = [];
+    const a = app(rows, calls);
+    await registerAssetsRoutes(a);
+    const ok = await a.inject({ method: "POST", url: `/api/assets/${VID}/video-edit`, payload: { trim_start: 1.5, trim_end: 6, mute: true, speed: 1.5, note: "Tighter" } });
+    expect(ok.statusCode).toBe(201);
+    expect(calls).toEqual([{ fn: "request_video_edit", args: { p_asset: VID, p_params: { trim_start: 1.5, trim_end: 6, mute: true, speed: 1.5 }, p_note: "Tighter" } }]);
+    expect((await a.inject({ method: "POST", url: `/api/assets/${VID}/video-edit`, payload: {} })).json().error.message).toMatch(/Nothing to change/);
+    expect((await a.inject({ method: "POST", url: `/api/assets/${VID}/video-edit`, payload: { trim_start: 4, trim_end: 3 } })).statusCode).toBe(400);
+    expect((await a.inject({ method: "POST", url: `/api/assets/${VID}/video-edit`, payload: { speed: 3 } })).statusCode).toBe(400);
+    expect((await a.inject({ method: "POST", url: `/api/assets/${WAV}/video-edit`, payload: { mute: true } })).json().error.message).toBe("Only video files are edited this way.");
+    const d = (await a.inject({ method: "GET", url: `/api/assets/${VID}` })).json();
+    expect(d.video_edits).toHaveLength(1);
+    expect(d.video_edits[0]).toMatchObject({ status: "running" });
+  });
 });

@@ -19,5 +19,9 @@ export type AssetDetail = {
   versions: { version_number: number; checksum: string | null; note: string; created_at: string; current: boolean; size_bytes: number | null; media_type: string | null }[];
   links: Usage[];
   history: { action: string; metadata: Record<string, unknown>; created_at: string }[];
+  /** Video edits done by the render worker (migration 0050), newest first. */
+  video_edits?: VideoEdit[];
 };
+export type VideoEditParams = { trim_start: number; trim_end: number | null; mute: boolean; speed: 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2 };
+export type VideoEdit = { id: string; source_version: number; params: VideoEditParams; note: string; status: "queued" | "running" | "succeeded" | "failed"; error: string | null; result_version: number | null; created_at: string; completed_at: string | null };
 export type Filters = { q: string; category: string | null; type: string | null; usage: "any" | "used" | "unused"; scene_id: string | null; archived: boolean; sort: "newest" | "name" };

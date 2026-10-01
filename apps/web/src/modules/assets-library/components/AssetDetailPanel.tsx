@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { assetsApi } from "../api/assetsApi";
-import type { AssetDetail, Library } from "../types";
+import type { AssetDetail, Library, VideoEditParams } from "../types";
 import { usePreview } from "./AssetGrid";
 import { AssetEditor } from "./AssetEditor";
 import { actionLabel, bytes, specLine, TYPE_LABEL } from "./format";
@@ -19,8 +19,9 @@ async function download(assetId: string, name: string, version: number) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, onReplace, onLink, onDelete, onClose }: {
+export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, onReplace, onLink, onDelete, onClose, onVideoEdit, onRefresh }: {
   d: AssetDetail; lib: Library; projectId: string; canEdit: boolean; busy: boolean;
+  onVideoEdit?: (body: VideoEditParams & { note: string }) => void; onRefresh?: () => void;
   onUpdate: (patch: Record<string, unknown>, label?: string) => void; onReplace: (f: File, note: string) => void;
   onLink: (type: "scene" | "character", id: string, linked: boolean) => void; onDelete: (confirm: boolean) => void; onClose: () => void;
 }) {
@@ -34,6 +35,13 @@ export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, o
   const [editing, setEditing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const preview = usePreview(a);
+  // While the render worker makes a video edit, check back every few seconds.
+  const working = (d.video_edits ?? []).some((e) => e.status === "queued" || e.status === "running");
+  useEffect(() => {
+    if (!working || !onRefresh) return;
+    const t = setInterval(() => onRefresh(), 3000);
+    return () => clearInterval(t);
+  }, [working, onRefresh]);
   useEffect(() => setDraft({ name: a.name, category: a.category, description: a.description, tags: a.tags.join(", ") }), [a.id, a.name, a.category, a.description, a.tags]);
   const dirty = draft.name !== a.name || draft.category !== a.category || draft.description !== a.description || draft.tags !== a.tags.join(", ");
   const linkedScenes = new Set(d.links.filter((l) => l.scene_id).map((l) => l.scene_id));
@@ -41,7 +49,8 @@ export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, o
 
   return (
     <aside aria-label="Asset details" className="rounded-lg border border-aura-border bg-aura-panel p-4">
-      {editing && <AssetEditor d={d} busy={busy} onClose={() => setEditing(false)} onSave={(f, n) => { onReplace(f, n); setEditing(false); }} />}
+      {editing && <AssetEditor d={d} busy={busy} onClose={() => setEditing(false)} onSave={(f, n) => { onReplace(f, n); setEditing(false); }}
+        videoUrl={preview} onVideoEdit={(b) => { onVideoEdit?.(b); setEditing(false); }} />}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="truncate font-display text-xl">{a.name}</h2>
@@ -56,12 +65,24 @@ export function AssetDetailPanel({ d, lib, projectId, canEdit, busy, onUpdate, o
         {a.type === "video" && preview && <video controls src={preview} className="max-h-64 w-full" />}
         {(!preview || a.type === "document" || a.type === "reference") && <span className="p-6 text-xs text-white/40">{a.type === "document" ? "Download to open this document." : "Loading preview…"}</span>}
       </div>
+      {(d.video_edits ?? []).length > 0 && (
+        <ul aria-label="Video edits" className="mt-2 space-y-1 text-xs">
+          {d.video_edits!.slice(0, 3).map((e) => (
+            <li key={e.id} data-testid="video-edit" className="flex flex-wrap gap-2 text-white/60">
+              <span className={e.status === "succeeded" ? "text-emerald-300" : e.status === "failed" ? "text-red-300" : "text-aura-gold"}>
+                {e.status === "succeeded" ? `Saved as version ${e.result_version}` : e.status === "failed" ? "Edit failed" : "Making the edit…"}
+              </span>
+              <span>{e.note || "Edited video"}{e.error ? ` — ${e.error}` : ""}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="mt-3 flex flex-wrap gap-2">
         <button onClick={() => download(a.id, a.name, a.current_version)} className="rounded-md border border-aura-border px-3 py-1.5 text-xs">Download</button>
         {canEdit && !a.archived && (
           <>
-            {(a.type === "image" || a.type === "audio") && (
+            {(a.type === "image" || a.type === "audio" || a.type === "video") && (
               <button onClick={() => setEditing(true)} disabled={busy} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-xs text-aura-gold">Edit…</button>
             )}
             <button onClick={() => fileRef.current?.click()} disabled={busy} className="rounded-md border border-aura-border px-3 py-1.5 text-xs">Replace…</button>

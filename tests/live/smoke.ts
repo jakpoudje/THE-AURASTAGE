@@ -719,6 +719,28 @@ await check("delivery: signed downloads return the exact bytes (SHA-256 matches)
   assert(d.preview && d.preview.url, "no preview");
   return `master ${(bytes.length / 1024).toFixed(0)} KB`;
 });
+await check("assets: edit a video (trim, remove the sound, 2× speed) — the render worker saves it as a new version; v1 kept", async () => {
+  const d = await dvWs();
+  const mp4 = d.renders.find((x: any) => x.id === renderIds.streaming_master).outputs.find((o: any) => o.name === "streaming_1080p24.mp4");
+  const bytes = new Uint8Array(await (await fetch(mp4.url)).arrayBuffer());
+  const up = await rawPost(`/api/projects/${projectId}/library?name=Master%20for%20editing&category=visual_references`, "video/mp4", bytes);
+  const a = (await up.json()).asset;
+  assert(up.status === 201 && a.type === "video", `upload ${up.status}`);
+  await api("POST", `/api/assets/${a.id}/video-edit`, {}, [400]);
+  await api("POST", `/api/assets/${a.id}/video-edit`, { trim_start: 0, trim_end: 2, mute: true, speed: 2, note: "Live check edit" }, [201]);
+  let det: any;
+  for (let i = 0; i < 40; i++) {
+    det = await api("GET", `/api/assets/${a.id}`);
+    if (["succeeded", "failed"].includes(det.video_edits?.[0]?.status)) break;
+    await Bun.sleep(3000);
+  }
+  const e = det.video_edits[0];
+  assert(e.status === "succeeded" && e.result_version === 2, `edit ${e.status} ${e.error ?? ""}`);
+  assert(det.asset.current_version === 2 && det.versions.length === 2, "versions " + det.versions.length);
+  const v2 = new Uint8Array(await (await fetch(`${API}/api/assets/${a.id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
+  assert(new TextDecoder().decode(v2.slice(4, 8)) === "ftyp" && v2.length < bytes.length, `edited file ${v2.length} bytes vs ${bytes.length}`);
+  return `v2 ${(v2.length / 1024).toFixed(0)} KB (from ${(bytes.length / 1024).toFixed(0)} KB)`;
+});
 // ---- Completion pass 12a: Project Settings drive the other workspaces ----
 await check("settings: defaults first; the story is inherited from Scriptwriter", async () => {
   const st = await api("GET", `/api/projects/${projectId}/settings`);
@@ -1004,9 +1026,10 @@ await check("voices: a Scottish accent in Casting is spoken by the free Scottish
   const chars = (await api("GET", `/api/projects/${projectId}/characters`)).characters;
   const line = ws0.scenes.find((x: any) => x.scene.id === s1).lines?.find((l: any) => l.id === dx.source.dialogue_line_id);
   const who = chars.find((c: any) => c.id === line?.character_id) ?? chars.find((c: any) => c.id === tundeId);
-  const before = who.accent ?? null;
+  const before = { accent: who.accent ?? null, gender: who.gender ?? null };
   if (who.status === "approved") await api("PATCH", `/api/characters/${who.id}`, { status: "draft" });
-  await api("PATCH", `/api/characters/${who.id}`, { accent: "Scottish (Glasgow)" });
+  // A man's voice: the free Scottish voice in the catalogue (CMU ARCTIC awb) is male.
+  await api("PATCH", `/api/characters/${who.id}`, { accent: "Scottish (Glasgow)", gender: "Male" });
   try {
     const v = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { clip_id: dx.id, kind: "voice", duration_seconds: 2 });
     let g: any;
@@ -1017,10 +1040,10 @@ await check("voices: a Scottish accent in Casting is spoken by the free Scottish
     }
     assert(g.status === "succeeded", `voice ${g.status} ${g.error ?? ""}`);
     const why = g.layers[0]?.because ?? "";
-    assert(/Scottish English speaker awb|no free Scottish female voice is installed/.test(why), "accent not used: " + why);
+    assert(/Scottish English speaker awb/.test(why), "Scottish voice not used: " + why);
     return why.split(";")[0];
   } finally {
-    await api("PATCH", `/api/characters/${who.id}`, { accent: before });
+    await api("PATCH", `/api/characters/${who.id}`, before);
   }
 });
 // ---- Studio mixing (migration 0029): channel strips and routing saved, validated, revision-checked ----

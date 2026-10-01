@@ -245,6 +245,34 @@ You came.
     if ((await card().count()) || (await take().count())) throw new Error("deleted assets still listed after reload");
   });
 
+  await step("owner request 2026-10-01: edit a video (trim, remove the sound, speed) — the render worker saves it as a new version; reload: v2, v1 kept", async () => {
+    const { execFileSync } = require("node:child_process");
+    const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+    const vid = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vid-")), "plate.webm");
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=24:duration=3", "-c:v", "libvpx", "-b:v", "200k", vid]);
+    await page.getByLabel("File to upload").setInputFiles(vid);
+    const dlg = page.getByRole("dialog", { name: "Add asset" });
+    await dlg.getByLabel("Asset name").fill("Market plate");
+    await dlg.getByRole("button", { name: "Add to library" }).click();
+    await page.getByRole("status").getByText("Added “Market plate”.").waitFor();
+    await detail().getByRole("heading", { name: "Market plate" }).waitFor();
+    await detail().getByRole("button", { name: "Edit…" }).click();
+    const ed = page.getByRole("dialog", { name: "Edit Market plate" });
+    await ed.getByLabel("Start").waitFor({ timeout: 15000 });
+    const save = ed.getByRole("button", { name: "Save as new version" });
+    if (!(await save.isDisabled())) throw new Error("nothing changed yet — save must be disabled");
+    await ed.getByLabel("Remove the sound").check();
+    await ed.getByLabel("Speed").selectOption("1.5");
+    await ed.getByText(/New length about 2 s/).waitFor();
+    await save.click();
+    await page.getByRole("status").getByText(/Video edit queued/).waitFor();
+    await detail().getByTestId("video-edit").getByText("Saved as version 2").waitFor({ timeout: 15000 });
+    await detail().getByText("Edited: sound removed, 1.5× speed").first().waitFor();
+    await page.reload();
+    await detail().getByRole("heading", { name: "Market plate" }).waitFor();
+    await detail().getByTestId("video-edit").getByText("Saved as version 2").waitFor();
+  });
+
   await browser.close();
   if (errors.length) { console.log("ERRORS:", errors); failed++; }
   console.log(failed ? `${failed} FAILED` : "ALL PASSED");

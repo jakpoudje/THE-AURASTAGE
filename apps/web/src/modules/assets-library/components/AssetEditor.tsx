@@ -6,12 +6,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { assetEdit } from "@aurastage/engines";
 import { assetsApi } from "../api/assetsApi";
-import type { AssetDetail } from "../types";
+import type { AssetDetail, VideoEditParams } from "../types";
 
 type Save = (file: File, note: string) => void;
 const baseName = (n: string) => n.replace(/\.[a-z0-9]{2,4}$/i, "");
 
-export function AssetEditor({ d, busy, onSave, onClose }: { d: AssetDetail; busy: boolean; onSave: Save; onClose: () => void }) {
+type VideoSave = (body: VideoEditParams & { note: string }) => void;
+
+export function AssetEditor({ d, busy, onSave, onClose, onVideoEdit, videoUrl }: { d: AssetDetail; busy: boolean; onSave: Save; onClose: () => void; onVideoEdit?: VideoSave; videoUrl?: string | null }) {
   const a = d.asset;
   return (
     <div role="dialog" aria-modal="true" aria-label={`Edit ${a.name}`} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -23,7 +25,9 @@ export function AssetEditor({ d, busy, onSave, onClose }: { d: AssetDetail; busy
           </div>
           <button onClick={onClose} aria-label="Close editor" className="text-white/40 hover:text-white">✕</button>
         </div>
-        {a.type === "image" ? <ImageEditor d={d} busy={busy} onSave={onSave} /> : <AudioEditor d={d} busy={busy} onSave={onSave} />}
+        {a.type === "image" ? <ImageEditor d={d} busy={busy} onSave={onSave} />
+          : a.type === "video" ? <VideoEditor d={d} busy={busy} url={videoUrl ?? null} onSave={(b) => onVideoEdit?.(b)} />
+          : <AudioEditor d={d} busy={busy} onSave={onSave} />}
       </div>
     </div>
   );
@@ -261,6 +265,56 @@ function AudioEditor({ d, busy, onSave }: { d: AssetDetail; busy: boolean; onSav
         <button onClick={() => setE(AUD0)} disabled={!changed} className="rounded-md border border-aura-border px-3 py-1.5 disabled:opacity-40">Reset</button>
       </div>
       <p className="text-white/40">Saved as a 16-bit WAV at {buf.sampleRate} Hz, {buf.numberOfChannels === 1 ? "mono" : `${buf.numberOfChannels} channels`}. If the recording is in an approved mix, the mix is flagged for a new measurement.</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- video (migration 0050: the render worker does the cut)
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+function VideoEditor({ d, busy, url, onSave }: { d: AssetDetail; busy: boolean; url: string | null; onSave: VideoSave }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [dur, setDur] = useState<number>(Number(d.asset.specs?.duration_seconds ?? 0) || 0);
+  const [start, setStart] = useState(0);
+  const [end, setEnd] = useState<number | null>(null);
+  const [mute, setMute] = useState(false);
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const stop = end ?? dur;
+  // Preview plays only the chosen part, at the chosen speed and with or without sound.
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    v.playbackRate = speed;
+    v.muted = mute;
+    const onTime = () => { if (stop && v.currentTime >= stop) { v.pause(); v.currentTime = start; } if (v.currentTime < start) v.currentTime = start; };
+    v.addEventListener("timeupdate", onTime);
+    return () => v.removeEventListener("timeupdate", onTime);
+  }, [start, stop, speed, mute]);
+  const length = dur ? (stop - start) / speed : null;
+  const changed = start > 0 || end !== null || mute || speed !== 1;
+  const parts = [start > 0 || end !== null ? `trimmed to ${r2(start)}–${r2(stop)} s` : "", mute ? "sound removed" : "", speed !== 1 ? `${speed}× speed` : ""].filter(Boolean);
+  return (
+    <div className="space-y-3 text-xs">
+      {url ? <video ref={ref} src={url} controls aria-label="Video preview" className="max-h-72 w-full rounded bg-black" onLoadedMetadata={(e) => setDur(r2(e.currentTarget.duration || 0))} />
+        : <p className="text-white/50">Loading the video…</p>}
+      {dur > 0 && (
+        <>
+          <Slider label="Start" value={r2(start)} min={0} max={r2(dur)} step={0.05} unit=" s" onChange={(v) => { const s2 = Math.min(v, stop - 0.2); setStart(s2); if (ref.current) ref.current.currentTime = s2; }} />
+          <Slider label="End" value={r2(stop)} min={0} max={r2(dur)} step={0.05} unit=" s" onChange={(v) => setEnd(v >= r2(dur) ? null : Math.max(v, start + 0.2))} />
+        </>
+      )}
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="flex items-center gap-2 text-white/70"><input type="checkbox" checked={mute} onChange={(e) => setMute(e.target.checked)} /> Remove the sound</label>
+        <label className="text-white/70">Speed
+          <select aria-label="Speed" value={speed} onChange={(e) => setSpeed(Number(e.target.value) as (typeof SPEEDS)[number])} className="ml-2 rounded border border-aura-border bg-black px-2 py-1">
+            {SPEEDS.map((x) => <option key={x} value={x}>{x}×</option>)}
+          </select>
+        </label>
+        {length !== null && <span className="text-white/50">New length about {r2(length)} s</span>}
+      </div>
+      <p className="text-white/40">The render worker makes the new file (a few seconds to a minute) and saves it as version {d.versions.length + 1}; this version stays in Versions.</p>
+      <button disabled={busy || !changed} onClick={() => onSave({ trim_start: r2(start), trim_end: end === null ? null : r2(end), mute, speed, note: parts.length ? `Edited: ${parts.join(", ")}` : "" })}
+        className="rounded-md bg-aura-gold px-4 py-2 font-medium text-black disabled:opacity-40">Save as new version</button>
     </div>
   );
 }

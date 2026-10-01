@@ -53,3 +53,11 @@ metadata fields are not modelled yet; deleting an org/project does not yet remov
   made) needs `confirm: true`; the detail view lists exactly where it is used first (`usage`, which now includes
   `reference` views). Reference views then count as missing and can be made again; delivered files keep their own copy.
 - Every version's file is then removed from the private bucket; any file that couldn't be removed is reported (`files_left`).
+
+## Video edits (migration 0050, BUILD_PLAN §8 item 34)
+
+`POST /api/assets/:id/video-edit` `{ trim_start, trim_end|null, mute, speed (0.5–2), note }` → `request_video_edit`
+(gate `assets:edit`; video only; one edit at a time per asset). The render worker claims it
+(`worker_claim_video_edit`), cuts the version it was made from with ffmpeg (H.264/AAC, faststart) and records the result
+as a NEW asset version (`worker_complete_video_edit`); earlier versions are kept. `GET /api/assets/:id` returns
+`video_edits` (newest first) so the page shows progress and results.
