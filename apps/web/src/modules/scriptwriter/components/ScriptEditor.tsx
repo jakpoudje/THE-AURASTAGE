@@ -35,6 +35,7 @@ export function ScriptEditor({
   onSave,
   onApprove,
   onImport,
+  onImportPdf,
   focusLine,
 }: {
   draft: string;
@@ -47,11 +48,14 @@ export function ScriptEditor({
   onSave: (note?: string) => void;
   onApprove: () => void;
   onImport: (fileName: string, content: string) => string | null;
+  /** Reads a screenplay PDF on the server (layout → screenplay text); the text then opens like any import. */
+  onImportPdf?: (file: File) => Promise<{ source_text: string; warnings: string[]; pages: number } | null>;
   /** Jump to a line (1-based), e.g. a scene heading chosen in Scene Breakdown; `key` makes repeated jumps work. */
   focusLine?: { line: number; key: number } | null;
 }) {
   const [view, setView] = useState<"write" | "preview">("write");
   const [note, setNote] = useState("");
+  const [pdfNote, setPdfNote] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -69,6 +73,16 @@ export function ScriptEditor({
     e.target.value = "";
     if (!file) return;
     if (draft.trim() && !window.confirm("Replace the text in the editor with this file? Your saved versions are kept.")) return;
+    if (/\.pdf$/i.test(file.name)) {
+      if (!onImportPdf) return;
+      const r = await onImportPdf(file);
+      if (!r) return;
+      const s = onImport(file.name.replace(/\.pdf$/i, ".fountain"), r.source_text);
+      setNote(s ?? `Imported from ${file.name}`);
+      setView("write");
+      setPdfNote(`Read ${r.pages} page${r.pages === 1 ? "" : "s"} from the PDF.${r.warnings.length ? ` ${r.warnings.join(" ")}` : " Check it, then save it as a version."}`);
+      return;
+    }
     const suggested = onImport(file.name, await file.text());
     if (suggested) {
       setNote(suggested);
@@ -80,12 +94,12 @@ export function ScriptEditor({
     <div className="rounded-xl border border-aura-border bg-aura-panel">
       <div className="flex flex-wrap items-center gap-2 border-b border-aura-border px-4 py-2">
         <h2 className="mr-auto font-display text-lg">Script Editor</h2>
-        <input ref={fileRef} type="file" accept=".fdx,.fountain,.txt,.spmd" onChange={handleFile} className="hidden" />
+        <input ref={fileRef} type="file" accept=".fdx,.fountain,.txt,.spmd,.pdf" aria-label="Script file" onChange={handleFile} className="hidden" />
         <button
           onClick={() => fileRef.current?.click()}
           disabled={busy !== null}
           className="rounded-md border border-aura-border px-3 py-1 text-xs text-white/70 hover:border-aura-gold/60"
-          title="Final Draft (.fdx), Fountain (.fountain) or plain text (.txt)"
+          title="Final Draft (.fdx), PDF, Fountain (.fountain) or plain text (.txt)"
         >
           Import file
         </button>
@@ -100,6 +114,7 @@ export function ScriptEditor({
         ))}
         <span className={`text-xs ${dirty ? "text-aura-gold" : "text-white/40"}`}>{dirty ? "Unsaved changes" : "All changes saved"}</span>
       </div>
+      {pdfNote && <p role="status" data-testid="pdf-import-note" className="border-b border-aura-border px-4 py-2 text-xs text-white/60">{pdfNote}</p>}
 
       {view === "write" ? (
         <div>

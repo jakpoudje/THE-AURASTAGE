@@ -66,8 +66,32 @@ const SP = process.env.E2E_OUT || require("os").tmpdir(), BASE = "http://localho
   });
   await step("unsupported file shows plain error", async () => {
     await page.locator("main nav button", { hasText: "Edit & Refine" }).click();
-    await page.setInputFiles('input[type="file"]', { name: "script.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") });
-    await page.getByText(/PDF import isn't supported yet/).waitFor();
+    await page.setInputFiles('input[type="file"]', { name: "script.docx", mimeType: "application/octet-stream", buffer: Buffer.from("PK") });
+    await page.getByText(/Unsupported file type/).waitFor();
+  });
+  await step("item 13: import a screenplay PDF — headings, action, cues and dialogue come back from the page layout; it opens in the editor to save", async () => {
+    const lines = [[108, 700, "INT. NEWSROOM - NIGHT"], [108, 676, "Rain against the glass. AMARA types."], [266, 652, "AMARA"], [180, 640, "They buried it."], [108, 616, "EXT. HARBOUR - DAWN"], [108, 592, "Tunde waits."]];
+    const esc = (t) => t.replace(/[\\()]/g, (m) => `\\${m}`);
+    const content = lines.map(([x, y, t]) => `BT /F1 12 Tf ${x} ${y} Td (${esc(t)}) Tj ET`).join("\n");
+    const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+      `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`, "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>"];
+    let pdf = "%PDF-1.4\n"; const offs = [];
+    objs.forEach((o, i) => { offs.push(Buffer.byteLength(pdf)); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const xref = Buffer.byteLength(pdf);
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offs.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    await page.setInputFiles('input[type="file"]', { name: "shadows.pdf", mimeType: "application/pdf", buffer: Buffer.from(pdf, "latin1") });
+    await page.getByTestId("pdf-import-note").getByText(/Read 1 page from the PDF/).waitFor();
+    const text = await page.getByLabel("Script text").inputValue();
+    if (!/^INT\. NEWSROOM - NIGHT\n\nRain against the glass\. AMARA types\.\n\nAMARA\nThey buried it\.\n\nEXT\. HARBOUR - DAWN/.test(text)) throw new Error("PDF text: " + text.slice(0, 200));
+    await page.getByRole("button", { name: "Discard them" }).click().catch(() => null);
+  });
+  await step("item 13: compare two saved versions — what changed, scene by scene and line by line", async () => {
+    const cmp = page.getByRole("region", { name: "Compare versions" });
+    await cmp.getByLabel("Compare from").selectOption({ label: "v1" });
+    await cmp.getByLabel("Compare to").selectOption({ label: "v2" });
+    await cmp.getByRole("button", { name: "Compare" }).click();
+    await cmp.getByTestId("compare-summary").getByText(/^v1 → v2: /).waitFor();
+    await cmp.getByRole("list", { name: "Scene changes" }).locator("li").first().waitFor();
   });
   await step("stale save gets a clear conflict message", async () => {
     await page.evaluate(async () => { await fetch("http://localhost:3911/api/projects/11111111-1111-4111-8111-111111111111/script/versions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_text: "INT. X - DAY\n", base_version_id: (await (await fetch("http://localhost:3911/api/projects/11111111-1111-4111-8111-111111111111/script")).json()).current_version.id }) }); });

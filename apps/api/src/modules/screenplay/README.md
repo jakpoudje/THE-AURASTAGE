@@ -34,6 +34,12 @@ recorded as succeeded with `source: "builtin"`, provider `aurastage` — reviewe
 with the same checks. `engine: "writer"` asks the AI writer (paid). Writing screenplay pages (`write_script`,
 `rewrite_scene`) is always the AI writer.
 
+## PDF import and version compare (BUILD_PLAN §8 item 13)
+`POST /api/projects/:id/script/import-pdf` (application/pdf, ≤ 20 MB): text runs with their positions are read with unpdf
+and `pdfScreenplayEngine` 1.0.0 rebuilds Fountain from the screenplay indents; nothing is saved — the editor opens it and
+the writer saves a version. `GET /api/projects/:id/script/compare?from=&to=`: `scriptCompareEngine` 1.0.0 compares two
+saved versions scene by scene (added, removed, moved, changed) and line by line.
+
 ## API endpoints
 - `GET  /api/projects/:id/script` — script, latest version, version list, scenes, analysis
 - `POST /api/projects/:id/script/versions` — `{source_text, base_version_id, note?}` → new version (409 if someone saved first)

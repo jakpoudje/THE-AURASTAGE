@@ -97,7 +97,8 @@ export function screenplayImportEngine(rawInput: unknown): ScreenplayImportOutpu
     return { source_text: fdxToFountain(content, warnings), format: "fdx", warnings: [...new Set(warnings)], engine_version: ENGINE_VERSION };
   }
   if (name.endsWith(".pdf")) {
-    throw new ScreenplayImportError("PDF import isn't supported yet. Export your script from your writing app as Final Draft (.fdx) or Fountain (.fountain) instead.");
+    // PDFs are read on the server (pdfScreenplayEngine via /script/import-pdf): their text is laid out, not structured.
+    throw new ScreenplayImportError("PDF scripts are read on the server — use Import file in Scriptwriter, which sends the PDF there.");
   }
   if (!TEXT_EXTENSIONS.some((ext) => name.endsWith(ext))) {
     throw new ScreenplayImportError("Unsupported file type. Use a Final Draft (.fdx), Fountain (.fountain) or plain text (.txt) file.");

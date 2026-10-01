@@ -101,6 +101,19 @@ http.createServer((req, res) => {
       script = { ...script, status: "approved", approved_version_id: v.id }; return send(200, script);
     }
 
+    // ---- PDF import (REAL apps/api screenplay.pdf: unpdf + pdfScreenplayEngine) and version compare (REAL engine) ----
+    if (u === `/api/projects/${P}/script/import-pdf` && req.method === "POST") {
+      const pdfMod = require(require("path").resolve(__dirname, "../../../apps/api/dist/modules/screenplay/screenplay.pdf.js"));
+      const fdb = { from: () => { const q = { select: () => q, eq: () => q, limit: () => q, in: () => q, maybeSingle: async () => ({ data: { id: P, org_id: ORG }, error: null }), then: (ok) => ok({ data: [{ id: P, org_id: ORG, project_id: P }], error: null }) }; return q; } };
+      pdfMod.importPdf(fdb, P, raw).then((r) => send(200, r), (e) => send(e.code === "AURA-SCR-002" || /PDF/.test(e.message) ? 400 : 500, { error: { code: e.code || "AURA-SCR-500", message: e.message } }));
+      return;
+    }
+    if (u === `/api/projects/${P}/script/compare` && req.method === "GET") {
+      const q = new URLSearchParams(req.url.split("?")[1] || ""); const a = versions.find((x) => x.id === q.get("from")), c = versions.find((x) => x.id === q.get("to"));
+      if (!a || !c) return send(404, { error: { code: "AURA-SCR-404", message: "Version not found in this project" } });
+      return send(200, { from: { id: a.id, version_number: a.version_number, note: a.note ?? null }, to: { id: c.id, version_number: c.version_number, note: c.note ?? null },
+        ...eng.scriptCompareEngine({ from: { version_number: a.version_number, source_text: a.source_text }, to: { version_number: c.version_number, source_text: c.source_text } }) });
+    }
     // ---- AuraScript (mirrors apps/api/src/modules/screenplay/screenplay.writing + migration 0030). The "worker" runs the REAL
     // job runner with the REAL labelled test writer the first time a queued job is listed. ----
     const WR = globalThis.__writing || (globalThis.__writing = []);

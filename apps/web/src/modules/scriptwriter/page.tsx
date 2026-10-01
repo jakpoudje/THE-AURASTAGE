@@ -9,6 +9,8 @@
 // Engine domain: engines/story
 
 import Link from "next/link";
+import { apiUpload } from "@/lib/apiClient";
+import { VersionCompare } from "./components/VersionCompare";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
@@ -199,6 +201,10 @@ export default function ScriptwriterPage() {
               onSave={sw.saveVersion}
               onApprove={sw.approveCurrent}
               onImport={sw.importFile}
+              onImportPdf={async (file) => {
+                try { return await apiUpload<{ source_text: string; warnings: string[]; pages: number }>(`/api/projects/${id}/script/import-pdf`, file, "application/pdf"); }
+                catch (e) { window.alert(e instanceof Error ? e.message : "That PDF couldn't be read."); return null; }
+              }}
               focusLine={focusLine}
             />
             <div className="space-y-4">
@@ -206,6 +212,7 @@ export default function ScriptwriterPage() {
                 onOpened={() => sw.reload().catch(() => null)} />
               <ScriptAnalysisPanel analysis={sw.live.analysis} />
               <VersionHistory versions={ws?.versions ?? []} currentId={currentId} approvedId={approvedId} />
+              <VersionCompare projectId={id} versions={ws?.versions ?? []} />
             </div>
           </div>
         )}

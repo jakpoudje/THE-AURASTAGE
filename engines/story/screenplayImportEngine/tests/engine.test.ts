@@ -72,7 +72,7 @@ describe("screenplayImportEngine", () => {
   });
 
   it("explains unsupported files in plain language", () => {
-    expect(() => screenplayImportEngine({ file_name: "s.pdf", content: "%PDF" })).toThrow(/PDF import isn't supported yet/);
+    expect(() => screenplayImportEngine({ file_name: "s.pdf", content: "%PDF" })).toThrow(/PDF scripts are read on the server/);
     expect(() => screenplayImportEngine({ file_name: "s.docx", content: "x" })).toThrow(/Unsupported file type/);
     expect(() => screenplayImportEngine({ file_name: "s.fdx", content: "<FinalDraft></FinalDraft>" })).toThrow(/no screenplay content/);
   });

@@ -3,6 +3,8 @@
 // Domain: Scriptwriter
 // Canonical object: Script / Scene
 
+import { compareVersions } from "./screenplay.compare";
+import { importPdf, MAX_PDF_BYTES } from "./screenplay.pdf";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { approveScript, getScopePlan, getWorkspace, saveScriptVersion } from "./screenplay.service";
 import { ScriptConflictError, ScriptNotFoundError, ScriptValidationError } from "./screenplay.validator";
@@ -28,6 +30,10 @@ export async function registerScreenplayRoutes(app: FastifyInstance) {
     try { return reply.code(code).send(await fn(request)); } catch (err) { return handleError(err, reply); }
   };
   const pid = (r: import("fastify").FastifyRequest) => (r.params as { id: string }).id;
+  // PDF script import: the text comes back for the editor; the writer saves it as a version.
+  if (!app.hasContentTypeParser("application/pdf")) app.addContentTypeParser("application/pdf", { parseAs: "buffer", bodyLimit: MAX_PDF_BYTES + 1024 }, (_req, body, done) => done(null, body));
+  app.post("/api/projects/:id/script/import-pdf", { bodyLimit: MAX_PDF_BYTES + 1024 }, w((r) => importPdf(r.db, pid(r), r.body)));
+  app.get("/api/projects/:id/script/compare", w((r) => { const q = r.query as Record<string, unknown>; return compareVersions(r.db, pid(r), q.from, q.to); }));
   app.get("/api/projects/:id/script/writing", w((r) => listWriting(r.db, pid(r))));
   app.post("/api/projects/:id/script/writing", w((r) => requestWriting(r.db, pid(r), r.body), 201));
   app.post("/api/projects/:id/script/writing/story", { bodyLimit: 1024 * 1024 }, w((r) => saveStory(r.db, pid(r), r.body), 201));

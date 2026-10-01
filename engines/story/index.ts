@@ -19,3 +19,7 @@ export * as storySetup from "./storySetupEngine";
 export { storySetupEngine } from "./storySetupEngine";
 export * as storyScaffold from "./storyScaffoldEngine";
 export { storyScaffoldEngine, outlineScaffoldEngine } from "./storyScaffoldEngine";
+export * as pdfScreenplay from "./pdfScreenplayEngine";
+export { pdfScreenplayEngine } from "./pdfScreenplayEngine";
+export * as scriptCompare from "./scriptCompareEngine";
+export { scriptCompareEngine } from "./scriptCompareEngine";
