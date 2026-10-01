@@ -7,6 +7,7 @@
 import { CostNote } from "@/components/CostNote";
 import { useAiWriter } from "@/lib/useAiWriter";
 import { useEffect, useMemo, useState } from "react";
+import { BeatBoard } from "./BeatBoard";
 import { writingApi, type ContinuityFinding, type OutlineScene, type RewriteMode, type StoryBeat, type StoryCharacter, type StoryDraft, type WritingCheck, type WritingResult } from "../api/writingApi";
 import type { useWriting } from "../hooks/useWriting";
 
@@ -187,6 +188,7 @@ export function StoryDevelopmentPanel({ w, canEdit, project, onApplied }: { w: W
         </div>
       </div>
       {editing && <StoryEditor start={editing} busy={w.busy} onCancel={() => setEditing(null)} onSave={async (story) => { if (await w.saveStory(current?.id ?? null, story)) setEditing(null); }} />}
+      {!editing && current?.output && <BeatBoard story={current.output as StoryDraft} busy={w.busy} canEdit={canEdit} onSave={(story) => { void w.saveStory(current.id, story); }} />}
       {r && !editing && (
         <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
           <div className="flex flex-wrap items-center gap-2">

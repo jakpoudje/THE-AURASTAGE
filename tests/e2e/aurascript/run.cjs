@@ -163,6 +163,21 @@ async function api(method, path, body) {
     const total = ol.output.scenes.reduce((a, x) => a + x.est_minutes, 0);
     if (Math.abs(total - 12) > 0.05) throw new Error("outline should add up to the 12-minute runtime: " + total);
   });
+  await step("item 13: beat board — the current story's beats by act; rename one, move it to the next act, save; reload: kept and it's the story every step uses", async () => {
+    await stepTab("Story Development");
+    const board = page.getByRole("region", { name: "Beat board" });
+    const act1 = board.getByRole("list", { name: "Act 1" });
+    const card = act1.getByRole("listitem").first();
+    await card.getByLabel("Beat title").fill("The storm breaks");
+    await card.getByRole("button", { name: "Move The storm breaks to the next act" }).click();
+    await board.getByRole("list", { name: "Act 2" }).getByRole("listitem", { name: "Beat The storm breaks" }).waitFor();
+    await board.getByRole("button", { name: "Save beat board" }).click();
+    await page.getByText("Saved as your story — Outline and Script now use it.").waitFor();
+    await page.reload();
+    await stepTab("Story Development");
+    await page.getByRole("region", { name: "Beat board" }).getByRole("list", { name: "Act 2" }).getByRole("listitem", { name: "Beat The storm breaks" }).waitFor();
+    await page.getByTestId("current-story").waitFor();
+  });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();
   console.log(failed ? `${failed} FAILED` : "ALL PASSED");
