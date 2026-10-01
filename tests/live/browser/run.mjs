@@ -103,6 +103,33 @@ await check("casting look panel: generate a character's reference views; images 
   await panel.getByText("8 of 16 made").waitFor();
   await panel.getByTestId("look-back:FULL").locator("img").waitFor();
 });
+await check("casting actor photo: record consent, upload the performer's photo for a view; reload: used; withdraw; reload: no longer used", async () => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  const open = async () => {
+    await page.goto(projectUrl + "/casting");
+    await page.getByRole("button", { name: /Tunde Okafor/ }).first().click();
+    await page.getByRole("button", { name: "Look & References" }).click();
+    return page.getByRole("region", { name: "Look and references" });
+  };
+  let panel = await open();
+  const ph = panel.getByRole("region", { name: "Actor photos" });
+  await ph.getByText("Record a performer's consent").click();
+  await ph.getByLabel("Performer's full name").fill("Live Test Performer");
+  await ph.getByLabel("What they agreed to").fill("Agrees that photos may be used as Tunde's reference in this test project.");
+  await ph.getByLabel(/I confirm the performer gave this consent/).check();
+  await ph.getByRole("button", { name: "Record consent" }).click();
+  await ph.getByText(/Consent from Live Test Performer recorded/).waitFor();
+  await panel.getByTestId("look-profile:MS").click();
+  await ph.getByLabel(/^Actor photo for /).setInputFiles({ name: "performer.png", mimeType: "image/png", buffer: png });
+  await ph.getByText(/Photo of Live Test Performer is now the .* view/).waitFor();
+  panel = await open();
+  await panel.getByTestId("look-profile:MS").getByText("Actor").waitFor();
+  await panel.getByRole("region", { name: "Actor photos" }).getByRole("button", { name: "Withdraw consent" }).click();
+  await panel.getByText(/consent withdrawn/).waitFor();
+  panel = await open();
+  await panel.getByTestId("consent").getByText(/^Withdrawn /).waitFor();
+  if (await panel.getByTestId("look-profile:MS").getByText("Actor").count()) throw new Error("withdrawn photo still used");
+});
 await check("casting: one click makes the looks for the whole cast; a second click only fills gaps; reload: views there", async () => {
   await page.goto(projectUrl + "/casting");
   const bar = page.getByTestId("cast-looks");
@@ -223,8 +250,10 @@ await check("storyboard: plan shots, reload: kept; edit, reload: kept; approve, 
   await reload("Cinematic Precision");
   await page.getByRole("button", { name: "Shot 1", exact: true }).click();
   if ((await page.getByLabel("Angle").inputValue()) !== "low") throw new Error("shot edit lost after reload");
-  await page.getByRole("button", { name: "Approve shot plan" }).click();
-  await page.getByText(/Shot plan approved as version 1/).waitFor();
+  // Owner report 2026-10-01: planned scenes say they wait for approval, and one click approves every ready plan.
+  await page.getByRole("button", { name: /INT\. TUNDE'S APARTMENT/ }).first().getByText("Planned · approve").waitFor();
+  await page.getByRole("button", { name: "Approve every ready plan" }).click();
+  await page.getByText(/^Approved 1 shot plan\./).waitFor();
   await reload("Cinematic Precision");
   await page.getByRole("button", { name: "Approved · version 1 ✓" }).waitFor();
 });
@@ -233,6 +262,9 @@ await check("visual: compile, generate a sketch take, approve; reload: still app
   await page.getByText("Stunning Visuals").waitFor();
   await page.getByRole("button", { name: "Compile prompt" }).click();
   await page.getByText("Prompt compiled from the approved shot plan.").waitFor();
+  // Owner request 2026-10-01: 2, 4, 6, 8 or 13 variations to choose from.
+  const counts = await page.getByLabel("Variations").locator("option").evaluateAll((o) => o.map((x) => x.value).join(","));
+  if (counts !== "1,2,4,6,8,13") throw new Error("variation choices: " + counts);
   await page.getByRole("button", { name: "Generate shot" }).click();
   await page.getByRole("img", { name: "Take V1" }).waitFor({ timeout: 90000 });
   await reload("Stunning Visuals");
