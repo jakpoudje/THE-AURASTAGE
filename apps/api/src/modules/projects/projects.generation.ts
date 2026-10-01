@@ -53,7 +53,8 @@ export async function getGenerationReadiness(db: SupabaseClient, projectId: stri
     evidence(db, "ai_proposals", projectId, (q) => q.not("provider", "is", null), ["proposed", "applied", "rejected", "undone"], ["failed"], "provider", "planned_at"),
     evidence(db, "takes", projectId, (q) => q.eq("capability", "image"), ["succeeded"], ["failed"]),
     evidence(db, "takes", projectId, (q) => q.eq("capability", "video"), ["succeeded"], ["failed"]),
-    evidence(db, "character_reference_images", projectId, (q) => q, ["succeeded"], ["failed"]),
+    // Actor photos (uploads, migration 0048) aren't generation evidence.
+    evidence(db, "character_reference_images", projectId, (q) => q.neq("execution", "upload"), ["succeeded"], ["failed"]),
     evidence(db, "world_reference_images", projectId, (q) => q, ["succeeded"], ["failed"]),
     evidence(db, "audio_generations", projectId, (q) => q.in("kind", ["ambience", "fx", "foley"]), ["succeeded"], ["failed"]),
     evidence(db, "audio_generations", projectId, (q) => q.eq("kind", "score"), ["succeeded"], ["failed"]),

@@ -115,6 +115,17 @@ export default function StoryboardShotsPage() {
             <span className="text-xs text-white/40">Scenes that already have shots are kept as they are.</span>
           </div>
         )}
+        {ws.scenes.some((x) => x.scene.status === "active" && x.plan && x.plan.status !== "approved" && x.plan.review_state === "current") && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-500/30 px-4 py-3 text-sm">
+            <span className="text-white/70">
+              {ws.scenes.filter((x) => x.scene.status === "active" && x.plan && x.plan.status !== "approved" && x.plan.review_state === "current").length} scene(s) are planned and waiting for approval.
+            </span>
+            <button onClick={() => d.approveAll()} disabled={d.busy !== null} className="rounded-md bg-emerald-400 px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40">
+              {d.busy === "approve" ? "Approving…" : "Approve every ready plan"}
+            </button>
+            <span className="text-xs text-white/40">Only plans that pass their checks are approved; the rest are listed with what to fix.</span>
+          </div>
+        )}
         {(d.error || d.notice) && (
           <div className={`rounded-md border px-4 py-2 text-sm ${d.error ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300"}`}>{d.error ?? d.notice}</div>
         )}

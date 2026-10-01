@@ -349,13 +349,49 @@ http.createServer((req, res) => {
         const eo = LK.characterLookEngine({ character: { name: c.name, age: c.age ?? null, gender: c.gender ?? null, nationality: c.nationality ?? null, occupation: c.occupation ?? null, description: c.description ?? null }, wardrobe: null, style, age_state: null });
         const appearance = eng.characterAppearanceEngine({ name: c.name, age: c.age ?? null, gender: c.gender ?? null, description: c.description ?? null, wardrobe: null, age_state: null });
         const mine = refs.filter((r) => r.character_id === c.id && !r.look_id && !r.age_state_id);
-        const todo = eo.views.filter((v) => { const h = mine.filter((r) => `${r.angle}:${r.size}` === v.key); if (h[0] && (h[0].status === "queued" || h[0].status === "running")) return false; const g = h.find((r) => r.status === "succeeded"); return b.redo || !g || g.identity_hash !== eo.identity_hash; });
+        const todo = eo.views.filter((v) => { const h = mine.filter((r) => `${r.angle}:${r.size}` === v.key); if (h[0] && (h[0].status === "queued" || h[0].status === "running")) return false; const g = h.find((r) => r.status === "succeeded"); if (g && g.execution === "upload") return false; return b.redo || !g || g.identity_hash !== eo.identity_hash; });
         for (const v of todo) refs.unshift({ id: crypto.randomUUID(), character_id: c.id, look_id: null, age_state_id: null, angle: v.angle, size: v.size, aspect_ratio: v.aspect_ratio, prompt: v.prompt, identity_hash: eo.identity_hash,
           provider: "aurastage-sketch", model: "sketch-v1", execution: "native", status: "queued", asset_id: null, error: null, created_at: now(), completed_at: null, _polls: 0,
           sketch: { title: c.name, subtitle: v.label, angle: v.angle, size: v.size, lines: [eo.identity], appearance } });
         out.push(todo.length ? { id: c.id, name: c.name, requested: todo.length } : { id: c.id, name: c.name, requested: 0, note: "Already made from the current profile" });
       }
       return send(200, { characters: out, requested: out.reduce((a, c) => a + c.requested, 0), provider: out.some((c) => c.requested) ? "aurastage-sketch" : null });
+    }
+    // Actor photos with consent (mirrors characters.consent.ts + migration 0048).
+    if ((m = u.match(/^\/api\/characters\/([^/]+)\/consents$/)) || (m = u.match(/^\/api\/consents\/([^/]+)\/withdraw$/)) || (m = u.match(/^\/api\/characters\/([^/]+)\/actor-photos$/))) {
+      const KS = globalThis.__consents || (globalThis.__consents = []), refs = globalThis.__refs || (globalThis.__refs = []);
+      const edit = () => { const T0 = globalThis.__team || { as: "owner" }; return T0.as === "owner" || T0.as === "producer"; };
+      const deny = () => send(403, { error: { code: "AURA-COL-403", message: "your role can't edit in Casting & Characters. Ask the project's producer for access." } });
+      if (u.endsWith("/consents") && req.method === "GET") return send(200, { consents: KS.filter((k) => k.character_id === m[1]).map((k) => ({ ...k, active: !k.revoked_at,
+        photos: refs.filter((r) => r.consent_id === k.id).map((r) => ({ id: r.id, asset_id: r.asset_id, view: `${r.angle}:${r.size}`, in_use: r.status === "succeeded", status: r.status, created_at: r.created_at })) })) });
+      if (u.endsWith("/consents") && req.method === "POST") {
+        if (!edit()) return deny();
+        if (b.confirm !== true) return send(400, { error: { code: "AURA-CHR-002", message: "confirm: Tick the box to confirm the performer gave this consent" } });
+        if (!(b.performer_name || "").trim() || (b.statement || "").trim().length < 20) return send(400, { error: { code: "AURA-CHR-002", message: "Give the performer's name and what they agreed to" } });
+        const k = { id: crypto.randomUUID(), character_id: m[1], performer_name: b.performer_name.trim(), statement: b.statement.trim(), recorded_at: now(), revoked_at: null };
+        KS.unshift(k); return send(201, k);
+      }
+      if (u.endsWith("/withdraw")) {
+        if (!edit()) return deny();
+        const k = KS.find((x) => x.id === m[1]); if (!k) return send(404, { error: { code: "AURA-CHR-404", message: "consent not found" } });
+        if (!k.revoked_at) { k.revoked_at = now(); for (const r of refs) if (r.consent_id === k.id && r.status === "succeeded") Object.assign(r, { status: "withdrawn", error: "Consent withdrawn — this photo is no longer used" }); }
+        return send(200, k);
+      }
+      if (u.endsWith("/actor-photos")) {
+        if (!edit()) return deny();
+        const k = KS.find((x) => x.id === b.consent_id && x.character_id === m[1]);
+        if (!k) return send(400, { error: { code: "AURA-CHR-400", message: "record the performer's consent for this character first" } });
+        if (k.revoked_at) return send(409, { error: { code: "AURA-CHR-409", message: "that consent was withdrawn — photos can't be used under it" } });
+        const a = assets.find((x) => x.id === b.asset_id); if (!a || a.type !== "image") return send(400, { error: { code: "AURA-CHR-400", message: "the photo must be an image in this project's Assets Library" } });
+        const c = chars.find((x) => x.id === m[1]); const [angle, size] = b.view.split(":");
+        const look = b.look_id ? looks.find((l) => l.id === b.look_id) : null, ageSt = b.age_state_id ? AGES.find((x) => x.id === b.age_state_id) : null;
+        const out = eng.characterLook.characterLookEngine({ character: { name: c.name, age: c.age ?? null, gender: c.gender ?? null, nationality: c.nationality ?? null, occupation: c.occupation ?? null, description: c.description ?? null },
+          wardrobe: look ? { name: look.name, description: look.description ?? null } : null, style: ((globalThis.__settings || {}).settings || {}).style?.look || null, views: [[angle, size]],
+          age_state: ageSt ? { label: ageSt.label, age: ageSt.age, description: ageSt.description ?? null } : null });
+        const r = { id: crypto.randomUUID(), character_id: c.id, look_id: b.look_id || null, age_state_id: b.age_state_id || null, angle, size, identity_hash: out.identity_hash, provider: "performer", model: "photo", execution: "upload",
+          status: "succeeded", asset_id: a.id, error: null, created_at: now(), completed_at: now(), consent_id: k.id };
+        refs.unshift(r); return send(201, r);
+      }
     }
     if ((m = u.match(/^\/api\/characters\/([^/]+)\/look(\/generate)?$/))) {
       const LK = eng.characterLook, sk = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/sketch/sketchAdapter.js"));
@@ -397,7 +433,8 @@ http.createServer((req, res) => {
         views: out.views.map((v) => { const h = mine.filter((r) => `${r.angle}:${r.size}` === v.key); const g = h.find((r) => r.status === "succeeded");
           return { ...v, in_default_set: LK.DEFAULT_VIEWS.some(([a, z]) => `${a}:${z}` === v.key), versions: h.filter((r) => r.status === "succeeded").length,
             latest: h[0] ? { id: h[0].id, status: h[0].status, error: h[0].error, provider: h[0].provider, execution: h[0].execution, created_at: h[0].created_at } : null,
-            image: g ? { reference_id: g.id, asset_id: g.asset_id, provider: g.provider, execution: g.execution, created_at: g.completed_at, stale: g.identity_hash !== out.identity_hash } : null }; }),
+            image: g ? { reference_id: g.id, asset_id: g.asset_id, provider: g.provider, execution: g.execution, created_at: g.completed_at, stale: g.identity_hash !== out.identity_hash,
+              performer: g.consent_id ? ((globalThis.__consents || []).find((k) => k.id === g.consent_id) || {}).performer_name || null : null } : null }; }),
         backends: [{ id: "aurastage-sketch", name: "AuraStage Sketch", model: "sketch-v1", execution: "native", note: "" }],
         backend_statuses: [{ id: "aurastage-sketch", name: "AuraStage Sketch", state: "configured", note: "" }, { id: "openai", name: "OpenAI Images", state: "not_configured", note: "" }] });
     }
@@ -479,7 +516,8 @@ http.createServer((req, res) => {
       return send(200, { item: { id: r.id, kind, name: r.name, project_id: P }, identity: out.identity, identity_hash: out.identity_hash, missing: out.missing, negative: out.negative, engine_version: out.engine_version,
         views: out.views.map((v) => { const h = mine.filter((x) => x.view_key === v.key); const g = h.find((x) => x.status === "succeeded");
           return { ...v, versions: h.filter((x) => x.status === "succeeded").length, latest: h[0] ? { id: h[0].id, status: h[0].status, error: h[0].error, provider: h[0].provider, execution: h[0].execution } : null,
-            image: g ? { reference_id: g.id, asset_id: g.asset_id, provider: g.provider, execution: g.execution, created_at: g.completed_at, stale: g.identity_hash !== out.identity_hash } : null }; }),
+            image: g ? { reference_id: g.id, asset_id: g.asset_id, provider: g.provider, execution: g.execution, created_at: g.completed_at, stale: g.identity_hash !== out.identity_hash,
+              performer: g.consent_id ? ((globalThis.__consents || []).find((k) => k.id === g.consent_id) || {}).performer_name || null : null } : null }; }),
         backends: [{ id: "aurastage-sketch", name: "AuraStage Sketch", execution: "native" }],
         backend_statuses: [{ id: "aurastage-sketch", name: "AuraStage Sketch", state: "configured" }, { id: "openai", name: "OpenAI Images", state: "not_configured" }] });
     }
@@ -698,6 +736,22 @@ http.createServer((req, res) => {
       const pos = b.after_ordinal != null && b.after_ordinal + 1 <= list.length ? b.after_ordinal + 1 : list.length + 1;
       list.forEach((x) => { if (x.ordinal >= pos) x.ordinal++; });
       const x = newShot(plan, pos, r.data); shots.push(x); touch(plan.id); return send(200, x);
+    }
+    // Approve every ready plan (mirrors approveAllShotPlans).
+    if (u === `/api/projects/${P}/storyboard/approve-all` && req.method === "POST") {
+      const approved = [], skipped = [];
+      for (const scene of scenes.filter((x) => x.status === "active").sort((a, z) => a.number - z.number)) {
+        const plan = plans.find((x) => x.scene_id === scene.id), dna = locked(scene);
+        if (!plan || !dna) { skipped.push({ scene_number: scene.number, reason: "no shot plan yet" }); continue; }
+        const [st, why] = review(plan, dna); if (st !== "current") { skipped.push({ scene_number: scene.number, reason: why || "needs review first" }); continue; }
+        if (plan.status === "approved") continue;
+        const c = cover(dna, planShots(plan));
+        if (!c.ready_for_approval) { skipped.push({ scene_number: scene.number, reason: `not ready: ${c.readiness.filter((x) => x.blocking && !x.ok).map((x) => x.label.toLowerCase()).join("; ")}` }); continue; }
+        const v = { id: crypto.randomUUID(), plan_id: plan.id, version_number: planVersions.filter((x) => x.plan_id === plan.id).length + 1, shots: JSON.parse(JSON.stringify(planShots(plan))) };
+        v.scene_dna_version_id = plan.scene_dna_version_id; planVersions.push(v); Object.assign(plan, { status: "approved", review_state: "current", review_reason: null, approved_version_id: v.id });
+        approved.push({ scene_number: scene.number, version_number: v.version_number });
+      }
+      return send(200, { approved, skipped });
     }
     if ((m = u.match(/^\/api\/projects\/[^/]+\/storyboard\/scenes\/([^/]+)\/approve$/))) {
       const scene = scenes.find((x) => x.id === m[1]); const plan = plans.find((x) => x.scene_id === scene.id); const dna = locked(scene);

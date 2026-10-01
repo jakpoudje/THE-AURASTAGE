@@ -70,7 +70,7 @@ async function api(method, path, body) {
       console.log("PASS", name);
     } catch (e) {
       failed++;
-      console.log("FAIL", name, e.message.split("\n")[0]);
+      console.log("FAIL", name, e.message.split("\n")[0]); if (process.env.E2E_STACK) console.log(e.stack);
       await page.screenshot({ path: `${OUT}/fail-casting-${name.replace(/\W+/g, "_")}.png` });
     }
   };
@@ -439,6 +439,42 @@ async function api(method, path, body) {
     await page.getByRole("button", { name: "Profile", exact: true }).click();
     const v = await page.getByTestId("pronunciation").getByRole("textbox").inputValue();
     if (v !== "ah-MAH-rah BEH-loh") throw new Error("pronunciation not kept: " + v);
+  });
+  await step("item 14: an actor's photo replaces a view only with recorded consent; reload keeps it; withdrawing consent stops it at once", async () => {
+    await page.getByRole("button", { name: /Amara Bello/ }).first().click();
+    await page.getByRole("button", { name: "Look & References" }).click();
+    const panel = page.getByRole("region", { name: "Look and references" });
+    const ph = panel.getByRole("region", { name: "Actor photos" });
+    await ph.getByText("Record a performer's consent").click();
+    await ph.getByLabel("Performer's full name").fill("Ada Obi");
+    await ph.getByLabel("What they agreed to").fill("Ada Obi agrees her photos may be used as Amara's reference in this project.");
+    const rec = ph.getByRole("button", { name: "Record consent" });
+    if (!(await rec.isDisabled())) throw new Error("consent must need the confirmation box");
+    await ph.getByLabel(/I confirm the performer gave this consent/).check();
+    await rec.click();
+    await ph.getByText("Consent from Ada Obi recorded.", { exact: false }).waitFor();
+    await panel.getByTestId("look-front:CU").click();
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+    await ph.getByLabel(/^Actor photo for /).setInputFiles({ name: "ada-front.png", mimeType: "image/png", buffer: png });
+    await ph.getByText(/Photo of Ada Obi is now the .* view/).waitFor({ timeout: 8000 }).catch(async (e) => { throw new Error(e.message.split("\n")[0] + " | alert: " + (await ph.getByRole("alert").allInnerTexts()).join(" ")); });
+    await panel.getByTestId("look-front:CU").getByText("Actor").waitFor();
+    await panel.getByText("Photo of Ada Obi (with consent)", { exact: false }).waitFor();
+    await page.screenshot({ path: `${OUT}/actor-photo.png` });
+    await page.reload();
+    await page.getByRole("button", { name: /Amara Bello/ }).first().click();
+    await page.getByRole("button", { name: "Look & References" }).click();
+    const p2 = page.getByRole("region", { name: "Look and references" });
+    await p2.getByTestId("look-front:CU").getByText("Actor").waitFor();
+    await p2.getByTestId("consent").getByText("1 photo in use").waitFor();
+    await p2.getByRole("button", { name: "Withdraw consent" }).click();
+    await p2.getByText("Ada Obi's consent withdrawn", { exact: false }).waitFor();
+    await page.reload();
+    await page.getByRole("button", { name: /Amara Bello/ }).first().click();
+    await page.getByRole("button", { name: "Look & References" }).click();
+    const p3 = page.getByRole("region", { name: "Look and references" });
+    await p3.getByTestId("consent").getByText(/^Withdrawn /).waitFor();
+    if (await p3.getByTestId("look-front:CU").getByText("Actor").count()) throw new Error("withdrawn photo still used");
+    if (await p3.getByRole("region", { name: "Actor photos" }).getByLabel(/^Actor photo for /).count()) throw new Error("upload offered without an active consent");
   });
   await page.screenshot({ path: `${OUT}/casting.png` });
   console.log("ERRORS:", errors);

@@ -15,7 +15,12 @@ export const ShotPlanningInputSchema = z.object({
     camera_energy: CameraEnergySchema.nullable(),
     mood: z.array(z.string()),
     lighting_intent: z.string().nullable(),
+    /** What the scene is for / its atmosphere (1.3.0): read with the dialogue to tell a chase from a confession. */
+    purpose: z.string().nullable().optional(),
+    atmosphere: z.string().nullable().optional(),
   }),
+  /** The film's genre (project genre + subgenre), e.g. "Political thriller" (1.3.0). null = drama grammar. */
+  genre: z.string().nullable().optional(),
   participants: z.array(
     z.object({ character_id: z.string().uuid(), name: z.string(), presence: z.enum(["on_screen", "voice_only"]) })
   ),

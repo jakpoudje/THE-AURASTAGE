@@ -14,6 +14,7 @@
 
 import { CLOSER, ENERGY, ESTABLISHING_SECONDS, LENS_BY_SIZE, LINE_PAD_SECONDS, REACTION_SECONDS, sizeForIntensity, STYLE } from "./rules";
 import { validateShotPlanningInput } from "./validator";
+import { applyCameraGrammar } from "./cameraGrammar";
 import { ENGINE_VERSION } from "./version";
 import type { ProposedShot, ShotPlanningOutput } from "./output.schema";
 
@@ -62,7 +63,7 @@ export function compositionFor(s: Pick<ProposedShot, "purpose" | "size" | "movem
 }
 
 export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
-  const { scene, dna, participants, lines, style } = validateShotPlanningInput(raw);
+  const { scene, dna, participants, lines, style, genre } = validateShotPlanningInput(raw);
   const st = STYLE[style];
   // "energetic" never calms a frenetic scene; "simple" always keeps the camera still.
   const energyKey = st.energy === "dynamic" && dna.camera_energy === "frenetic" ? "frenetic" : (st.energy ?? dna.camera_energy ?? "measured");
@@ -215,6 +216,20 @@ export function shotPlanningEngine(raw: unknown): ShotPlanningOutput {
     });
   }
 
-  const fitted = shots.map((x) => ({ ...x, composition: x.composition ?? compositionFor(x, exterior, dna.mood ?? []), description: fitText(x.description), character_ids: x.character_ids.slice(0, 20), dialogue_line_ids: x.dialogue_line_ids.slice(0, 50) }));
-  return { shots: fitted, scene_seconds: T, engine_version: ENGINE_VERSION };
+  // Camera intelligence (1.3.0): genre and scene grammar choose how each shot is filmed; coverage is unchanged.
+  const intensity = new Map(lines.map((l) => [l.id, l.intensity]));
+  const peaks = new Map<ProposedShot, number | null>();
+  let lastPeak: number | null = null;
+  for (const x of shots) {
+    const p = x.dialogue_line_ids.reduce<number | null>((m, id) => { const v = intensity.get(id) ?? null; return v !== null && (m === null || v > m) ? v : m; }, null);
+    if (x.purpose === "dialogue") lastPeak = p;
+    peaks.set(x, x.purpose === "reaction" ? lastPeak : p);
+  }
+  const graded = applyCameraGrammar(shots, {
+    genre: genre ?? null, mood: dna.mood ?? [], exterior, peaks,
+    keepMovement: style !== "standard" || dna.camera_energy === "calm" || dna.camera_energy === "frenetic",
+    text: [dna.purpose ?? "", dna.atmosphere ?? "", scene.heading, ...lines.map((l) => l.text)],
+  });
+  const fitted = graded.shots.map((x) => ({ ...x, rationale: fitText(x.rationale), composition: x.composition ?? compositionFor(x, exterior, dna.mood ?? []), description: fitText(x.description), character_ids: x.character_ids.slice(0, 20), dialogue_line_ids: x.dialogue_line_ids.slice(0, 50) }));
+  return { shots: fitted, scene_seconds: T, engine_version: ENGINE_VERSION, camera: graded.camera };
 }

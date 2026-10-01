@@ -91,6 +91,20 @@ export function useStoryboard(projectId: string) {
           return [planned, kept ? `${kept} already planned — kept as they are.` : "", unlocked ? `${unlocked} not locked in Scene DNA yet.` : ""].filter(Boolean).join(" ");
         },
       ),
+    /** Approves every ready plan at once (owner report 2026-10-01); says which weren't ready and why. */
+    approveAll: () =>
+      run(
+        "approve",
+        () => storyboardApi.approveAll(projectId),
+        (r) => {
+          const notReady = r.skipped.filter((x) => x.reason.startsWith("not ready"));
+          const head = r.approved.length ? `Approved ${r.approved.length} shot plan${r.approved.length === 1 ? "" : "s"}.` : "No plans were ready to approve.";
+          const why = notReady.length
+            ? ` ${notReady.length} need a fix first — ${notReady.slice(0, 3).map((x) => `scene ${x.scene_number}: ${x.reason.replace(/^not ready: /, "")}`).join("; ")}${notReady.length > 3 ? "; …" : ""}. Open the scene to see its checks.`
+            : "";
+          return head + why;
+        },
+      ),
     /** Asks before replacing existing shots (the server refuses with 409 otherwise). */
     generate: async (sceneId: string) => {
       setBusy("generate");
@@ -99,7 +113,12 @@ export function useStoryboard(projectId: string) {
       const once = async (replace: boolean) => {
         const r = await storyboardApi.generate(projectId, sceneId, replace, style);
         await reload();
-        setNotice(`Planned ${r.shots} shots (${STYLE_NAME[style]} coverage) from Scene DNA version ${r.scene_dna_version_number}. Edit anything you like.`);
+        const cam = r.camera;
+        const KIND: Record<string, string> = { chase: "a chase", fight: "a fight", suspense: "suspense", intimate: "an intimate moment", grief: "grief", reveal: "a reveal", comic: "a comic beat", celebration: "a celebration", talk: "" };
+        const camText = cam && (cam.genre_family !== "drama" || cam.scene_kind !== "talk")
+          ? ` Camera planned for ${[cam.genre_family !== "drama" ? `a ${cam.genre_family}` : "", KIND[cam.scene_kind] ? `${KIND[cam.scene_kind]} scene${cam.cue ? ` (“${cam.cue}”)` : ""}` : ""].filter(Boolean).join(", ")} — each shot's notes say why.`
+          : "";
+        setNotice(`Planned ${r.shots} shots (${STYLE_NAME[style]} coverage) from Scene DNA version ${r.scene_dna_version_number}.${camText} Edit anything you like.`);
       };
       try {
         await once(false);

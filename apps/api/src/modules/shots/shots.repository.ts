@@ -1,7 +1,7 @@
 // apps/api/src/modules/shots/shots.repository.ts
 // Canonical persistence for Shot / ShotPlan. Reads Scriptwriter (scenes), Scene DNA
 // (scene_dna, scene_dna_versions), Dialogue (dialogue_lines) and Casting
-// (characters) read-only; writes only via the migration-0012 functions.
+// (characters) and Project (genre) read-only; writes only via the migration-0012 functions.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ShotConflictError, ShotNotFoundError, ShotNotReadyError, ShotValidationError } from "./shots.validator";
 import { ShotForbiddenError } from "./shots.permissions";
@@ -27,6 +27,14 @@ async function rows(q: PromiseLike<{ data: unknown[] | null; error: unknown }>):
   if (error) throw error;
   return (data ?? []) as Row[];
 }
+/** The film's genre for camera intelligence (shotPlanningEngine 1.3.0): "genre — subgenre", or null. */
+export async function getProjectGenre(db: SupabaseClient, projectId: string): Promise<string | null> {
+  const { data, error } = await db.from("projects").select("genre, subgenre").eq("id", projectId).maybeSingle();
+  if (error) throw error;
+  const g = [data?.genre, data?.subgenre].filter((x) => typeof x === "string" && x.trim()).join(" — ");
+  return g || null;
+}
+
 async function rpc<T = Row>(db: SupabaseClient, fn: string, args: Row): Promise<T> {
   const { data, error } = await db.rpc(fn, args);
   if (error) throw mapDbError(error);

@@ -113,3 +113,16 @@ Casting shows a "Profiles for the whole cast" bar: that button (free), and "Deve
 (one Ask AuraStage request listing each character's empty fields; shown before → after, applied only on request).
 The profile's "Save & next →" saves and opens the next character that still needs work (empty fields or not approved);
 when the whole cast is complete the page points to the next stage (Locations & Props).
+
+## Actor photos with consent (migration 0048, BUILD_PLAN §8 item 14)
+
+- `GET /api/characters/:id/consents` — consents recorded for the character (newest first), each with the photos used under it.
+- `POST /api/characters/:id/consents` `{ performer_name, statement (≥ 20 chars), confirm: true }` → `record_performer_consent`.
+- `POST /api/characters/:id/actor-photos` `{ consent_id, asset_id, view: "front:CU", look_id?, age_state_id? }` → `add_actor_photo`:
+  links an image already uploaded to the Assets Library (category Characters) as that reference view (`execution 'upload'`,
+  `provider 'performer'`) with the character's current identity hash, so it's used exactly like a generated view.
+- `POST /api/consents/:id/withdraw` → `revoke_performer_consent`: every photo under it becomes `withdrawn` at once (never the
+  view's image again; files stay in the library). A withdrawn consent can't take new photos (AURA-CHR-409).
+- The look panel names the performer on an actor photo; the whole-cast generate never overwrites one (even with `redo`);
+  readiness evidence for generated reference views ignores uploads.
+- All writes are `gate_write(project, 'casting', 'edit')` and audited (PerformerConsentRecorded / ActorPhotoAdded / PerformerConsentWithdrawn).

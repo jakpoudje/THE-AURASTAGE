@@ -92,6 +92,9 @@ async function api(method, path, body) {
     await page.waitForFunction(() => document.querySelector('[data-testid="cost-total"]')?.textContent === "Free");
   });
   await step("generate two sketch takes; they finish in the background and appear", async () => {
+    // Owner request 2026-10-01: 2, 4, 6, 8 or 13 variations to choose from.
+    const counts = await page.getByLabel("Variations").locator("option").evaluateAll((o) => o.map((x) => x.value).join(","));
+    if (counts !== "1,2,4,6,8,13") throw new Error("variation choices: " + counts);
     await page.getByLabel("Variations").selectOption("2");
     await page.getByRole("button", { name: "Generate 2 takes" }).click();
     await page.getByText("Queued 2 takes. They appear here when ready.").waitFor();

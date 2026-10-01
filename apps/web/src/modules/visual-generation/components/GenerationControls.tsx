@@ -3,7 +3,7 @@
 // Generation controls. Provider status comes from the server (key present or
 // not + the last real result) — never a decorative "online" light.
 import { useState } from "react";
-import type { AspectRatio, ProviderStatus, RequestTakeInput } from "@aurastage/contracts";
+import { TAKE_VARIATION_OPTIONS, type AspectRatio, type ProviderStatus, type RequestTakeInput } from "@aurastage/contracts";
 import type { VisualShot } from "../types";
 import { CostNote } from "@/components/CostNote";
 
@@ -124,8 +124,8 @@ export function GenerationControls({
         <label className="block text-[11px] uppercase tracking-wider text-white/50">
           Variations
           <select aria-label="Variations" value={variations} onChange={(e) => setVariations(Number(e.target.value))} className={sel}>
-            {[1, 2, 3, 4].map((n) => (
-              <option key={n}>{n}</option>
+            {TAKE_VARIATION_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n === 1 ? "1 (single take)" : `${n} to choose from`}</option>
             ))}
           </select>
         </label>

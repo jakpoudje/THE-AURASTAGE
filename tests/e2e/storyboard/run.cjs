@@ -84,7 +84,8 @@ async function api(method, path, body) {
   await step("reload: the planned shots are still there", async () => {
     await reload();
     await page.getByRole("button", { name: "Shot 1", exact: true }).waitFor();
-    await sceneBtn(/EXT\. LAGOS HARBOUR/).getByText("In progress").waitFor();
+    await sceneBtn(/EXT\. LAGOS HARBOUR/).getByText("Planned · approve").waitFor();
+    await page.getByText("1 scene(s) are planned and waiting for approval.").waitFor();
   });
   await step("edit a shot, reload: the change is kept", async () => {
     await page.getByRole("button", { name: "Shot 2", exact: true }).click();
@@ -122,6 +123,9 @@ async function api(method, path, body) {
     await page.getByText(/saved\./).waitFor();
     await checks().getByText(/Not covered: AMARA: “They know everything\.”/).waitFor();
     if (await page.getByRole("button", { name: "Approve shot plan" }).isEnabled()) throw new Error("approve should be disabled");
+    // Owner report 2026-10-01: approve every ready plan in one click; a plan that isn't ready is listed with why, never approved.
+    await page.getByRole("button", { name: "Approve every ready plan" }).click();
+    await page.getByText(/^No plans were ready to approve\. 1 need a fix first — scene \d+: .*dialogue line/).waitFor();
   });
   await step("re-plan with a different coverage style asks before replacing, then approval works; reload keeps it approved", async () => {
     await page.getByLabel("Coverage style").selectOption("intimate");

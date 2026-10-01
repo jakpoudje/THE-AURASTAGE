@@ -2,6 +2,7 @@
 // HTTP/API transport only; validation/auth context; no business logic.
 // Domain: Casting & Characters
 
+import { addActorPhoto, listPerformerConsents, recordPerformerConsent, revokePerformerConsent } from "./characters.consent";
 import { generateAllCharacterLooks, generateCharacterLook, getCharacterLook } from "./characters.look";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
@@ -71,6 +72,10 @@ export async function registerCharactersRoutes(app: FastifyInstance) {
   app.post("/api/characters/:id/look/generate", route(({ params, body, db }) => generateCharacterLook(db, params.id, body)));
   app.post("/api/characters/:id/looks", route(({ params, body, db }) => saveLook(db, params.id, body)));
   app.delete("/api/looks/:id", route(({ params, db }) => deleteLook(db, params.id)));
+  app.get("/api/characters/:id/consents", route(({ params, db }) => listPerformerConsents(db, params.id)));
+  app.post("/api/characters/:id/consents", route(({ params, body, db }) => recordPerformerConsent(db, params.id, body), 201));
+  app.post("/api/consents/:id/withdraw", route(({ params, db }) => revokePerformerConsent(db, params.id)));
+  app.post("/api/characters/:id/actor-photos", route(({ params, body, db }) => addActorPhoto(db, params.id, body), 201));
   app.get("/api/characters/:id/ages", route(({ params, db }) => listAgeStates(db, params.id)));
   app.post("/api/characters/:id/ages", route(({ params, body, db }) => saveAgeState(db, params.id, body)));
   app.delete("/api/ages/:id", route(({ params, db }) => deleteAgeState(db, params.id)));

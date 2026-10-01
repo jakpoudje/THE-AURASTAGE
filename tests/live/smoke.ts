@@ -288,6 +288,8 @@ await check("storyboard: one click plans every locked scene (coverage style); un
   // Back to the standard plan (the rest of the run builds on it), replacing on purpose.
   const g = await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, { replace: true, style: "standard" });
   assert(g.shots >= 2 && g.scene_dna_version_number === 2, `shots ${g.shots} from v${g.scene_dna_version_number}`);
+  // Camera intelligence (shotPlanningEngine 1.3.0): the reply says which genre/scene grammar planned the camera.
+  assert(g.camera && typeof g.camera.genre_family === "string" && typeof g.camera.scene_kind === "string", "no camera decisions: " + JSON.stringify(g.camera));
   await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, {}, [409]);
   const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
   const sc = ws.scenes[0];
@@ -299,8 +301,12 @@ await check("storyboard: edit a shot (bad value refused), approve, persists", as
   await api("PATCH", `/api/shots/${shotId}`, { size: "HUGE" }, [400]);
   const s = await api("PATCH", `/api/shots/${shotId}`, { angle: "low", composition: "Lamp top-left" });
   assert(s.angle === "low", "not saved");
-  const v = await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/approve`, {});
-  assert(v.version_number === 1 && v.coverage === 1, `v${v.version_number} coverage ${v.coverage}`);
+  // Approve every ready plan in one click (owner report 2026-10-01); scenes without a plan are listed, never approved.
+  const all = await api("POST", `/api/projects/${projectId}/storyboard/approve-all`, {});
+  assert(all.approved.length === 1 && all.approved[0].version_number === 1, "approve-all " + JSON.stringify(all));
+  assert(all.skipped.every((x: any) => typeof x.reason === "string"), "skipped without a reason");
+  const again = await api("POST", `/api/projects/${projectId}/storyboard/approve-all`, {});
+  assert(again.approved.length === 0, "approved twice");
   const ws = await api("GET", `/api/projects/${projectId}/storyboard`);
   const sc = ws.scenes[0];
   assert(sc.plan.status === "approved" && sc.shots[0].angle === "low" && sc.shots[0].composition === "Lamp top-left", "not persisted");
@@ -336,6 +342,14 @@ await check("visual: the worker generates a sketch take in the background; media
   const body = await media.text();
   assert(media.status === 200 && body.includes("AURASTAGE SKETCH"), `media ${media.status}`);
   return `take V${take.take_number} in ${Math.round((Date.parse(take.completed_at) - Date.parse(take.created_at)) / 1000)}s`;
+});
+await check("visual: 2, 4, 6, 8 or 13 variations to choose from (13 sketch takes queue); other counts are refused", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/visual`);
+  const pkgId = ws.scenes[0].shots[0].package.id;
+  await api("POST", `/api/visual/packages/${pkgId}/takes`, { provider: "aurastage-sketch", model: "sketch-v1", capability: "image", variations: 3 }, [400]);
+  const q = await api("POST", `/api/visual/packages/${pkgId}/takes`, { provider: "aurastage-sketch", model: "sketch-v1", capability: "image", variations: 13 });
+  assert(q.takes.length === 13, `queued ${q.takes.length}`);
+  return "13 queued";
 });
 await check("visual: approve the take; unconnected providers are refused plainly (412)", async () => {
   const t = await api("POST", `/api/takes/${takeId}/approve`, {});
@@ -459,6 +473,24 @@ await check("assets → audio: the approved mix is flagged; approval waits for a
   sc = ws.scenes.find((x: any) => x.scene.id === s1);
   assert(v.version_number === 2 && sc.session.review_state === "current" && sc.session.approved_version_number === 2, `re-approve v${v.version_number} ${sc.session.review_state}`);
   return sc.session.review_reason ?? "current again";
+});
+await check("casting: an actor's photo replaces a view only under recorded consent; withdrawing consent stops it at once", async () => {
+  const up = await rawPost(`/api/projects/${projectId}/library?name=Performer%20photo&category=characters&width=1&height=1`, "image/png", PNG_1PX);
+  const photo = (await up.json()).asset.id;
+  await api("POST", `/api/characters/${tundeId}/consents`, { performer_name: "Test Performer", statement: "Agrees to photos used as the reference." }, [400]);
+  const k = await api("POST", `/api/characters/${tundeId}/consents`, { performer_name: "Test Performer", statement: "Agrees to photos used as this character's reference.", confirm: true });
+  await api("POST", `/api/characters/${tundeId}/actor-photos`, { consent_id: k.id, asset_id: photo, view: "back:FULL" });
+  let look = await api("GET", `/api/characters/${tundeId}/look`);
+  let v = look.views.find((x: any) => x.key === "back:FULL");
+  assert(v.image?.execution === "upload" && v.image.performer === "Test Performer" && v.image.asset_id === photo, "photo not used: " + JSON.stringify(v.image));
+  const list = await api("GET", `/api/characters/${tundeId}/consents`);
+  assert(list.consents[0].photos[0].in_use === true, "consent list");
+  await api("POST", `/api/consents/${k.id}/withdraw`, {});
+  look = await api("GET", `/api/characters/${tundeId}/look`);
+  v = look.views.find((x: any) => x.key === "back:FULL");
+  assert(v.image?.execution !== "upload" && v.latest?.status === "withdrawn", "withdrawn photo still used: " + JSON.stringify(v));
+  await api("POST", `/api/characters/${tundeId}/actor-photos`, { consent_id: k.id, asset_id: photo, view: "back:FULL" }, [409]);
+  return "consent recorded, photo used, withdrawn";
 });
 let imageId = "";
 await check("assets: upload an image (fake refused), set details, link to a scene and a character, search, archive and restore", async () => {

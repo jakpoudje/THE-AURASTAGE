@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/apiClient";
 import { CostNote } from "@/components/CostNote";
 import { lookApi, type CharacterLookView, type LookView } from "../api/lookApi";
+import { ActorPhotos } from "./ActorPhotos";
 
 const ANGLES = [["front", "Front"], ["three_quarter", "¾ view"], ["profile", "Profile"], ["back", "Back"]] as const;
 const SIZES = [["CU", "Close-up"], ["MCU", "Medium close-up"], ["MS", "Medium"], ["FULL", "Full length"]] as const;
@@ -38,6 +39,7 @@ function Cell({ v, selected, onSelect }: { v: LookView; selected: boolean; onSel
       className={`relative flex aspect-[3/4] flex-col items-center justify-center overflow-hidden rounded-md border bg-black/40 text-[10px] ${selected ? "border-aura-gold" : "border-aura-border"} ${v.in_default_set ? "" : "opacity-80"}`}>
       {url ? <img src={url} alt={v.label} className="h-full w-full object-contain" /> : <span className="px-1 text-center text-white/35">{working ? "Making…" : v.latest?.status === "failed" ? "Failed" : "Not made yet"}</span>}
       {working && url && <span className="absolute left-1 top-1 rounded bg-black/70 px-1 text-white/70">Updating…</span>}
+      {v.image?.execution === "upload" && <span className="absolute right-1 bottom-1 rounded bg-sky-400/80 px-1 font-medium text-black">Actor</span>}
       {v.image?.stale && <span className="absolute bottom-1 left-1 rounded bg-amber-500/80 px-1 font-medium text-black">Profile changed</span>}
       {v.latest?.status === "failed" && <span className="absolute right-1 top-1 rounded bg-red-500/80 px-1 text-black">!</span>}
     </button>
@@ -160,8 +162,8 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
         <SelectedImage v={view} />
         <div className="space-y-2">
           <div className="text-sm font-medium">{view.label}</div>
-          {view.image && <p className="text-white/50">{view.image.execution === "native" ? "AuraSketch — a built-in illustration drawn from the description, not AI" : view.image.provider} · {view.versions} version{view.versions === 1 ? "" : "s"}{view.image.stale ? " · made before the latest profile change" : ""}</p>}
-          {view.latest?.status === "failed" && <p className="text-red-300">{view.latest.error}</p>}
+          {view.image && <p className="text-white/50">{view.image.execution === "native" ? "AuraSketch — a built-in illustration drawn from the description, not AI" : view.image.execution === "upload" ? `Photo of ${view.image.performer ?? "the performer"} (with consent)` : view.image.provider} · {view.versions} version{view.versions === 1 ? "" : "s"}{view.image.stale ? " · made before the latest profile change" : ""}</p>}
+          {(view.latest?.status === "failed" || view.latest?.status === "withdrawn") && <p className="text-red-300">{view.latest.error}</p>}
           <details><summary className="cursor-pointer text-white/60">Prompt sent to the generator</summary><p className="mt-1 whitespace-pre-wrap text-white/70" data-testid="look-prompt">{view.prompt}</p></details>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => generate([view.key])} disabled={!canEdit || busy} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold disabled:opacity-40">{view.image ? "Regenerate this view" : "Generate this view"}</button>
@@ -169,6 +171,8 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
           </div>
         </div>
       </div>
+      <ActorPhotos projectId={data.character.project_id} characterId={characterId} characterName={data.character.name} view={view.key} viewLabel={view.label}
+        lookId={lookId} ageStateId={ageStateId} canEdit={canEdit} onChanged={() => void load().catch(() => null)} />
     </section>
   );
 }

@@ -26,7 +26,7 @@ async function many(q: PromiseLike<{ data: unknown; error: any }>) {
   return (data ?? []) as Row[];
 }
 
-async function lookFor(db: SupabaseClient, characterId: string, lookId: string | null, ageStateId: string | null = null) {
+export async function lookFor(db: SupabaseClient, characterId: string, lookId: string | null, ageStateId: string | null = null) {
   if (!UUID.test(characterId)) throw new CharacterNotFoundError("Character not found");
   const c = await one(db, "characters", "id, project_id, name, age, gender, nationality, occupation, description, personality, merged_into", "id", characterId);
   if (!c) throw new CharacterNotFoundError("Character not found");
@@ -55,8 +55,12 @@ export async function getCharacterLook(db: SupabaseClient, characterId: string, 
   const { c, looks, look, ages, ageState, engineIn, appearance } = await lookFor(db, characterId, lookId, ageStateId);
   const out = characterLook.characterLookEngine(engineIn(ALL_VIEWS));
   const refs = await many(db.from("character_reference_images")
-    .select("id, look_id, age_state_id, angle, size, status, asset_id, error, provider, model, execution, identity_hash, created_at, completed_at")
+    .select("id, look_id, age_state_id, angle, size, status, asset_id, error, provider, model, execution, identity_hash, created_at, completed_at, consent_id")
     .eq("character_id", characterId).order("created_at", { ascending: false }).limit(300));
+  // Actor photos (migration 0048) show whose photo it is; withdrawn ones are never "the image" (status isn't succeeded).
+  const consentIds = [...new Set(refs.map((r) => r.consent_id).filter(Boolean))];
+  const performers = new Map((consentIds.length ? await many(db.from("performer_consents").select("id, performer_name").eq("character_id", characterId)) : [])
+    .map((k) => [k.id, k.performer_name as string]));
   // Views for this outfit at this age (no age = as in the profile).
   const mine = refs.filter((r) => (r.look_id ?? null) === (look?.id ?? null) && (r.age_state_id ?? null) === (ageState?.id ?? null));
   const views = out.views.map((v) => {
@@ -68,6 +72,7 @@ export async function getCharacterLook(db: SupabaseClient, characterId: string, 
       ...v, in_default_set: characterLook.DEFAULT_VIEWS.some(([a, s]) => `${a}:${s}` === v.key),
       latest: latest && { id: latest.id, status: latest.status, error: latest.error, provider: latest.provider, execution: latest.execution, created_at: latest.created_at },
       image: lastGood && { reference_id: lastGood.id, asset_id: lastGood.asset_id, provider: lastGood.provider, execution: lastGood.execution, created_at: lastGood.completed_at,
+        performer: lastGood.consent_id ? performers.get(lastGood.consent_id) ?? null : null,
         // Made from an older profile / wardrobe / style: flagged for review, kept (rule 11).
         stale: lastGood.identity_hash !== out.identity_hash },
       versions: hist.filter((r) => r.status === "succeeded" && r.asset_id).length,
@@ -139,6 +144,8 @@ export async function generateAllCharacterLooks(db: SupabaseClient, projectId: s
     const todo = look.views.filter((v) => v.in_default_set).filter((v) => {
       const working = v.latest && (v.latest.status === "queued" || v.latest.status === "running");
       if (working) return false;
+      // An actor's photo (with consent) is never replaced by a cast-wide click, even with redo.
+      if (v.image?.execution === "upload") return false;
       return p.data.redo || !v.image || v.image.stale;
     }).map((v) => v.key);
     if (!todo.length) { characters.push({ id: c.id, name: c.name, requested: 0, note: "Already made from the current profile" }); continue; }

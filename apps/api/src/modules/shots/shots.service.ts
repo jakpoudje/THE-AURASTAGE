@@ -21,7 +21,7 @@ type Row = Record<string, any>;
 async function load(db: SupabaseClient, projectId: string) {
   // Propagate upstream changes (script/Casting/Dialogue -> Scene DNA) before we read Scene DNA state.
   await refreshSceneDnaReview(db, projectId);
-  const [scenes, dna, dnaVersions, lines, chars, plans, shots, planVersions] = await Promise.all([
+  const [scenes, dna, dnaVersions, lines, chars, plans, shots, planVersions, genre] = await Promise.all([
     repo.listScenes(db, projectId),
     repo.listSceneDna(db, projectId),
     repo.listDnaVersions(db, projectId),
@@ -30,8 +30,10 @@ async function load(db: SupabaseClient, projectId: string) {
     repo.listPlans(db, projectId),
     repo.listShots(db, projectId),
     repo.listPlanVersions(db, projectId),
+    repo.getProjectGenre(db, projectId),
   ]);
   return {
+    genre,
     scenes,
     dna: new Map(dna.map((d) => [d.scene_id as string, d])),
     dnaVersions: new Map(dnaVersions.map((v) => [v.id as string, v])),
@@ -185,21 +187,65 @@ export async function generateAllShots(db: SupabaseClient, projectId: string, pa
   const u = await load(db, projectId);
   const planned: { scene_number: number; shots: number }[] = [];
   const skipped: { scene_number: number; reason: string }[] = [];
+  const todo: Row[] = [];
   for (const scene of u.scenes.filter((s) => s.status === "active").sort((a, b) => a.number - b.number)) {
     const dna = lockedDna(u, scene);
     if (u.plans.get(scene.id)) skipped.push({ scene_number: scene.number, reason: "already has a shot plan (kept as it is)" });
     else if (!dna || !dna.current) skipped.push({ scene_number: scene.number, reason: "Scene DNA isn't locked yet" });
-    else planned.push({ scene_number: scene.number, shots: (await planScene(db, projectId, u, scene, style, false)).shots });
+    else todo.push(scene);
   }
+  // Several scenes at a time (regression, owner report 2026-10-01: a 69-scene film took minutes one scene after another).
+  await inBatches(todo, async (scene) => { planned.push({ scene_number: scene.number, shots: (await planScene(db, projectId, u, scene, style, false)).shots }); });
+  planned.sort((a, b) => a.scene_number - b.scene_number);
   return { style, planned, skipped, engine_version: PLANNING_ENGINE_VERSION };
+}
+
+/** Runs `fn` over `items`, `size` at a time (independent scenes; each write is its own transaction). */
+async function inBatches<T>(items: T[], fn: (item: T) => Promise<void>, size = 6) {
+  for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
+}
+
+/**
+ * Approves every shot plan that is ready (owner report 2026-10-01: 62 of 69 plans sat "in progress" because approval
+ * was one scene at a time). The same checks as approving one scene: the plan must be current against its locked Scene
+ * DNA and pass the blocking coverage checks; everything else is listed with why, never approved.
+ */
+export async function approveAllShotPlans(db: SupabaseClient, projectId: string) {
+  await assertProjectAccess(db, projectId);
+  const u = await load(db, projectId);
+  const approved: { scene_number: number; version_number: number }[] = [];
+  const skipped: { scene_number: number; reason: string }[] = [];
+  const todo: { scene: Row; coverage: ReturnType<typeof coverageFor> }[] = [];
+  for (const scene of u.scenes.filter((s) => s.status === "active").sort((a, b) => a.number - b.number)) {
+    const plan = u.plans.get(scene.id);
+    const dna = lockedDna(u, scene);
+    if (!plan || !dna) { skipped.push({ scene_number: scene.number, reason: "no shot plan yet" }); continue; }
+    const review = planReview(u, plan, dna);
+    if (review.state !== "current") { skipped.push({ scene_number: scene.number, reason: review.reason ?? "needs review first" }); continue; }
+    if (plan.status === "approved") continue;
+    const coverage = coverageFor(dna, u.shots.filter((x) => x.plan_id === plan.id));
+    if (!coverage.ready_for_approval) {
+      skipped.push({ scene_number: scene.number, reason: `not ready: ${coverage.readiness.filter((r) => r.blocking && !r.ok).map((f) => f.label.toLowerCase()).join("; ")}` });
+      continue;
+    }
+    todo.push({ scene, coverage });
+  }
+  await inBatches(todo, async ({ scene, coverage }) => {
+    const v = await repo.approvePlan(db, projectId, scene.id, coverage);
+    approved.push({ scene_number: scene.number, version_number: v.version_number });
+  });
+  approved.sort((a, b) => a.scene_number - b.scene_number);
+  return { approved, skipped };
 }
 
 async function planScene(db: SupabaseClient, projectId: string, u: Awaited<ReturnType<typeof load>>, scene: Awaited<ReturnType<typeof load>>["scenes"][number], style: CoverageStyle, replace: boolean) {
   const dna = lockedDna(u, scene);
   if (!dna || !dna.current) throw new ShotNotReadyError("Lock this scene's Scene DNA first — shots are planned from a locked version.");
-  const { shots } = shotPlanningEngine({
+  const { shots, camera } = shotPlanningEngine({
     scene: { number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day, duration_seconds: dna.duration },
-    dna: { camera_energy: dna.editable.camera_energy ?? null, mood: dna.editable.mood ?? [], lighting_intent: dna.editable.lighting_intent ?? null },
+    dna: { camera_energy: dna.editable.camera_energy ?? null, mood: dna.editable.mood ?? [], lighting_intent: dna.editable.lighting_intent ?? null,
+      purpose: dna.editable.purpose ?? null, atmosphere: dna.editable.atmosphere ?? null },
+    genre: u.genre,
     participants: dna.participants.map((p) => ({ character_id: p.character_id, name: u.charName.get(p.character_id) ?? p.name, presence: p.presence })),
     lines: dna.lines.map((l) => ({
       id: l.id,
@@ -214,7 +260,7 @@ async function planScene(db: SupabaseClient, projectId: string, u: Awaited<Retur
   });
   const rows = shots.map(({ rationale, ...s }) => ({ ...s, notes: s.notes ?? rationale }));
   const plan = await repo.generatePlan(db, projectId, scene.id, dna.version.id, rows, PLANNING_ENGINE_VERSION, replace);
-  return { plan_id: plan.id, shots: rows.length, scene_dna_version_number: dna.version.version_number, style };
+  return { plan_id: plan.id, shots: rows.length, scene_dna_version_number: dna.version.version_number, style, camera };
 }
 
 export async function addShot(db: SupabaseClient, projectId: string, sceneId: string, payload: unknown) {

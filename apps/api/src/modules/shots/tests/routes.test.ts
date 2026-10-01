@@ -142,6 +142,16 @@ describe("Storyboard & Shots routes", () => {
     expect(shots.every((s) => typeof s.notes === "string" && !("rationale" in s))).toBe(true);
   });
 
+  it("camera intelligence (owner request 2026-10-01): the project's genre shapes the plan and the reply says what was decided", async () => {
+    rows.projects = [{ id: P, genre: "Political thriller", subgenre: null }];
+    const fake = fakeDb(rows, () => ({ data: planRow() }));
+    const res = await (await appWith(fake)).inject({ method: "POST", url: `/api/projects/${P}/storyboard/scenes/${S1}/generate`, payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().camera.genre_family).toBe("thriller");
+    const shots = fake.calls[0].args.p_shots as Row[];
+    expect(shots.some((s) => /Camera — /.test(String(s.notes)))).toBe(true);
+  });
+
   it("asks before replacing existing shots (409 from the database)", async () => {
     const fake = fakeDb(rows, () => ({ error: { message: "AURA-SHOT-409: this scene already has 5 shots — confirm to replace them" } }));
     const res = await (await appWith(fake)).inject({ method: "POST", url: `/api/projects/${P}/storyboard/scenes/${S1}/generate`, payload: {} });
@@ -157,7 +167,7 @@ describe("Storyboard & Shots routes", () => {
     expect(res.json().style).toBe("simple");
     const shots = fake.calls[0].args.p_shots as Row[];
     expect(shots.some((s) => s.purpose === "reaction")).toBe(false);
-    expect(fake.calls[0].args.p_engine_version).toBe("1.2.0");
+    expect(fake.calls[0].args.p_engine_version).toBe("1.3.0");
     expect((await app.inject({ method: "POST", url: `/api/projects/${P}/storyboard/scenes/${S1}/generate`, payload: { style: "wild" } })).statusCode).toBe(400);
   });
 
@@ -215,6 +225,25 @@ describe("Storyboard & Shots routes", () => {
     expect(res.statusCode).toBe(200);
     expect(fake.calls[0].fn).toBe("approve_shot_plan");
     expect(fake.calls[0].args.p_coverage).toMatchObject({ coverage: 1, ready_for_approval: true });
+  });
+
+  it("regression (owner report 2026-10-01): approves every ready plan in one click; the rest are listed with why, never approved", async () => {
+    const S2 = "88888888-8888-4888-8888-888888888882", PLAN2 = "dddddddd-dddd-4ddd-8ddd-ddddddddddd2";
+    rows.scenes.push({ ...rows.scenes[0], id: S2, number: 2 });
+    rows.scene_dna.push({ ...rows.scene_dna[0], id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2", scene_id: S2 });
+    rows.shot_plans = [planRow(), planRow({ id: PLAN2, scene_id: S2 })];
+    rows.shots = [
+      shotRow({ id: SH1, ordinal: 1, purpose: "establishing", size: "WS", story_start: "0", story_end: "10", dialogue_line_ids: [L1], character_ids: [TUNDE, AMARA] }),
+      shotRow({ id: SH2, ordinal: 2, story_start: "10", story_end: "20", dialogue_line_ids: [L2], character_ids: [AMARA] }),
+      shotRow({ id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3", plan_id: PLAN2, scene_id: S2, ordinal: 1, story_start: "0", story_end: "20", dialogue_line_ids: [L1] }),
+    ];
+    const fake = fakeDb(rows, () => ({ data: { id: "v", version_number: 1 } }));
+    const res = await (await appWith(fake)).inject({ method: "POST", url: `/api/projects/${P}/storyboard/approve-all` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().approved).toEqual([{ scene_number: 1, version_number: 1 }]);
+    expect(res.json().skipped[0]).toMatchObject({ scene_number: 2 });
+    expect(res.json().skipped[0].reason).toMatch(/^not ready: .*every dialogue line is covered/);
+    expect(fake.calls.map((c) => [c.fn, c.args.p_scene_id])).toEqual([["approve_shot_plan", S1]]);
   });
 
   describe("upstream Scene DNA changes (production graph)", () => {

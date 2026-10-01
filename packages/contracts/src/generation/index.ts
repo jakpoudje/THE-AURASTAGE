@@ -107,6 +107,9 @@ export type GenerationPackageContent = z.infer<typeof GenerationPackageContentSc
 export const TakeStatusSchema = z.enum(["queued", "running", "succeeded", "failed", "cancelled"]);
 export const TakeApprovalSchema = z.enum(["pending", "approved", "rejected", "superseded"]);
 
+/** How many variations of a frame can be made at once (owner request 2026-10-01: 2, 4, 6, 8 or 13 to choose from). */
+export const TAKE_VARIATION_OPTIONS = [1, 2, 4, 6, 8, 13] as const;
+
 export const RequestTakeInputSchema = z
   .object({
     provider: ProviderIdSchema,
@@ -114,7 +117,7 @@ export const RequestTakeInputSchema = z
     capability: ProviderCapabilitySchema.default("image"),
     aspect_ratio: AspectRatioSchema.default("16:9"),
     duration_seconds: z.number().int().min(2).max(10).nullable().default(null),
-    variations: z.number().int().min(1).max(4).default(1),
+    variations: z.number().int().refine((n) => (TAKE_VARIATION_OPTIONS as readonly number[]).includes(n), "Choose 1, 2, 4, 6, 8 or 13 variations").default(1),
     seed: z.number().int().min(0).max(4294967295).nullable().default(null),
     /** Optional: the approved image take a video should start from. */
     source_take_id: z.string().uuid().nullable().default(null),

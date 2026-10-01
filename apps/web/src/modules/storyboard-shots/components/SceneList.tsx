@@ -6,7 +6,7 @@ export function planStatus(s: StoryboardScene): { label: string; tone: string } 
   if (s.plan?.review_state === "stale") return { label: "Stale", tone: "border-red-400/50 text-red-300" };
   if (s.plan?.review_state === "review_required") return { label: "Review", tone: "border-aura-gold/60 text-aura-gold" };
   if (s.plan?.status === "approved") return { label: "Approved", tone: "border-emerald-400/50 text-emerald-300" };
-  if (s.plan) return { label: "In progress", tone: "border-sky-400/50 text-sky-300" };
+  if (s.plan) return { label: "Planned · approve", tone: "border-sky-400/50 text-sky-300" };
   if (s.dna.state === "locked") return { label: "Ready to plan", tone: "border-white/30 text-white/70" };
   return { label: "Lock DNA first", tone: "border-white/15 text-white/40" };
 }

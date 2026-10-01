@@ -189,6 +189,14 @@ describe("Visual Generation routes", () => {
       });
       expect(res.json().takes[0].status).toBe("queued");
     });
+    it("owner request 2026-10-01: 2, 4, 6, 8 or 13 variations to choose from; other counts are refused", async () => {
+      for (const n of [2, 4, 6, 8, 13]) {
+        const { res, fake } = await post({ MEDIA_BUCKET: "b" }, { provider: "aurastage-sketch", model: "sketch-v1", variations: n });
+        expect(res.statusCode).toBe(200);
+        expect(fake.calls[0].args.p_variations).toBe(n);
+      }
+      for (const n of [3, 5, 14]) expect((await post({ MEDIA_BUCKET: "b" }, { provider: "aurastage-sketch", model: "sketch-v1", variations: n })).res.statusCode).toBe(400);
+    });
   });
 
   it("approves / rejects takes explicitly; unknown actions are refused", async () => {
