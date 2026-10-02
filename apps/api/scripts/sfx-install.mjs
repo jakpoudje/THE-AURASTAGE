@@ -32,11 +32,14 @@ export function unsuitableTitle(title) {
  * an audiobook of "The Wind in the Willows" as wind, surf-rock songs as sea, a presidential speech as footsteps). A file
  * must sit in at least one sound category and in none for music, speech, books or broadcasts.
  */
-export function soundCategories(categories) {
+export function soundCategories(categories, cat = null) {
   const names = (categories ?? []).map((c) => String(c.title ?? c).replace(/^Category:/, ""));
   // "Unidentified sounds" says nothing about what the sound is (live: someone talking before recording thunder).
-  const good = names.filter((n) => !/unidentified/i.test(n) && /\bsounds?\b|field recordings?|ambien|soundscape|bird ?songs?|songs of|vocali[sz]ation|\bcalls\b|noises?\b|sound effects|audio files of |recordings of (birds|animals|insects|nature|wind|weather|the sea|waves)/i.test(n));
-  const bad = names.filter((n) => /music|album|librivox|audiobook|spoken|speech|speeches|poetry|poem|president|politic|news|radio|interview|lecture|podcast|\bband\b|musician|singer|orchestra|composer|discograph|anthem|hymn|opera|literature|novel|reading|sermon|broadcast|komiku|recordings by|instrument|percussion|drum/i.test(n));
+  // A sound category, or a subject category naming this category's own sound (a crowd filed under "Crowds", typing
+  // under "Typewriters"). A bare "Audio files of …" is not enough (fourth build: "Audio files of Etudes by Chopin").
+  const subject = cat?.title ? new RegExp(cat.title, "i") : null;
+  const good = names.filter((n) => !/unidentified/i.test(n) && (/\bsounds?\b|field recordings?|ambien|soundscape|bird ?songs?|singing birds|vocali[sz]ation|noises?\b|sound effects|audio files of (sound effects|animal sounds|aves|birds|cicadidae|insects|thunder|rain|wind|water|applause|typing|bells|church bells|fireworks)|recordings of (birds|animals|insects|nature|wind|weather|the sea|waves)/i.test(n) || (subject?.test(n) ?? false)));
+  const bad = names.filter((n) => /music|album|librivox|audiobook|spoken|speech|speeches|poetry|poem|president|politic|news|radio|interview|lecture|podcast|\bband\b|musician|singer|orchestra|composer|discograph|anthem|hymn|opera|literature|novel|reading|sermon|broadcast|komiku|recordings by|instrument|percussion|drum|speaking|phrases|language|\bwords\b|voice of america|politic|-related audio|\bmars\b|nasa|etude|blues|ragtime|jazz|gilbert|sullivan|ruddigore|pinafore|carillon|bill nye/i.test(n));
   return { ok: good.length > 0 && bad.length === 0, good, bad };
 }
 
@@ -88,7 +91,7 @@ async function main() {
         if (seen.has(c.title) || unsuitableTitle(c.title) || !relevantTitle(c.title, cat)) continue;
         const licence = freeLicence(c.info.extmetadata);
         if (!licence) continue;
-        const filed = soundCategories(c.categories);
+        const filed = soundCategories(c.categories, cat);
         if (!filed.ok) {
           if (filed.bad.length) console.log(`sfx ${cat.id}: refused ${c.title.replace(/^File:/, "")} — filed under ${filed.bad.slice(0, 2).join(", ")}`);
           else if (unfiled++ < 4) console.log(`sfx ${cat.id}: refused ${c.title.replace(/^File:/, "")} — no sound category (${(c.categories ?? []).slice(0, 3).map((x) => String(x.title).replace(/^Category:/, "")).join(", ") || "none"})`);

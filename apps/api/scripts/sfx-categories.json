@@ -82,7 +82,7 @@
   "bed": true,
   "max_seconds": 30,
   "title": "traffic|street|\\broad\\b|city|cars? passing|urban|junction|intersection|highway",
-  "not": "air traffic|atc|tower|dispatch|radio|crash|police|scanner|cockpit|flight|parade|carnival|firework|cleaner|vacuum"
+  "not": "air traffic|atc|tower|dispatch|radio|crash|police|scanner|cockpit|flight|parade|carnival|firework|cleaner|vacuum|gull"
  },
  {
   "id": "market",
@@ -126,7 +126,7 @@
   "bed": true,
   "max_seconds": 30,
   "title": "bird|dawn chorus|dawnchorus|oiseaux|birdsong|songbird|forest ambience",
-  "not": "parrot talking"
+  "not": "parrot talking|plane|aircraft|traffic|airport"
  },
  {
   "id": "insects",
@@ -223,7 +223,7 @@
   ],
   "bed": false,
   "max_seconds": 5,
-  "title": "glass|bottle|shatter|smash",
+  "title": "glass break|breaking glass|broken glass|shatter|smash|clink|wine glass|binging glass|bottle break",
   "not": "harmonica|armonica|music"
  },
  {

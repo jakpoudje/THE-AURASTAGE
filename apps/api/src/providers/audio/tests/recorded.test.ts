@@ -77,6 +77,17 @@ describe("recorded sound library (owner request 2026-10-02: real life prop sound
     // Third live build: an unidentified sound proves nothing; drum patterns are instruments; look-alikes by title.
     expect(soundCategories(["Category:Unidentified sounds"]).ok).toBe(false);
     expect(soundCategories(["Category:Sounds of percussion instruments"]).ok).toBe(false);
+    // Fourth live build: music, language lessons and politicians filed under "Audio files of …" refused; real recordings
+    // filed only under their subject accepted.
+    expect(soundCategories(["Category:Audio files of Etudes Opus 25 by Frédéric Chopin"], cat("wind")).ok).toBe(false);
+    expect(soundCategories(["Category:Audio files of females speaking phrases in Indonesian"], cat("footsteps")).ok).toBe(false);
+    expect(soundCategories(["Category:Audio files of Tim Walz"], cat("impact")).ok).toBe(false);
+    expect(soundCategories(["Category:Mars audio files of 2021"], cat("impact")).ok).toBe(false);
+    expect(soundCategories(["Category:Audio files of Ruddigore"], cat("sea")).ok).toBe(false);
+    expect(soundCategories(["Category:Crowds"], cat("crowd")).ok).toBe(true);
+    expect(soundCategories(["Category:Typewriters"], cat("typing")).ok).toBe(true);
+    expect(soundCategories(["Category:Explosions"], cat("explosion")).ok).toBe(true);
+    expect(soundCategories(["Category:Crowds"], cat("typing")).ok).toBe(false);
     for (const [c, t] of [["traffic", "File:Street parade carnival people yelling kamelle kamelle.ogg"], ["traffic", "File:Silvester fireworks from the street 01.ogg"], ["car", "File:Car stereo tapedeck.ogg"], ["paper", "File:Sawing an empty toilet paper roll.ogg"], ["explosion", "File:Blast beat.ogg"], ["thunder", "File:Getting set to record thunder.ogg"]] as [string, string][])
       expect(relevantTitle(t, cat(c)), `${c}: ${t}`).toBe(false);
     for (const t of ["File:Car horn.ogg", "File:Rain on a tin roof.ogg", "File:Door slam.wav", "File:Yellowstone dawn chorus.ogg"]) expect(unsuitableTitle(t)).toBe(false);
