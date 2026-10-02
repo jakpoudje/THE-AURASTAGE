@@ -88,6 +88,8 @@ export function useEditorial(projectId: string) {
     project, ws, loading, busy, error, notice, pendingBreak,
     cancelBreak: () => setPendingBreak(null),
     assemble: () => run("assemble", (b) => editorialApi.assemble(projectId, rev(), b), (r) => r.summary),
+    /** A test cut of one scene only (owner request 2026-10-02); the current cut is kept as a version first. */
+    assembleScene: (sceneId: string) => run("assemble", (b) => editorialApi.assemble(projectId, rev(), b, [sceneId]), (r) => `${r.summary} Press ▶ Play Scene to watch it; Re-assemble brings back every scene.`),
     edit: (op: EditOperation) => run("edit", (b) => editorialApi.edit(projectId, rev()!, op, b), (r) => r.summary),
     /** Takes back the newest edit (the cut before it comes back exactly); the server keeps the last 30 edits. */
     undo: () => run("undo", (b) => editorialApi.undo(projectId, rev()!, b), (r) => `${r.summary}. Undo again (Ctrl+Z) to go back further.`),

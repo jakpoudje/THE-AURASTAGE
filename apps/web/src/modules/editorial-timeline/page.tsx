@@ -20,6 +20,7 @@ import { Bin } from "./components/Bin";
 import { Inspector } from "./components/Inspector";
 import { BreakLockDialog, QCPanel, VersionsPanel } from "./components/Panels";
 import { AssemblyGuide, sceneSpans } from "./components/AssemblyGuide";
+import { SceneTester } from "./components/SceneTester";
 import { AutomationPanel } from "./components/AutomationPanel";
 import { TimelinePlayer } from "./state/playback";
 import { clipAt, timelineLength, tc } from "./state/timelineMath";
@@ -44,6 +45,8 @@ export default function EditorialPage() {
   const [tool, setTool] = useState<Tool>("select");
   const [selected, setSelected] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
+  // "Play Scene N" stops at the end of that scene; ordinary Play runs to the end of the cut.
+  const stopAt = useRef<number | null>(null);
   const player = useRef<TimelinePlayer | null>(null);
   if (!player.current) player.current = new TimelinePlayer(24);
 
@@ -61,10 +64,12 @@ export default function EditorialPage() {
     const tick = () => {
       const f = player.current!.position();
       setFrame(f);
-      if (f >= length) {
+      const end = stopAt.current ?? length;
+      if (f >= end) {
         player.current!.stop();
         setPlaying(false);
-        setFrame(length);
+        setFrame(end);
+        stopAt.current = null;
         return;
       }
       raf = requestAnimationFrame(tick);
@@ -74,8 +79,17 @@ export default function EditorialPage() {
   }, [playing, length]);
   useEffect(() => () => player.current?.stop(), []);
 
+  async function playScene(from: number, to: number) {
+    if (!d.ws) return;
+    player.current!.stop();
+    stopAt.current = to;
+    setFrame(from);
+    await player.current!.play(from, clips, d.ws.mixes, automation);
+    setPlaying(true);
+  }
   async function togglePlay() {
     if (!d.ws) return;
+    stopAt.current = null;
     if (player.current!.playing) {
       player.current!.stop();
       setPlaying(false);
@@ -210,14 +224,19 @@ export default function EditorialPage() {
               )}
             </div>
             {ws.conformable > 0 && (
-              <button onClick={() => edit({ op: "conform" })} disabled={d.busy !== null} className="rounded-md border border-aura-gold px-3 py-1.5 text-sm disabled:opacity-40">
-                Conform to approved takes & mixes
+              <button onClick={() => edit({ op: "conform" })} disabled={d.busy !== null} title="Conform: newer approved takes replace the old ones in the same place and newly approved scene sound is laid under its picture — your cut points, trims and volume don't move."
+                className="rounded-md border border-aura-gold px-3 py-1.5 text-sm disabled:opacity-40">
+                Bring the whole cut up to date (Conform)
               </button>
             )}
           </div>
         )}
 
         {ws.bin.length > 0 && <AssemblyGuide ws={ws} projectId={id} clips={clips} automation={automation} fps={fps} onSeek={seek} />}
+        {ws.bin.length > 0 && (
+          <SceneTester ws={ws} projectId={id} clips={clips} busy={d.busy !== null}
+            onBuildScene={(sid) => d.assembleScene(sid)} onConformScene={(sid) => edit({ op: "conform", scene_id: sid })} onPlayScene={(f, to) => void playScene(f, to)} />
+        )}
 
         {!ws.bin.length ? (
           <div className="rounded-xl border border-dashed border-aura-border p-10 text-center text-sm text-white/50">

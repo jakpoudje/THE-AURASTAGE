@@ -40,6 +40,11 @@ export default function AudioStudioPage() {
   });
   const runBusy = runs.active || runs.starting;
   const [sceneId, setSceneId] = useState<string | null>(null);
+  // Opened for one scene from another page (e.g. Editorial's "Open this scene in Audio Studio"): ?scene=<id>.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("scene");
+    if (q) setSceneId(q);
+  }, []);
   const [clipId, setClipId] = useState<string | null>(null);
   const [trackId, setTrackId] = useState<string | null>(null);
   const [pps, setPps] = useState(60);

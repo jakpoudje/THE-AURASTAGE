@@ -6,8 +6,8 @@ import type { EditorialWorkspace } from "../types";
 const base = (p: string) => `/api/projects/${p}/editorial`;
 export const editorialApi = {
   getWorkspace: (projectId: string) => apiGet<EditorialWorkspace>(base(projectId)),
-  assemble: (projectId: string, base_revision: string | null, break_lock = false) =>
-    apiPost<{ summary: string; rationale: string[] }>(`${base(projectId)}/assemble`, { base_revision, ...(break_lock ? { break_lock } : {}) }),
+  assemble: (projectId: string, base_revision: string | null, break_lock = false, scene_ids?: string[]) =>
+    apiPost<{ summary: string; rationale: string[] }>(`${base(projectId)}/assemble`, { base_revision, ...(break_lock ? { break_lock } : {}), ...(scene_ids ? { scene_ids } : {}) }),
   edit: (projectId: string, base_revision: string, operation: EditOperation, break_lock = false) =>
     apiPost<{ summary: string }>(`${base(projectId)}/edit`, { base_revision, operation, ...(break_lock ? { break_lock } : {}) }),
   saveVersion: (projectId: string, label: string) => apiPost<{ version_number: number; label: string }>(`${base(projectId)}/versions`, { label }),

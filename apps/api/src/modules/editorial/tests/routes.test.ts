@@ -212,6 +212,26 @@ describe("Editorial routes", () => {
     expect((await (await app(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/editorial` })).json().sound_to_add).toBe(0);
   });
 
+  it("owner request 2026-10-02 (test one scene): a test cut of one scene only; Conform limited to one scene; the workspace says what each scene would get", async () => {
+    let fake = fakeDb(rows);
+    let res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/editorial/assemble`, payload: { base_revision: null, scene_ids: [S1] } });
+    expect(res.json().summary).toMatch(/a test cut of Scene 1 only/);
+    expect(fake.calls.find((c) => c.fn === "save_timeline")!.args.p_summary).toMatch(/^Test cut: 1 scene/);
+    const OTHER = "99999999-9999-4999-8999-999999999999";
+    res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/assemble`, payload: { base_revision: null, scene_ids: [OTHER] } });
+    expect(res.statusCode).toBe(412);
+    // Conform for one scene: another scene's request changes nothing; this scene's brings its sound in.
+    withTimeline();
+    rows.timeline_clips = rows.timeline_clips.filter((c) => c.track !== "A1");
+    const ws = (await (await app(fakeDb(rows, (fn, a) => ({ data: fn === "set_timeline_review" ? { ...rows.timelines[0], review_state: a.p_state, review_reason: a.p_reason } : {} })))).inject({ method: "GET", url: `/api/projects/${P}/editorial` })).json();
+    expect(ws.conform_by_scene).toEqual({ [S1]: { takes: 0, sound: 1 } });
+    res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/edit`, payload: { base_revision: REV, operation: { op: "conform", scene_id: OTHER } } });
+    expect(res.statusCode).toBe(409);
+    fake = fakeDb(rows);
+    res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/editorial/edit`, payload: { base_revision: REV, operation: { op: "conform", scene_id: S1 } } });
+    expect(res.json().summary).toMatch(/Added the approved sound of 1 scene/);
+  });
+
   it("Picture Lock needs passing checks; a locked picture refuses edits until the break is confirmed (with impact)", async () => {
     withTimeline();
     let res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/lock`, payload: { base_revision: REV } });

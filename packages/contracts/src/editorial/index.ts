@@ -100,7 +100,8 @@ export const EditOperationSchema = z.discriminatedUnion("op", [
   /** A music clip's level (A2). */
   z.object({ op: z.literal("gain"), clip_id: clipId, gain_db: z.number().min(-60).max(12) }).strict(),
   /** Swap every clip's source for the currently approved take / scene mix, keeping the cut. */
-  z.object({ op: z.literal("conform") }).strict(),
+  /** conform: newly approved takes and scene sound into the cut without moving it; `scene_id` limits it to one scene. */
+  z.object({ op: z.literal("conform"), scene_id: z.string().uuid().optional() }).strict(),
 ]);
 export type EditOperation = z.infer<typeof EditOperationSchema>;
 
@@ -115,7 +116,11 @@ export const EditRequestSchema = z
   .strict();
 export type EditRequest = z.infer<typeof EditRequestSchema>;
 
-export const AssembleRequestSchema = z.object({ base_revision: z.string().uuid().nullable(), break_lock: z.boolean().optional() }).strict();
+export const AssembleRequestSchema = z.object({
+  base_revision: z.string().uuid().nullable(), break_lock: z.boolean().optional(),
+  /** Owner request 2026-10-02 ("I want to just test one scene"): build the cut from these scenes only. */
+  scene_ids: z.array(z.string().uuid()).min(1).max(500).optional(),
+}).strict();
 export const SaveTimelineVersionSchema = z.object({ label: z.string().trim().min(1).max(120) }).strict();
 export const RestoreTimelineVersionSchema = z.object({ base_revision: z.string().uuid(), break_lock: z.boolean().optional() }).strict();
 /** Undo the newest edit made on this revision (migration 0054); the cut before it comes back with its revision. */

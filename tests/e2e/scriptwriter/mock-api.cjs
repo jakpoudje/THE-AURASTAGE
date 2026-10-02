@@ -1292,8 +1292,9 @@ http.createServer((req, res) => {
           .sort((a, c) => Number(c.category === "music") - Number(a.category === "music")) });
     }
     if (u === `/api/projects/${P}/editorial/assemble`) {
-      const rows = edScenes().filter((r) => r.pv);
-      if (!rows.length) return edErr(412, "Approve at least one scene's shot plan in Storyboard first — the assembly is cut from approved shots.");
+      const only = Array.isArray(b.scene_ids) ? new Set(b.scene_ids) : null;
+      const rows = edScenes().filter((r) => r.pv && (!only || only.has(r.scene.id)));
+      if (!rows.length) return edErr(412, only ? "That scene has no approved shot plan yet — approve it in Storyboard first." : "Approve at least one scene's shot plan in Storyboard first — the assembly is cut from approved shots.");
       if (timeline && timeline.revision !== b.base_revision) return edErr(409, "The timeline changed — reload and try again.");
       const r = eng.assemblyTimelineEngine({ fps: FPS, scenes: rows.map((x) => ({ scene_id: x.scene.id, number: x.scene.number, heading: x.scene.heading,
         shots: x.shots.map((sh) => { const at = approvedTake(sh.id); return { shot_id: sh.id, ordinal: sh.ordinal, size: sh.size || null, story_start: sh.story_start, story_end: sh.story_end, take: at ? { take_id: at.id, duration_seconds: takeFrames(at) === null ? null : at.params.duration_seconds } : null }; }),
@@ -1301,7 +1302,7 @@ http.createServer((req, res) => {
       if (timeline && timeline.status !== "locked" && tclips.length) edVersion("Before re-assembly", "auto", edQC(edScenes(), tclips));
       if (!edPersist(r.clips, "assemble", !!b.break_lock, "Assembly")) return;
       const on = r.clips.filter((c) => c.kind === "take").length, off = r.clips.filter((c) => c.kind === "slug").length;
-      return send(200, { summary: `Assembled ${rows.length} scene${rows.length === 1 ? "" : "s"} from approved shots: ${on} picture clip${on === 1 ? "" : "s"}${off ? `, ${off} still offline (no approved take)` : ""}.`, rationale: r.rationale });
+      return send(200, { summary: `Assembled ${only && rows.length === 1 ? `a test cut of Scene ${rows[0].scene.number} only` : `${rows.length} scene${rows.length === 1 ? "" : "s"}`} from approved shots: ${on} picture clip${on === 1 ? "" : "s"}${off ? `, ${off} still offline (no approved take)` : ""}.`, rationale: r.rationale });
     }
     if (u === `/api/projects/${P}/editorial/edit`) {
       if (!timeline) return edErr(412, "Build the first assembly first.");

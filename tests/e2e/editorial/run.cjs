@@ -86,8 +86,22 @@ async function approveTakeFor(shotId) {
     await bin.getByText("No approved take (offline)").first().waitFor();
     await bin.getByText(/Scene mix v1/).waitFor();
   });
+  await step("owner request 2026-10-02 (test one scene): the One scene panel shows what the scene needs, builds a test cut of that scene only, and plays it", async () => {
+    const panel = page.getByRole("region", { name: "One scene at a time" });
+    await panel.getByRole("combobox", { name: "Scene to test" }).waitFor();
+    const ready = panel.getByRole("list", { name: /Scene 1 readiness/ });
+    await ready.getByText("Shot plan approved").waitFor();
+    await ready.getByText(/1 of \d+ shots — the rest play as offline slugs/).waitFor();
+    await ready.getByRole("link", { name: "Open Visual Generation →" }).waitFor();
+    await ready.getByText("Not on the timeline yet").waitFor();
+    await panel.getByText(/what Editorial calls/).waitFor();
+    await panel.getByRole("button", { name: "Build a test cut of Scene 1 only" }).click();
+    await notice(/Assembled a test cut of Scene 1 only from approved shots/);
+    await panel.getByRole("button", { name: "▶ Play Scene 1" }).waitFor();
+    await ready.getByText(/Picture and sound in the cut|Picture in the cut/).waitFor();
+  });
   await step("build the first assembly: picture from approved takes, offline slugs, mix on A1; kept after reload", async () => {
-    await page.getByRole("button", { name: "Build first assembly" }).click();
+    await page.getByRole("button", { name: "Re-assemble" }).click();
     await notice(/Assembled 1 scene from approved shots: 1 picture clip, \d+ still offline/);
     await reload();
     await page.getByRole("group", { name: "Track V1" }).getByRole("button", { name: /^Clip Scene 1 · Shot 1/ }).first().waitFor();
@@ -116,7 +130,7 @@ async function approveTakeFor(shotId) {
     await reload();
     await page.getByText("New approved takes or mixes are available.").waitFor();
     await page.getByRole("group", { name: "Track V1" }).getByText("OFFLINE").first().waitFor(); // the cut is untouched until you conform
-    await page.getByRole("button", { name: "Conform to approved takes & mixes" }).click();
+    await page.getByRole("button", { name: "Bring the whole cut up to date (Conform)" }).click();
     await notice(/Updated \d+ clips? to the currently approved takes and mixes — the cut is unchanged/);
     await reload();
     if (await page.getByRole("group", { name: "Track V1" }).getByText("OFFLINE").count()) throw new Error("still offline after conform");

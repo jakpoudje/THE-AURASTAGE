@@ -29,6 +29,14 @@ transitions only on V1),
 the same save and checks, and gives the timeline back that earlier revision, so repeated Undos walk back one edit at a
 time. An undone entry is marked (`undone_at`), not removed.
 
+**One scene at a time (owner request 2026-10-02: "I want to just test one scene").** `POST …/assemble` takes optional
+`scene_ids` (a test cut of those scenes only; the current cut is kept as a version first, Re-assemble brings every scene
+back); the `conform` edit takes an optional `scene_id` (only that scene's newer takes and newly approved sound); the
+workspace gives `conform_by_scene` (per scene: takes and sound waiting). The page's "One scene at a time" panel shows a
+scene's readiness from the records (approved plan, takes, mix, on the cut and up to date) with links to the page that
+fixes each, and Build a test cut / Bring this scene up to date (Conform, explained in plain words) / Play this scene
+(stops at the scene's end). Audio Studio opens on a scene with `?scene=<id>`.
+
 ## Engines
 - `assemblyTimelineEngine` — first assembly: per scene, cut to the most recently started shot covering each moment of story time; no approved take → offline slug; mix on A1 in sync.
 - `editDecisionEngine` (1.3.0) — insert, overwrite, trim (with/without ripple), roll, slip, slide, blade, lift, extract, move, grade, conform, gain (music level). Sources: take, insert_shot (V2), music (A2). Sync lock always on (1.2.0).

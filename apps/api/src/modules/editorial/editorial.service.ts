@@ -173,8 +173,18 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
   const ctx = await load(db, projectId);
   const up = upstream(ctx);
   const issues = clipIssues(ctx, up);
-  const soundToAdd = soundAdditions(ctx, up).length;
-  const conformable = conformReplacements(ctx, up).length + soundToAdd;
+  const adds = soundAdditions(ctx, up), reps = conformReplacements(ctx, up);
+  const soundToAdd = adds.length;
+  const conformable = reps.length + soundToAdd;
+  // Per scene (owner request 2026-10-02: test one scene): what "Bring this scene up to date" would change.
+  const conformByScene: Record<string, { takes: number; sound: number }> = {};
+  for (const r of reps) {
+    const sid = ctx.clips.find((c) => c.id === r.clip_id)?.scene_id;
+    if (!sid) continue;
+    const e = (conformByScene[sid] ??= { takes: 0, sound: 0 });
+    if (r.kind === "audio_mix") e.sound++; else e.takes++;
+  }
+  for (const a of adds) if (a.scene_id) (conformByScene[a.scene_id] ??= { takes: 0, sound: 0 }).sound++;
   let timeline = ctx.timeline;
   if (timeline) {
     const state = issues.length ? "review_required" : "current";
@@ -230,6 +240,7 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
     issues,
     conformable,
     sound_to_add: soundToAdd,
+    conform_by_scene: conformByScene,
     qc,
     versions: versions.map((v) => ({ id: v.id, version_number: v.version_number, label: v.label, kind: v.kind, duration_frames: v.duration_frames, created_at: v.created_at })),
     locks: locks.map((l) => ({ lock_number: l.lock_number, locked_at: l.locked_at, broken_at: l.broken_at, impact: l.impact ?? null })),
@@ -282,8 +293,10 @@ export async function assembleTimeline(db: SupabaseClient, projectId: string, pa
   const req = validateAssemble(payload);
   const ctx = await load(db, projectId);
   const up = upstream(ctx);
+  const only = req.scene_ids ? new Set(req.scene_ids) : null;
+  if (only && !up.scenes.some((s) => only.has(s.scene.id) && s.pv)) throw new EditorialNotReadyError("That scene has no approved shot plan yet — approve it in Storyboard first.");
   const input = up.scenes
-    .filter((s) => s.pv)
+    .filter((s) => s.pv && (!only || only.has(s.scene.id)))
     .map((s) => ({
       scene_id: s.scene.id, number: s.scene.number, heading: s.scene.heading,
       shots: s.shots.map((sh) => {
@@ -305,10 +318,11 @@ export async function assembleTimeline(db: SupabaseClient, projectId: string, pa
   const online = r.clips.filter((c) => c.kind === "take").length, offline = r.clips.filter((c) => c.kind === "slug").length;
   // A fresh assembly rebuilds the cut (V1/A1); inserts over the picture (V2) and music (A2) laid by hand are kept.
   await persist(db, ctx, [...r.clips, ...ctx.clips.filter((c) => c.track === "V2" || c.track === "A2")], {
-    action: "assemble", summary: `First assembly: ${input.length} scene${input.length === 1 ? "" : "s"}, ${online} picture clip${online === 1 ? "" : "s"}${offline ? `, ${offline} offline` : ""}.`,
+    action: "assemble", summary: `${only ? "Test cut" : "First assembly"}: ${input.length} scene${input.length === 1 ? "" : "s"}, ${online} picture clip${online === 1 ? "" : "s"}${offline ? `, ${offline} offline` : ""}.`,
     engineVersion: r.engine_version, baseRevision: ctx.timeline ? req.base_revision : null, breakLock: !!req.break_lock,
   });
-  return { summary: `Assembled ${input.length} scene${input.length === 1 ? "" : "s"} from approved shots: ${online} picture clip${online === 1 ? "" : "s"}${offline ? `, ${offline} still offline (no approved take)` : ""}.`, rationale: r.rationale };
+  const what = only && input.length === 1 ? `a test cut of Scene ${input[0].number} only` : `${input.length} scene${input.length === 1 ? "" : "s"}`;
+  return { summary: `Assembled ${what} from approved shots: ${online} picture clip${online === 1 ? "" : "s"}${offline ? `, ${offline} still offline (no approved take)` : ""}.`, rationale: r.rationale };
 }
 
 async function resolveSource(db: SupabaseClient, ctx: Ctx, up: Up, op: Extract<EditOperation, { op: "insert" | "overwrite" }>): Promise<EngineClip> {
@@ -364,8 +378,9 @@ export async function editTimeline(db: SupabaseClient, projectId: string, payloa
     r = editDecisionEngine({
       clips: ctx.clips, operation: op,
       new_clip: op.op === "insert" || op.op === "overwrite" ? await resolveSource(db, ctx, up, op) : undefined,
-      replacements: op.op === "conform" ? conformReplacements(ctx, up) : undefined,
-      additions: op.op === "conform" ? soundAdditions(ctx, up) : undefined,
+      // One scene (owner request 2026-10-02) or the whole cut.
+      replacements: op.op === "conform" ? conformReplacements(ctx, up).filter((r) => !op.scene_id || ctx.clips.find((c) => c.id === r.clip_id)?.scene_id === op.scene_id) : undefined,
+      additions: op.op === "conform" ? soundAdditions(ctx, up).filter((a) => !op.scene_id || a.scene_id === op.scene_id) : undefined,
     });
   } catch (e) {
     if (e instanceof EditRejectedError) throw new EditorialConflictError(e.message);
