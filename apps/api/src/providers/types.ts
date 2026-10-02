@@ -74,8 +74,10 @@ export interface StillRequest {
         appearance?: Appearance;
         /** The film's genre: AuraSketch 3 draws in its style (sketchStyleFor). */
         genre?: string | null }
-    | { kind: "location"; title: string; subtitle: string; view: string; time: string | null; int_ext: string[]; lines: string[] }
-    | { kind: "prop"; title: string; subtitle: string; view: string; category: "prop" | "vehicle"; lines: string[] };
+    | { kind: "location"; title: string; subtitle: string; view: string; time: string | null; int_ext: string[]; lines: string[];
+        /** placeSketchEngine reads the place from these (older requests without them draw from the title). */
+        description?: string | null; genre?: string | null; seed?: string }
+    | { kind: "prop"; title: string; subtitle: string; view: string; category: "prop" | "vehicle"; lines: string[]; description?: string | null; genre?: string | null };
 }
 
 export interface ProviderAdapter {

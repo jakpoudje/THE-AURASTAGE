@@ -5,7 +5,7 @@
 // run with no external account, and gives every shot a readable frame.
 import type { GenerateRequest, GenerateResult, ProviderAdapter, StillRequest } from "../types";
 import { ProviderError } from "../types";
-import { characterAppearanceEngine, drawAuraSketchFigure, sketchStyleFor } from "@aurastage/engines";
+import { characterAppearanceEngine, drawAuraSketchFigure, placeSketchEngine, sketchStyleFor } from "@aurastage/engines";
 import type { SketchAngle, SketchSize } from "@aurastage/engines";
 
 const RATIO: Record<string, [number, number]> = { "16:9": [1280, 720], "9:16": [720, 1280], "1:1": [1024, 1024], "2.39:1": [1434, 600], "4:3": [1024, 768] };
@@ -82,9 +82,16 @@ export function renderSketch(req: GenerateRequest): string {
   const who = p.characters.map((c) => c.name).join(", ");
   const meta = [p.camera.size_label, p.camera.lens_mm ? `${p.camera.lens_mm}mm` : null, `${p.camera.duration_seconds}s`].filter(Boolean).join(" · ");
   const fs = Math.round(H / 26);
+  // AuraSketch places: the scene's location, built from its description, behind the characters — wide for wide shots,
+  // closer for medium shots, the main surface for close-ups and inserts.
+  const placeView = ["EWS", "WS", "FULL", "MWS", "GROUP"].includes(size) ? "wide" : ["CU", "ECU", "INSERT"].includes(size) ? "detail" : "medium";
+  const place = placeSketchEngine({
+    name: p.world?.location?.name ?? p.scene.location, description: [p.world?.location?.description, p.scene.atmosphere, p.scene.weather].filter(Boolean).join(". "),
+    int_ext: p.scene.int_ext.split(/[./ ]+/).filter((x) => x === "INT" || x === "EXT"), time: p.scene.time_of_day, view: placeView, width: W, height: H, style, seed: p.world?.location?.id ?? p.scene.location,
+  }).svg;
+  void bg; void horizon;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
-<rect width="${W}" height="${H}" fill="${bg}"/>
-<line x1="0" x2="${W}" y1="${H * horizon}" y2="${H * horizon}" stroke="#44444c" stroke-width="2"/>
+${place}
 <g transform="rotate(${tilt} ${W / 2} ${H / 2})">${figures.join("")}</g>
 <rect x="0" y="${H - fs * 4.2}" width="${W}" height="${fs * 4.2}" fill="#000" opacity="0.72"/>
 ${caption.map((l, i) => `<text x="${fs}" y="${H - fs * (3 - i * 1.25)}" font-family="Helvetica,Arial,sans-serif" font-size="${fs}" fill="#f2f2f2">${esc(l)}</text>`).join("")}
@@ -137,39 +144,17 @@ ${lines.map((l, i) => `<text x="${fs}" y="${H - fs * ((lines.length - i) * 1.3 -
 </svg>`;
 }
 
-/** A labelled location sketch: sky and light for the time of day, a skyline or a room drawn for the view. Deterministic. */
+/**
+ * A location sketch (AuraSketch for places, placeSketchEngine): the place read from its name and description and built in
+ * 3D perspective — the right kind of room or exterior, furnished, with the materials, condition, light, time of day,
+ * weather and the film's genre look. Deterministic. Labelled as a sketch.
+ */
 export function renderLocationSketch(req: StillRequest): string {
   const [W, H] = RATIO[req.aspect_ratio] ?? RATIO["16:9"];
   const k = req.sketch as Extract<Sk, { kind: "location" }>;
-  const [top, bottom] = SKY[k.time ?? "DAY"] ?? SKY.DAY;
-  const night = k.time === "NIGHT";
-  const interior = k.int_ext.includes("INT") && !(k.view === "establishing");
-  const seed = Math.abs([...(k.title ?? "")].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7));
-  const parts: string[] = [`<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/></linearGradient></defs>`];
-  if (interior) {
-    // A room in one-point perspective: back wall, floor, a window showing the time of day, a lamp at night.
-    const bw = W * (k.view === "medium" ? 0.7 : k.view === "detail" ? 0.9 : 0.5), bh = H * (k.view === "medium" ? 0.6 : k.view === "detail" ? 0.8 : 0.45);
-    const bx = (W - bw) / 2, by = H * 0.18;
-    parts.push(`<rect width="${W}" height="${H}" fill="${night ? "#16151c" : "#3b3834"}"/>`);
-    parts.push(`<polygon points="0,${H} ${bx},${by + bh} ${bx + bw},${by + bh} ${W},${H}" fill="${night ? "#221f26" : "#5a5046"}"/>`);
-    parts.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="${night ? "#1f1d25" : "#6b635a"}" stroke="#2a2830" stroke-width="3"/>`);
-    parts.push(`<rect x="${bx + bw * 0.58}" y="${by + bh * 0.15}" width="${bw * 0.28}" height="${bh * 0.4}" fill="url(#sky)" stroke="#2a2830" stroke-width="4"/>`);
-    parts.push(`<rect x="${bx + bw * 0.1}" y="${by + bh * 0.62}" width="${bw * 0.35}" height="${bh * 0.2}" fill="#4a4038"/>`);
-    if (night) parts.push(`<circle cx="${bx + bw * 0.2}" cy="${by + bh * 0.45}" r="${bh * 0.06}" fill="#f0c86a"/><circle cx="${bx + bw * 0.2}" cy="${by + bh * 0.45}" r="${bh * 0.25}" fill="#f0c86a" opacity="0.12"/>`);
-  } else {
-    // Exterior: sky, sun or moon, a skyline from the name (so the same place always has the same skyline), ground.
-    const horizon = H * (k.view === "establishing" ? 0.62 : k.view === "wide" ? 0.68 : 0.75);
-    parts.push(`<rect width="${W}" height="${H}" fill="url(#sky)"/>`);
-    parts.push(night ? `<circle cx="${W * 0.8}" cy="${H * 0.2}" r="${H * 0.05}" fill="#dfe6f5"/>` : `<circle cx="${W * 0.78}" cy="${horizon - H * (k.time === "DAWN" || k.time === "DUSK" ? 0.05 : 0.4)}" r="${H * 0.06}" fill="#f5d27a" opacity="0.9"/>`);
-    const n = k.view === "establishing" ? 14 : k.view === "wide" ? 9 : 5;
-    for (let i = 0; i < n; i++) {
-      const w = W / n, h = H * (0.08 + ((seed >> (i % 16)) % 7) * 0.035);
-      parts.push(`<rect x="${i * w + 2}" y="${horizon - h}" width="${w - 4}" height="${h}" fill="${night ? "#0c0f18" : "#3a3a44"}"/>`);
-      if (night && i % 2 === 0) parts.push(`<rect x="${i * w + w * 0.4}" y="${horizon - h * 0.7}" width="${w * 0.12}" height="${h * 0.1}" fill="#f0c86a"/>`);
-    }
-    parts.push(`<rect x="0" y="${horizon}" width="${W}" height="${H - horizon}" fill="${night ? "#10131b" : "#4b4a44"}"/>`);
-  }
-  return frame(W, H, k, parts.join(""));
+  const view = (["establishing", "wide", "medium", "detail"].includes(k.view) ? k.view : "wide") as "establishing" | "wide" | "medium" | "detail";
+  const out = placeSketchEngine({ name: k.title, description: k.description ?? k.lines.join(". "), int_ext: k.int_ext, time: k.time, view, width: W, height: H, style: sketchStyleFor(k.genre ?? null), seed: k.seed ?? k.title });
+  return frame(W, H, k, out.svg);
 }
 
 /** A labelled prop sketch: the object drawn for the view (a box, a vehicle silhouette), a hand for scale. Deterministic. */

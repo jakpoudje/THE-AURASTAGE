@@ -158,11 +158,14 @@ export async function updateWorldItem(db: SupabaseClient, kindRaw: string, id: s
 async function lookFor(db: SupabaseClient, kind: Kind, id: string, views?: string[]) {
   const r = await item(db, kind, id);
   const style = (await readProjectSettings(db, r.project_id)).settings.style?.look ?? null;
+  // The film's genre: AuraSketch draws places in its style.
+  const { data: proj } = await db.from("projects").select("genre, subgenre").eq("id", r.project_id).maybeSingle();
+  const genre = [proj?.genre, proj?.subgenre].filter(Boolean).join(" ") || null;
   const out = worldLook.worldLookEngine({
     kind, style: style || null, views,
     item: { name: r.name, description: r.description || null, category: kind === "prop" ? r.category : null, int_ext: r.int_ext ?? [], times_of_day: r.times_of_day ?? [], areas: r.areas ?? [] },
   });
-  return { r, out };
+  return { r, out, genre };
 }
 
 export async function getWorldLook(db: SupabaseClient, kindRaw: string, id: string, env: Env = process.env) {
@@ -194,7 +197,7 @@ const GenerateInput = z.object({ views: z.array(z.string().regex(/^[a-z_]{2,20}(
 export async function generateWorldLook(db: SupabaseClient, kindRaw: string, id: string, body: unknown, env: Env = process.env) {
   const kind = kindOf(kindRaw);
   const b = parse(GenerateInput, body);
-  const { r, out } = await lookFor(db, kind, id, b.views);
+  const { r, out, genre } = await lookFor(db, kind, id, b.views);
   const views = b.views ? out.views : out.views.filter((v) => v.in_default_set);
   if (!views.length) throw new WorldValidationError([], "None of those views exist for this item.");
   const backends = stillBackends(env);
@@ -204,8 +207,8 @@ export async function generateWorldLook(db: SupabaseClient, kindRaw: string, id:
   const requested: Row[] = [];
   for (const v of views) {
     const sketch = kind === "location"
-      ? { kind, title: r.name, subtitle: v.label, view: v.view, time: v.time, int_ext: r.int_ext ?? [], lines: [out.identity] }
-      : { kind, title: r.name, subtitle: v.label, view: v.view, category: r.category, lines: [out.identity] };
+      ? { kind, title: r.name, subtitle: v.label, view: v.view, time: v.time, int_ext: r.int_ext ?? [], lines: [out.identity], description: r.description || null, genre, seed: r.id }
+      : { kind, title: r.name, subtitle: v.label, view: v.view, category: r.category, lines: [out.identity], description: r.description || null, genre };
     const row = await rpc<Row>(db, "request_world_reference", {
       p_type: kind, p_id: id, p_view: v.key, p_aspect: v.aspect_ratio, p_prompt: v.prompt, p_negative: out.negative, p_identity_hash: out.identity_hash,
       p_provider: be.id, p_model: be.model, p_execution: be.execution, p_seed: Math.floor(Math.random() * 2 ** 31), p_sketch: sketch, p_engine_version: out.engine_version,

@@ -6,3 +6,5 @@ export * as worldDescribe from "./worldDescribeEngine";
 export { worldDescribeEngine } from "./worldDescribeEngine";
 export * as propContinuity from "./propContinuityEngine";
 export { propContinuityEngine } from "./propContinuityEngine";
+export * as placeSketch from "./placeSketchEngine";
+export { placeSketchEngine } from "./placeSketchEngine";

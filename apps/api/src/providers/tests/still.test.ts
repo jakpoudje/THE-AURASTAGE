@@ -42,13 +42,16 @@ describe("AuraStage Sketch: location and prop views", () => {
     const night = await svg({ kind: "location", title: "Lagos Harbour", subtitle: "Wide · Night", view: "wide", time: "NIGHT", int_ext: ["EXT"], lines: ["Lagos Harbour — exterior."] }, "16:9");
     const day = await svg({ kind: "location", title: "Lagos Harbour", subtitle: "Wide · Day", view: "wide", time: "DAY", int_ext: ["EXT"], lines: [] }, "16:9");
     expect(night).toContain('viewBox="0 0 1280 720"');
-    expect(night).toContain("#070b16");
-    expect(day).toContain("#4f7ca8");
+    // placeSketchEngine (2026-10-02): a harbour with water, night and day skies.
+    expect(night).toContain("#060a16");
+    expect(day).toContain("#5d86b3");
+    expect(day).toContain("#3f6f8a"); // the water
     expect(night).toContain("Lagos Harbour");
     expect(night).toContain("AURASTAGE SKETCH (not AI)");
     expect(await svg({ kind: "location", title: "Lagos Harbour", subtitle: "Wide · Night", view: "wide", time: "NIGHT", int_ext: ["EXT"], lines: ["Lagos Harbour — exterior."] }, "16:9")).toBe(night);
     const room = await svg({ kind: "location", title: "Tunde's Flat", subtitle: "Wide · Night", view: "wide", time: "NIGHT", int_ext: ["INT"], lines: [] }, "16:9");
-    expect(room).toContain("#f0c86a"); // a lamp at night indoors
+    // A lamp on at night indoors: its glow is drawn.
+    expect(room).toMatch(/fill="url\(#glow\)" opacity/);
   });
   it("draws props and vehicles, with a hand or person for scale", async () => {
     const hand = await svg({ kind: "prop", title: "Notebook", subtitle: "In hand", view: "in_hand", category: "prop", lines: [] }, "1:1");

@@ -141,7 +141,7 @@ export function drawFace(a: Appearance, hx: number, rxBase: number, jwBase: numb
   out.push(`<ellipse cx="${f(hx - r2 * 0.25)}" cy="0.26" rx="0.12" ry="0.06" fill="${light}" opacity="${f(0.35 + 0.2 * st.grade)}"/>`);
   for (const s of side ? [-1] : [-1, 1]) out.push(`<ellipse cx="${f(hx + s * r2 * 0.5)}" cy="0.64" rx="0.05" ry="0.022" fill="${light}" opacity="${f((0.25 + 0.3 * fc.cheekbones) * (s < 0 ? 1 : 0.5))}"/>`);
   out.push(`<ellipse cx="${f(chinX - 0.01)}" cy="${f(chinY - 0.05)}" rx="0.04" ry="0.018" fill="${light}" opacity="0.3"/>`);
-  if (st.rim) out.push(`<path d="M ${pts(hx + r2 * 0.7, 0.12)} Q ${pts(hx + r2 * 1.02, 0.3, hx + r2 * 1.0, 0.5)} C ${pts(hx + r2 * cheekK, 0.72, chinX + jr, 0.86, chinX + jr * 0.6, 0.95)}" fill="none" stroke="${st.rim}" stroke-width="${f(0.018 * lw)}" stroke-linecap="round" opacity="0.65"/>`);
+  if (st.rim) out.push(`<path d="M ${pts(hx + r2 * 0.99, 0.56)} C ${pts(hx + r2 * cheekK, 0.72, chinX + jr, 0.86, chinX + jr * 0.6, 0.95)}" fill="none" stroke="${st.rim}" stroke-width="${f(0.018 * lw)}" stroke-linecap="round" opacity="0.65"/>`);
   if (st.blush > 0) for (const s of side ? [1] : [-1, 1]) out.push(`<ellipse cx="${f(hx + s * r2 * 0.55)}" cy="0.7" rx="0.08" ry="0.045" fill="#d9766f" opacity="${f(0.13 * st.blush * (a.presentation === "feminine" ? 1 : 0.55))}"/>`);
 
   // Eyes: socket shadow, white, iris (clipped to the lids), pupil, catchlight, lids, crease, lashes; blinking when talking.

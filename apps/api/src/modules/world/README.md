@@ -32,3 +32,10 @@ state in the scene — promptCompilerEngine 1.5.0).
 ## One click (owner, 2026-10-02)
 `POST /api/projects/:id/world/looks/generate-all` — the standard reference views for every location and prop that has
 none or only outdated ones (built-in sketch unless a connected provider is chosen), through `generateWorldLook`.
+
+## AuraSketch places (2026-10-02)
+Location views made by the built-in sketch are drawn by `placeSketchEngine` (engines/world): the location's name and
+description are read into a place spec (kind of place, size, materials, colours, condition, wealth, objects, weather,
+light) and built in 3D perspective, graded by the project's genre. The sketch request now carries `description`,
+`genre` and `seed` (the location id, so a place always draws the same). Storyboard frames draw the shot's location the
+same way behind the characters.
