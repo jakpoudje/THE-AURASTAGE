@@ -29,14 +29,17 @@ export async function getProjectOverview(db: SupabaseClient, projectId: string) 
   // runs once for this request (enableRequestMemo), and stages that don't depend on each other are read side by side
   // (2026-10-02: the overview took ~5 s; it is shown on every page).
   enableRequestMemo(db);
-  const [script, casting] = (await Promise.all([getScript(db, projectId), getCastingWorkspace(db, projectId)])) as Row[];
-  const dialogue = (await getDialogueWorkspace(db, projectId)) as Row;
-  const dna = (await getSceneDnaWorkspace(db, projectId)) as Row;
-  const board = (await getStoryboard(db, projectId)) as Row;
-  const [visual, audio] = (await Promise.all([getVisualWorkspace(db, projectId, process.env, { sign: false }), getAudioWorkspace(db, projectId)])) as Row[];
-  const edit = (await getEditorialWorkspace(db, projectId)) as Row;
+  // Per-stage time, returned as timings_ms so slow stages are visible in the live checks (rule 12: measured, not guessed).
+  const timings: Record<string, number> = {};
+  const timed = async <T,>(k: string, f: () => Promise<T>) => { const t = Date.now(); const r = await f(); timings[k] = Date.now() - t; return r; };
+  const [script, casting] = (await Promise.all([timed("script", () => getScript(db, projectId)), timed("casting", () => getCastingWorkspace(db, projectId))])) as Row[];
+  const dialogue = (await timed("dialogue", () => getDialogueWorkspace(db, projectId))) as Row;
+  const dna = (await timed("scene_dna", () => getSceneDnaWorkspace(db, projectId))) as Row;
+  const board = (await timed("storyboard", () => getStoryboard(db, projectId))) as Row;
+  const [visual, audio] = (await Promise.all([timed("visual", () => getVisualWorkspace(db, projectId, process.env, { sign: false })), timed("audio", () => getAudioWorkspace(db, projectId))])) as Row[];
+  const edit = (await timed("editorial", () => getEditorialWorkspace(db, projectId))) as Row;
   const [delivery, { count: assetCount }] = await Promise.all([
-    getDeliveryWorkspace(db, projectId) as Promise<Row>,
+    timed("delivery", () => getDeliveryWorkspace(db, projectId)) as Promise<Row>,
     db.from("assets").select("id", { count: "exact", head: true }).eq("project_id", projectId).is("archived_at", null),
   ]);
 
@@ -88,5 +91,6 @@ export async function getProjectOverview(db: SupabaseClient, projectId: string) 
       dialogue_lines: lines.length, assets: assetCount ?? 0,
     },
     ...out,
+    timings_ms: timings,
   };
 }

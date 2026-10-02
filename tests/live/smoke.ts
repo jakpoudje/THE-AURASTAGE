@@ -888,7 +888,7 @@ await check("overview: every stage reports real counts and its checks; flagged s
   const overviewMs = Date.now() - t0;
   const by = Object.fromEntries(o.stages.map((s: any) => [s.id, s]));
   assert(o.stages.length === 9 && o.engine_version === "1.0.0", "shape");
-  console.log(JSON.stringify({ level: "info", timing: "overview", ms: overviewMs }));
+  console.log(JSON.stringify({ level: "info", timing: "overview", ms: overviewMs, stages: o.timings_ms ?? null }));
   assert(by.scriptwriter.state === "complete" && by.scriptwriter.checks.every((c: any) => c.ok), `script ${by.scriptwriter.state}`);
   assert(by.visual.done >= 1 && by.visual.total >= by.visual.done, `visual ${by.visual.done}/${by.visual.total}`);
   // The Casting change earlier flagged Scene DNA downstream: the overview must say so, not hide it.
