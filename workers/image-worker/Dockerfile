@@ -1,5 +1,12 @@
 # workers/image-worker/Dockerfile — the generation worker (Railway service "generation-worker").
 # Built from the repo root so the workspace (contracts, engines, api gateway) resolves.
+# The recorded sound library (public domain / CC0 field recordings from Wikimedia Commons, screened and levelled —
+# apps/api/scripts/sfx-install.mjs). Built in its own stage with ffmpeg; only the finished library is copied below.
+FROM node:22-slim AS sfx
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY apps/api/scripts/sfx-install.mjs apps/api/scripts/sfx-categories.json /tmp/sfx/
+RUN node /tmp/sfx/sfx-install.mjs /opt/sfx /tmp/sfx/sfx-categories.json && mkdir -p /opt/sfx
+
 FROM node:22-slim
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
 # espeak-ng: the robotic fallback voice (providers/audio/voice). curl: downloads the neural voice below.
@@ -10,6 +17,7 @@ RUN sh /tmp/piper-install.sh
 # The natural voice (Kokoro-82M, Apache-2.0; measured voices) — comes before Piper when installed; never fails the build.
 COPY apps/api/scripts/kokoro-install.sh apps/api/scripts/kokoro-say.mjs /tmp/
 RUN sh /tmp/kokoro-install.sh
+COPY --from=sfx /opt/sfx /opt/sfx
 WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile

@@ -5,6 +5,13 @@
 # apps/api) work exactly as they do in local dev. See CLAUDE.md rule 7/8:
 # this is the only place apps/api's runtime image is defined.
 
+# The recorded sound library (public domain / CC0 field recordings from Wikimedia Commons, screened and levelled —
+# apps/api/scripts/sfx-install.mjs). Built in its own stage with ffmpeg; only the finished library is copied below.
+FROM node:22-slim AS sfx
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY apps/api/scripts/sfx-install.mjs apps/api/scripts/sfx-categories.json /tmp/sfx/
+RUN node /tmp/sfx/sfx-install.mjs /opt/sfx /tmp/sfx/sfx-categories.json && mkdir -p /opt/sfx
+
 FROM node:22-slim
 
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
@@ -16,6 +23,7 @@ RUN sh /tmp/piper-install.sh
 # The natural voice (Kokoro-82M, Apache-2.0; measured voices) — comes before Piper when installed; never fails the build.
 COPY apps/api/scripts/kokoro-install.sh apps/api/scripts/kokoro-say.mjs /tmp/
 RUN sh /tmp/kokoro-install.sh
+COPY --from=sfx /opt/sfx /opt/sfx
 
 WORKDIR /app
 

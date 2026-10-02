@@ -1,0 +1,318 @@
+[
+ {
+  "id": "rain",
+  "label": "rain",
+  "search": [
+   "rain sound",
+   "rain recording",
+   "rainfall",
+   "heavy rain"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "thunder",
+  "label": "thunder",
+  "search": [
+   "thunder",
+   "thunderstorm"
+  ],
+  "bed": false,
+  "max_seconds": 12
+ },
+ {
+  "id": "wind",
+  "label": "wind",
+  "search": [
+   "wind sound",
+   "wind blowing",
+   "wind recording"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "sea",
+  "label": "sea / waves",
+  "search": [
+   "ocean waves",
+   "sea waves",
+   "waves beach",
+   "surf"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "river",
+  "label": "stream / river",
+  "search": [
+   "stream water",
+   "river sound",
+   "creek"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "traffic",
+  "label": "traffic / city",
+  "search": [
+   "traffic",
+   "street ambience",
+   "city ambience",
+   "city street"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "market",
+  "label": "market",
+  "search": [
+   "market ambience",
+   "marketplace sound"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "crowd",
+  "label": "crowd / walla",
+  "search": [
+   "crowd",
+   "crowd ambience",
+   "people talking crowd",
+   "restaurant ambience"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "birds",
+  "label": "birds",
+  "search": [
+   "birdsong",
+   "dawn chorus",
+   "birds singing",
+   "bird song"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "insects",
+  "label": "night insects",
+  "search": [
+   "crickets",
+   "cicadas",
+   "night insects"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "fire",
+  "label": "fire",
+  "search": [
+   "fire crackling",
+   "campfire",
+   "fireplace"
+  ],
+  "bed": true,
+  "max_seconds": 30
+ },
+ {
+  "id": "footsteps",
+  "label": "footsteps",
+  "search": [
+   "footsteps",
+   "walking footsteps",
+   "footsteps gravel"
+  ],
+  "bed": false,
+  "max_seconds": 10
+ },
+ {
+  "id": "knock",
+  "label": "door knock",
+  "search": [
+   "knocking on door",
+   "door knock"
+  ],
+  "bed": false,
+  "max_seconds": 6
+ },
+ {
+  "id": "door",
+  "label": "door",
+  "search": [
+   "door closing",
+   "door slam",
+   "door opening",
+   "creaking door"
+  ],
+  "bed": false,
+  "max_seconds": 6
+ },
+ {
+  "id": "gunshot",
+  "label": "gunshot",
+  "search": [
+   "gunshot",
+   "gun shot",
+   "rifle shot",
+   "pistol shot"
+  ],
+  "bed": false,
+  "max_seconds": 5
+ },
+ {
+  "id": "glass",
+  "label": "glass breaking",
+  "search": [
+   "glass breaking",
+   "glass shatter"
+  ],
+  "bed": false,
+  "max_seconds": 5
+ },
+ {
+  "id": "phone",
+  "label": "phone ringing",
+  "search": [
+   "telephone ringing",
+   "phone ring"
+  ],
+  "bed": false,
+  "max_seconds": 8
+ },
+ {
+  "id": "car",
+  "label": "car / engine",
+  "search": [
+   "car engine",
+   "car passing",
+   "engine start",
+   "motorcycle"
+  ],
+  "bed": false,
+  "max_seconds": 10
+ },
+ {
+  "id": "typing",
+  "label": "typing",
+  "search": [
+   "typing keyboard",
+   "typewriter",
+   "computer keyboard typing"
+  ],
+  "bed": false,
+  "max_seconds": 8
+ },
+ {
+  "id": "paper",
+  "label": "paper",
+  "search": [
+   "paper rustling",
+   "page turning",
+   "crumpling paper"
+  ],
+  "bed": false,
+  "max_seconds": 6
+ },
+ {
+  "id": "impact",
+  "label": "punch / impact",
+  "search": [
+   "punch sound",
+   "impact thud",
+   "crash sound"
+  ],
+  "bed": false,
+  "max_seconds": 4
+ },
+ {
+  "id": "explosion",
+  "label": "explosion",
+  "search": [
+   "explosion",
+   "explosion sound"
+  ],
+  "bed": false,
+  "max_seconds": 8
+ },
+ {
+  "id": "dog",
+  "label": "dog barking",
+  "search": [
+   "dog barking",
+   "dog bark"
+  ],
+  "bed": false,
+  "max_seconds": 6
+ },
+ {
+  "id": "siren",
+  "label": "siren",
+  "search": [
+   "siren",
+   "police siren",
+   "ambulance siren"
+  ],
+  "bed": false,
+  "max_seconds": 10
+ },
+ {
+  "id": "bell",
+  "label": "bell",
+  "search": [
+   "church bell",
+   "bell ringing"
+  ],
+  "bed": false,
+  "max_seconds": 10
+ },
+ {
+  "id": "clock",
+  "label": "clock ticking",
+  "search": [
+   "clock ticking",
+   "ticking clock"
+  ],
+  "bed": false,
+  "max_seconds": 8
+ },
+ {
+  "id": "water",
+  "label": "water pouring",
+  "search": [
+   "water pouring",
+   "pouring water",
+   "splash"
+  ],
+  "bed": false,
+  "max_seconds": 6
+ },
+ {
+  "id": "applause",
+  "label": "applause",
+  "search": [
+   "applause",
+   "clapping"
+  ],
+  "bed": false,
+  "max_seconds": 10
+ },
+ {
+  "id": "keys",
+  "label": "keys",
+  "search": [
+   "keys jingling",
+   "keys"
+  ],
+  "bed": false,
+  "max_seconds": 5
+ }
+]

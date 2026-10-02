@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { assetEdit, recordedSound } from "@aurastage/engines";
+import { audioBackendsFor, recordedSoundAdapter } from "..";
+// @ts-expect-error — plain .mjs build script (runs before the source is copied into the image)
+import { freeLicence, unsuitableTitle } from "../../../../scripts/sfx-install.mjs";
+
+function library() {
+  const d = mkdtempSync(join(tmpdir(), "sfx-test-"));
+  mkdirSync(join(d, "clips"));
+  const tone = (hz: number, s: number) => { const n = 48000 * s, x = new Float32Array(n); for (let i = 0; i < n; i++) x[i] = 0.3 * Math.sin((2 * Math.PI * hz * i) / 48000); return x; };
+  const clips = [
+    { id: "rain-01", category: "rain", seconds: 10, hz: 300 }, { id: "traffic-01", category: "traffic", seconds: 10, hz: 120 },
+    { id: "door-01", category: "door", seconds: 1, hz: 80 }, { id: "knock-01", category: "knock", seconds: 1, hz: 200 },
+  ].map((c) => {
+    const s = tone(c.hz, c.seconds);
+    // Mono 16-bit, as the build writes them.
+    writeFileSync(join(d, "clips", `${c.id}.wav`), Buffer.from(assetEdit.encodeWav16(48000, [s, s])).subarray(0, 44 + s.length * 2));
+    return { id: c.id, category: c.category, file: `clips/${c.id}.wav`, seconds: c.seconds, title: `${c.category} recording.ogg`, author: "National Park Service", licence: "Public domain", source: `https://commons.wikimedia.org/wiki/File:${c.id}.ogg` };
+  });
+  writeFileSync(join(d, "catalogue.json"), JSON.stringify({ source: "test", clips }));
+  return { SFX_DIR: d };
+}
+
+describe("recorded sound library (owner request 2026-10-02: real life prop sounds)", () => {
+  it("is first for ambience, effects and Foley when installed; not configured (synthesiser used) when it isn't", () => {
+    expect(recordedSoundAdapter.isConfigured({ SFX_DIR: "/nonexistent" })).toBe(false);
+    expect(audioBackendsFor("fx", { SFX_DIR: "/nonexistent" })[0].id).toBe("aurastage-synth");
+    const env = library();
+    expect(audioBackendsFor("ambience", env)[0].id).toBe("aurastage-recorded-sound");
+    expect(audioBackendsFor("score", env)[0].id).toBe("aurastage-synth");
+  });
+  it("an ambience cue is made from the recordings, credited (title, author, licence); words with no recording are synthesised underneath and labelled", async () => {
+    const env = library();
+    const r = await recordedSoundAdapter.generate({ kind: "ambience", model: "recorded-1", description: "Exterior Lagos street, rain, waves", duration_seconds: 25, mood: [], seed: 4, params: {} }, env);
+    expect(r).toMatchObject({ media_type: "audio/wav", channels: 2, sample_rate: 48000, cost_usd: 0 });
+    expect(r.duration_seconds).toBeCloseTo(25, 1);
+    const names = (r.detail.layers as any[]).map((l) => l.name);
+    expect(names).toEqual(expect.arrayContaining(["traffic / city (recording)", "rain (recording)", "sea / waves (synthesised)"]));
+    expect((r.detail.layers as any[]).find((l) => l.name === "rain (recording)").because).toMatch(/“rain recording.ogg” by National Park Service, Public domain/);
+    expect((r.detail.recordings as any[]).every((x) => x.licence === "Public domain" && /commons\.wikimedia\.org/.test(x.source))).toBe(true);
+    expect(new TextDecoder().decode(r.bytes.slice(0, 4))).toBe("RIFF");
+  });
+  it("effects in cue order; no match → the synthesiser, said plainly", async () => {
+    const env = library();
+    const fx = await recordedSoundAdapter.generate({ kind: "fx", model: "recorded-1", description: "knocks, then the door slams; a dog barks", duration_seconds: 3, mood: [], seed: 1, params: {} }, env);
+    expect((fx.detail.layers as any[]).map((l) => l.name)).toEqual(["door knock (recording)", "door (recording)", "not included"]);
+    const none = await recordedSoundAdapter.generate({ kind: "fx", model: "recorded-1", description: "a strange hum", duration_seconds: 2, mood: [], seed: 1, params: {} }, env);
+    expect(none.detail).toMatchObject({ recorded: false, note: expect.stringMatching(/synthesised/) });
+  });
+  it("the build only keeps recordings that need no attribution, and screens out pronunciations, speech and music", () => {
+    expect(freeLicence({ LicenseShortName: { value: "Public domain" }, AttributionRequired: { value: "false" } })).toBe("Public domain");
+    expect(freeLicence({ LicenseShortName: { value: "CC0" }, License: { value: "cc0" } })).toBe("CC0");
+    expect(freeLicence({ LicenseShortName: { value: "CC BY-SA 4.0" }, AttributionRequired: { value: "true" } })).toBeNull();
+    expect(freeLicence({ LicenseShortName: { value: "CC BY 3.0" } })).toBeNull();
+    for (const t of ["File:En-us-door.ogg", "File:LL-Q1860 (eng)-Rain.wav", "File:De-Tür.ogg", "File:Rain song.ogg", "File:Spoken article rain.ogg"]) expect(unsuitableTitle(t)).toBe(true);
+    for (const t of ["File:Car horn.ogg", "File:Rain on a tin roof.ogg", "File:Door slam.wav", "File:Yellowstone dawn chorus.ogg"]) expect(unsuitableTitle(t)).toBe(false);
+  });
+  it("the build's category list is the engine's (sfx-categories.json is generated from categories.ts)", () => {
+    const json = JSON.parse(readFileSync(join(__dirname, "../../../../scripts/sfx-categories.json"), "utf8"));
+    expect(json).toEqual(recordedSound.SOUND_CATEGORIES.map(({ id, label, search, bed, max_seconds }) => ({ id, label, search, bed, max_seconds })));
+  });
+});

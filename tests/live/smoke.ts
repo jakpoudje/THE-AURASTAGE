@@ -419,7 +419,7 @@ await check("audio: spot the approved scene into tracks and cues (unplanned scen
   const typing = fx.find((c: any) => c.label === "Keyboard typing"), said = sc.clips.find((c: any) => c.source.dialogue_line_id);
   assert(typing && typing.start_seconds >= said.start_seconds + said.duration_seconds - 0.01, `typing should follow the line it comes after (${typing?.start_seconds} vs ${said.start_seconds}+${said.duration_seconds})`);
   // Honest generators: the built-in synthesiser is ready; nothing unbuilt claims to be connected.
-  assert(ws.generators.every((g: any) => ["aurastage-synth", "aurastage-voice", "aurastage-neural-voice", "aurastage-kokoro-voice"].includes(g.id) ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
+  assert(ws.generators.every((g: any) => ["aurastage-synth", "aurastage-voice", "aurastage-neural-voice", "aurastage-kokoro-voice", "aurastage-recorded-sound"].includes(g.id) ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
   // Item 5: the scene's music suggestion (built-in library, free); the Score cue, when there is one, is that style.
   const mu = sc.music_suggestion;
   assert(mu && mu.key && mu.tempo_bpm > 0 && mu.why.length > 0 && /^\d+\.\d+\.\d+$/.test(mu.engine_version), "music suggestion missing");
@@ -1057,7 +1057,7 @@ await check("audio: built-in generation makes real WAVs for the planned cues and
   assert(ws0.generators.some((g: any) => g.id === "aurastage-synth" && g.state === "configured") && ws0.generators.some((g: any) => g.id === "aurastage-neural-voice" && g.state === "configured")
     && ws0.generators.some((g: any) => g.id === "aurastage-kokoro-voice" && g.state === "configured"), "the natural and neural voices aren't both installed on the API");
   const r = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate-cues`, {});
-  assert(r.requested.length >= 1 && r.requested.every((g: any) => ["aurastage-synth", "aurastage-kokoro-voice", "aurastage-neural-voice"].includes(g.provider) && g.execution === "native"), JSON.stringify(r).slice(0, 300));
+  assert(r.requested.length >= 1 && r.requested.every((g: any) => ["aurastage-recorded-sound", "aurastage-synth", "aurastage-kokoro-voice", "aurastage-neural-voice"].includes(g.provider) && g.execution === "native"), JSON.stringify(r).slice(0, 300));
   // Voice: the dialogue cue's line, spoken in the speaker's Voice DNA (Casting profile + the line's emotion).
   const dx = ws0.scenes.find((x: any) => x.scene.id === s1).clips.find((c: any) => c.source?.dialogue_line_id);
   await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { kind: "voice", duration_seconds: 2 }, [400]);
@@ -1086,6 +1086,12 @@ await check("audio: built-in generation makes real WAVs for the planned cues and
   const spoken = done.find((x: any) => x.id === v.id);
   const vb = new Uint8Array(await (await fetch(`${API}/api/assets/${spoken.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
   assert(new TextDecoder().decode(vb.slice(0, 4)) === "RIFF" && vb.length > 44 + 8000, `voice not a real WAV (${vb.length} bytes)`);
+  // Owner 2026-10-02 ("real life prop sounds"): ambience and effects come from the recorded library (public domain / CC0),
+  // each recording credited; anything it lacks is synthesised and says so.
+  assert(ws0.generators.some((x: any) => x.id === "aurastage-recorded-sound" && x.state === "configured"), "the recorded sound library isn't installed on the API");
+  const rec = done.filter((x: any) => x.provider === "aurastage-recorded-sound" && x.layers.some((l: any) => / \(recording\)$/.test(l.name)));
+  assert(rec.length >= 1, "no cue used a recording: " + JSON.stringify(done.map((x: any) => [x.provider, x.layers.map((l: any) => l.name)])));
+  assert(rec.every((x: any) => x.layers.filter((l: any) => / \(recording\)$/.test(l.name)).every((l: any) => /(Public domain|CC0), Wikimedia Commons/.test(l.because))), "recording not credited");
   if (v.provider === "aurastage-kokoro-voice") {
     // A natural voice cast from the character, measured, at Kokoro's 24 kHz.
     assert(/(American|British) (male|female) voice “.+”, measured at \d+ Hz/.test(spoken.layers[0]?.because ?? ""), "kokoro reason: " + spoken.layers[0]?.because);

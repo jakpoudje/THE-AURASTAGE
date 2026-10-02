@@ -56,6 +56,13 @@ adapters — added with their phases (Audio Studio etc.).
 - `audio/` — `AudioAdapter` contract (ambience, fx, foley, score, voice). `aurastage-synth` is native (free, always
   configured) and never makes voices. `aurastage-voice` is native and speaks dialogue with espeak-ng using the Voice DNA
   in `params.voice` (configured only where the espeak-ng program exists; arguments passed without a shell).
+  `aurastage-recorded-sound` (2026-10-02, first for ambience/fx/foley where installed): real field recordings from a
+  library built at image build time from Wikimedia Commons — ONLY public domain / CC0 files (each file's own licence
+  metadata), pronunciations/speech/music screened out, converted to 48 kHz mono WAV, levelled (`scripts/sfx-install.mjs`
+  in a separate Docker stage with ffmpeg → `/opt/sfx/catalogue.json` with title, author, licence and page). Laid out by
+  `recordedSoundEngine`; words the library lacks are synthesised underneath (ambience) or listed (effects); no match at
+  all → the synthesiser, labelled. Every recording is credited in the result. CC BY recordings are not used until the
+  end-credits roll can list them.
   `aurastage-kokoro-voice` (the default voice where installed, 2026-10-02) runs Kokoro-82M (Apache-2.0) via kokoro-js
   (Apache-2.0) in its own long-lived process (`apps/api/scripts/kokoro-say.mjs`, loaded once, stopped after 4 idle
   minutes); every English voice is measured at image build time (`kokoro-install.sh` → `/opt/kokoro/voices.json`) and

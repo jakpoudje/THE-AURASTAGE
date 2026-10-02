@@ -39,7 +39,8 @@ of `approve_audio_session` checks the same rule).
 `audio.generation.ts`: generate a sound for a planned cue (`POST .../scenes/:sceneId/generate`) or for every planned
 ambience / effect / Foley / score cue of a scene that has no recording and no generation yet (`.../generate-cues`).
 Only backends from the Provider Gateway's audio side that can make that kind of sound AND are configured are used —
-today AuraStage's built-in synthesiser (`aurastage-synth`, `proceduralAudioEngine` 1.0.0: native, free, placeholder
+today AuraStage's recorded sound library (`aurastage-recorded-sound`: public-domain / CC0 field recordings, laid out
+by `recordedSoundEngine` 1.0.0, credited per recording — providers README) where installed, otherwise the built-in synthesiser (`aurastage-synth`, `proceduralAudioEngine` 1.0.0: native, free, placeholder
 quality, every layer explained) and the built-in voice (`aurastage-voice`, espeak-ng, installed in the API and worker
 images). A voice request speaks the dialogue line of the cue (or `line_id`) — the words come from the approved script —
 in the speaker's Voice DNA (`voiceCastingEngine` 1.0.0: the Casting profile's gender, age, nationality and personality,
