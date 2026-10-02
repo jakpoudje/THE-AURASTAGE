@@ -94,7 +94,8 @@ export const listPackages = (db: SupabaseClient, projectId: string) =>
  */
 export async function listPackageHeads(db: SupabaseClient, projectId: string) {
   const list = await paged(() => db.from("generation_packages")
-    .select("id, shot_id, scene_id, shot_plan_version_id, review_state, review_reason, engine_version, created_at, look:content->project->>look, world_revisions:content->provenance->world_revisions, world:content->world")
+    // Stored generated columns (migration 0052) — no de-TOAST of the prompt content: 1.9 s → 1 ms on 885 packages.
+    .select("id, shot_id, scene_id, shot_plan_version_id, review_state, review_reason, engine_version, created_at, look:review_look, world_revisions:review_world_revisions, world:review_world")
     .eq("project_id", projectId).order("created_at", { ascending: false }));
   return list.map((r) => (r.content ? r : { ...r, content: { project: { look: r.look ?? null }, provenance: { world_revisions: r.world_revisions ?? {} }, world: r.world ?? null }, light: true }));
 }
