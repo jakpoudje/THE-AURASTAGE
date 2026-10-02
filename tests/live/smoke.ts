@@ -1522,6 +1522,10 @@ await check("one click: reference pictures for every location and prop (free bui
   return `${r.requested} pictures for ${r.items.length} places/props`;
 });
 await check("one click: Visual Generation compiles every prompt, sketches every shot (free) and approves a take for each — the whole film can be assembled before any paid provider", async () => {
+  // Earlier checks deliberately flag the plan (a Casting change); bring it back the way a person would — re-lock the
+  // scene's DNA and approve every ready plan in one click — so this check covers real shots, never zero.
+  await api("POST", `/api/projects/${projectId}/scene-dna/${s1}/approve`, {}, [200, 409, 412]);
+  await api("POST", `/api/projects/${projectId}/storyboard/approve-all`, {}, [200, 409, 412]);
   const c = await api("POST", `/api/projects/${projectId}/visual/compile-all`, {});
   const sk = await api("POST", `/api/projects/${projectId}/visual/sketch-all`, {});
   let ws: any;
@@ -1534,6 +1538,7 @@ await check("one click: Visual Generation compiles every prompt, sketches every 
   const usable = ws.scenes.filter((s: any) => s.plan.usable).flatMap((s: any) => s.shots).length;
   const ws2 = await api("GET", `/api/projects/${projectId}/visual`);
   const approvedUsable = ws2.scenes.filter((s: any) => s.plan.usable).flatMap((s: any) => s.shots).filter((x: any) => x.approved_take_id).length;
+  assert(usable > 0, "no shot plan is usable — the check would prove nothing");
   assert(approvedUsable === usable, `${approvedUsable} of ${usable} usable shots approved (${JSON.stringify(a)})`);
   return `compiled ${c.compiled}, sketched ${sk.requested}, approved ${a.approved}; ${approvedUsable}/${usable} shots in usable plans approved`;
 });

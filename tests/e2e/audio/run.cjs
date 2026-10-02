@@ -392,6 +392,13 @@ async function api(method, p, body) {
     if (!(after < before)) throw new Error(`planned cues ${before} → ${after}; ${note}`);
     // Still editable by hand: select a placed clip and its inspector opens.
     await page.locator('[aria-label="Whole film"]').waitFor();
+    // 4: measure every scene's mix in the browser and approve the ones whose checks pass.
+    await page.getByRole("button", { name: "4 · Measure and approve every scene's mix" }).click();
+    const note4 = await page.getByText(/^Measured and approved \d+ scene mix/).innerText({ timeout: 60000 });
+    await reload();
+    const ws = await api("GET", `/api/projects/${P}/audio`);
+    const ok = ws.scenes.filter((x) => x.session && x.session.status === "approved").length;
+    if (/^Measured and approved [1-9]/.test(note4) && !ok) throw new Error("said approved but none is: " + note4);
   });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();

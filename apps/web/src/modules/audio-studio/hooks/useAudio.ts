@@ -139,6 +139,33 @@ export function useAudio(projectId: string) {
         },
         (a) => `“${a.name}” uploaded${placeOn ? " and placed on the clip" : ""}.`
       ),
+    /**
+     * Whole film (owner, 2026-10-02): render and measure each spotted scene's mix in this browser, then approve it when its
+     * checks pass. Scenes already approved and current are skipped; a scene whose checks fail is listed with the reason
+     * and left for the person.
+     */
+    measureApproveAll: (scenes: AudioScene[]) =>
+      run(
+        "measure",
+        async () => {
+          let approved = 0;
+          const left: string[] = [];
+          for (const s of scenes) {
+            if (!s.session || (s.session.status === "approved" && s.session.review_state === "current")) continue;
+            if (missing(s)) { left.push(`scene ${s.scene.number}: recordings still loading`); continue; }
+            const buf = await renderMix(s.session.scene_seconds, s.tracks, s.clips, buffers, undefined, s.session.mix);
+            const r = measure(buf);
+            await audioApi.recordMeasurement(s.session.id, {
+              integrated_lufs: r.integrated_lufs, true_peak_dbtp: r.true_peak_dbtp, lra_lu: r.lra_lu, duration_seconds: r.duration_seconds,
+              clip_count: s.clips.filter((c) => c.kind === "asset").length, engine_version: r.engine_version, session_revision: s.session.revision,
+            });
+            try { await audioApi.approve(projectId, s.scene.id); approved++; }
+            catch (e) { left.push(`scene ${s.scene.number}: ${e instanceof Error ? e.message : "not ready"}`); }
+          }
+          return { approved, left };
+        },
+        (r) => `Measured and approved ${r.approved} scene mix${r.approved === 1 ? "" : "es"}.${r.left.length ? ` Not yet: ${r.left.join("; ")}` : ""}`
+      ),
     measure: (s: AudioScene) =>
       run(
         "measure",

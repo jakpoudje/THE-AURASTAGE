@@ -143,7 +143,10 @@ export default function AudioStudioPage() {
               <button onClick={() => d.placeGenerated(null)} disabled={d.busy !== null || !ws.scenes.some((x) => x.session)} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
                 3 · Place all generated sounds on their marked spots
               </button>
-              <span className="self-center text-[11px] text-white/40">Then listen, adjust and approve each scene's mix.</span>
+              <button onClick={() => d.measureApproveAll(ws.scenes)} disabled={d.busy !== null || !ws.scenes.some((x) => x.session)} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+                4 · Measure and approve every scene's mix
+              </button>
+              <span className="self-center text-[11px] text-white/40">Listen and adjust any scene first if you like — approving again is always possible.</span>
             </div>
           </div>
         )}
