@@ -1525,7 +1525,9 @@ await check("one click: Visual Generation compiles every prompt, sketches every 
   // Earlier checks deliberately flag the plan (a Casting change); bring it back the way a person would — re-lock the
   // scene's DNA and approve every ready plan in one click — so this check covers real shots, never zero.
   await api("POST", `/api/projects/${projectId}/scene-dna/${s1}/approve`, {}, [200, 409, 412]);
-  await api("POST", `/api/projects/${projectId}/storyboard/approve-all`, {}, [200, 409, 412]);
+  // A re-locked scene's plan is stale (rule 11): re-plan it from the new lock, then approve every ready plan.
+  await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, { replace: true, style: "standard" }, [200, 201, 409, 412]);
+  const ap = await api("POST", `/api/projects/${projectId}/storyboard/approve-all`, {}, [200, 409, 412]);
   const c = await api("POST", `/api/projects/${projectId}/visual/compile-all`, {});
   const sk = await api("POST", `/api/projects/${projectId}/visual/sketch-all`, {});
   let ws: any;
@@ -1538,7 +1540,7 @@ await check("one click: Visual Generation compiles every prompt, sketches every 
   const usable = ws.scenes.filter((s: any) => s.plan.usable).flatMap((s: any) => s.shots).length;
   const ws2 = await api("GET", `/api/projects/${projectId}/visual`);
   const approvedUsable = ws2.scenes.filter((s: any) => s.plan.usable).flatMap((s: any) => s.shots).filter((x: any) => x.approved_take_id).length;
-  assert(usable > 0, "no shot plan is usable — the check would prove nothing");
+  assert(usable > 0, "no shot plan is usable — the check would prove nothing: " + JSON.stringify(ap).slice(0, 300));
   assert(approvedUsable === usable, `${approvedUsable} of ${usable} usable shots approved (${JSON.stringify(a)})`);
   return `compiled ${c.compiled}, sketched ${sk.requested}, approved ${a.approved}; ${approvedUsable}/${usable} shots in usable plans approved`;
 });
