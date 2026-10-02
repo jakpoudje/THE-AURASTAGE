@@ -61,6 +61,11 @@ describe("Kokoro natural voice casting (owner request 2026-10-02: voices that kn
     expect(accentOf("en-gb", "Scottish (Glasgow)")).toMatchObject({ matched: false });
     expect(accentOf("en-gb", "Northern English")).toMatchObject({ matched: false });
     expect(accentOf("en-gb", "London")).toMatchObject({ accent: "british", matched: true });
+    // Live regression 2026-10-02: "Nigerian English" contains "English" but is not a British accent.
+    expect(accentOf("en-gb", "Nigerian English (south-west, Lagos)")).toMatchObject({ matched: false });
+    expect(pickKokoroVoice(cat, dna({ gender: "female" }), "Amara", "Nigerian English (south-west, Lagos)")!.reason).toMatch(/no free voice speaks a Nigerian English .* accent yet/);
+    expect(accentOf("en-gb", "Standard British English")).toMatchObject({ matched: true });
+    expect(accentOf("en-us", "General American")).toMatchObject({ accent: "american", matched: true });
   });
   it("comes before the Piper voice when installed, and reports not configured (Piper used) when it isn't", () => {
     expect(kokoroVoiceAdapter.isConfigured({ KOKORO_DIR: "/nonexistent" })).toBe(false);

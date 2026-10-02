@@ -20,12 +20,18 @@ const REGIONAL = /scot|glasgow|edinburgh|irish|ireland|welsh|wales|northern|york
 const BRITISH = /brit|english|england|london|\buk\b|united kingdom|cockney|received pronunciation|\brp\b/i;
 const AMERICAN = /americ|\busa?\b|united states|new york|texas|california|chicago|boston|southern us/i;
 
+// An accent is only "matched" when every word in it describes that accent (live 2026-10-02: "Nigerian English (Lagos)"
+// contains "English" but is not a British accent — it must be said to need a paid voice, never claimed).
+const BRITISH_WORDS = new Set(["british", "english", "england", "standard", "received", "pronunciation", "rp", "london", "londoner", "southern", "south", "uk", "united", "kingdom", "cockney", "accent", "posh", "neutral", "home", "counties", "of", "the", "and", "southeast", "east"]);
+const AMERICAN_WORDS = new Set(["american", "us", "usa", "united", "states", "general", "standard", "new", "york", "yorker", "texas", "texan", "california", "californian", "chicago", "boston", "southern", "english", "accent", "neutral", "west", "coast", "midwest", "midwestern", "of", "the", "and"]);
+const onlyWords = (t: string, words: Set<string>) => (t.toLowerCase().match(/[a-z]+/g) ?? []).every((w) => words.has(w));
+
 /** Which of the model's two accents a character should use, and whether that matches what Casting asked for. */
 export function accentOf(language: string, accentText: string | null): { accent: "american" | "british"; asked: string | null; matched: boolean } {
   const t = (accentText ?? "").trim();
   if (t && REGIONAL.test(t)) return { accent: language === "en-us" ? "american" : "british", asked: t, matched: false };
-  if (t && BRITISH.test(t)) return { accent: "british", asked: t, matched: true };
-  if (t && AMERICAN.test(t)) return { accent: "american", asked: t, matched: true };
+  if (t && BRITISH.test(t)) return { accent: "british", asked: t, matched: onlyWords(t, BRITISH_WORDS) };
+  if (t && AMERICAN.test(t)) return { accent: "american", asked: t, matched: onlyWords(t, AMERICAN_WORDS) };
   return { accent: language === "en-us" ? "american" : "british", asked: t || null, matched: !t };
 }
 
