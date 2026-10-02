@@ -22,7 +22,7 @@ import * as repo from "./editorial.repository";
 import { toClipDTO } from "./editorial.mapper";
 import {
   EditorialConflictError, EditorialLockedError, EditorialNotFoundError, EditorialNotReadyError,
-  validateAssemble, validateAutomation, validateEditRequest, validateLock, validateRestore, validateSaveVersion,
+  validateAssemble, validateAutomation, validateEditRequest, validateLock, validateRestore, validateSaveVersion, validateUndo,
 } from "./editorial.validator";
 
 type Row = Record<string, any>;
@@ -157,7 +157,9 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
     const reason = issues.length ? `${issues.length} clip${issues.length === 1 ? " uses" : "s use"} a take or mix that changed upstream. Your cut is unchanged — Conform to update it.` : null;
     if (timeline.review_state !== state || (timeline.review_reason ?? null) !== reason) timeline = await repo.setReview(db, projectId, state, reason);
   }
-  const [versions, locks] = timeline ? await Promise.all([repo.listVersions(db, timeline.id), repo.listLocks(db, timeline.id)]) : [[], []];
+  const [versions, locks, undoHead] = timeline
+    ? await Promise.all([repo.listVersions(db, timeline.id), repo.listLocks(db, timeline.id), repo.getUndoHead(db, timeline.id, timeline.revision)])
+    : [[], [], null];
   const qc = runQC(ctx, ctx.clips, issues);
 
   // Media: signed links for takes on the timeline and approved takes in the bin.
@@ -196,6 +198,8 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
           id: timeline.id, status: timeline.status, revision: timeline.revision, review_state: timeline.review_state, review_reason: timeline.review_reason,
           lock: lock ? { lock_number: lock.lock_number, locked_at: lock.locked_at } : null, updated_at: timeline.updated_at,
           automation: TimelineAutomationSchema.parse(timeline.automation ?? {}), automation_revision: timeline.automation_revision,
+          // What Undo (Ctrl+Z) would take back, or null when there is nothing to undo on this revision.
+          undo: undoHead ? { action: undoHead.action as string, summary: (undoHead.summary ?? undoHead.action) as string } : null,
         }
       : null,
     clips: ctx.clips,
@@ -369,6 +373,20 @@ export async function restoreTimelineVersion(db: SupabaseClient, projectId: stri
   if (fresh && v.automation && JSON.stringify(v.automation) !== JSON.stringify(fresh.automation ?? {}))
     await repo.saveAutomation(db, projectId, TimelineAutomationSchema.parse(v.automation), fresh.automation_revision);
   return { summary: `Restored version ${v.version_number} (“${v.label}”). The cut before it was kept as a version.` };
+}
+
+/** Undo: the newest edit on this revision is taken back (the cut before it returns through the same gated save). */
+export async function undoTimelineEdit(db: SupabaseClient, projectId: string, payload: unknown) {
+  const req = validateUndo(payload);
+  const ctx = await load(db, projectId);
+  if (!ctx.timeline) throw new EditorialNotReadyError("Build the first assembly first.");
+  if (ctx.timeline.revision !== req.base_revision) throw new EditorialConflictError("The timeline changed — reload and try again.");
+  const head = await repo.getUndoHead(db, ctx.timeline.id, ctx.timeline.revision);
+  if (!head) throw new EditorialNotFoundError("There is nothing to undo.");
+  if (ctx.timeline.status === "locked" && !req.break_lock)
+    throw new EditorialLockedError("The picture is locked — undoing this edit changes the locked cut. Confirm to break the lock.", []);
+  await repo.undoTimeline(db, projectId, req.base_revision, !!req.break_lock);
+  return { summary: `Undid: ${head.summary ?? head.action}` };
 }
 
 /** Volume automation of the cut's sound: sound, not picture, so it can change after Picture Lock (stale → 409). */

@@ -251,6 +251,30 @@ async function approveTakeFor(shotId) {
     if ((await v1Clips().count()) !== clipsAtLock) throw new Error("restore not saved");
     await page.getByRole("list", { name: "Versions" }).getByText(/Before restoring v\d+/).waitFor();
   });
+  await step("owner request 2026-10-02: Undo (button and Ctrl+Z) takes edits back one at a time; kept after reload", async () => {
+    const undoFor = (re) => page.getByRole("button", { name: new RegExp(`^Undo: ${re}`) });
+    await undoFor("Restored version \\d+").waitFor();
+    await v1Clips().last().click();
+    await page.keyboard.press("Delete");
+    await notice(/Lifted “/);
+    if ((await v1Clips().count()) !== clipsAtLock - 1) throw new Error("lift not applied");
+    await undoFor("Lifted “").waitFor();
+    await page.keyboard.press("Control+z");
+    await notice(/Undid: Lifted “/);
+    if ((await v1Clips().count()) !== clipsAtLock) throw new Error("Ctrl+Z didn't bring the clip back");
+    await reload();
+    if ((await v1Clips().count()) !== clipsAtLock) throw new Error("undo not kept after reload");
+    // The edit before it (the restore) is next in line; the button takes it back too, then the restore is made again.
+    await undoFor("Restored version \\d+").click();
+    await notice(/Undid: Restored version \d+/);
+    await reload();
+    if ((await v1Clips().count()) !== clipsAtLock - 1) throw new Error("second undo not kept");
+    await undoFor("Lifted “").waitFor();
+    const row = page.getByRole("list", { name: "Versions" }).getByRole("listitem").filter({ hasText: "Picture Lock 1" });
+    await row.getByRole("button", { name: "Restore" }).click();
+    await notice(/Restored version \d+ \(“Picture Lock 1”\)/);
+    if ((await v1Clips().count()) !== clipsAtLock) throw new Error("re-restore not applied");
+  });
   const points = () => page.getByRole("application", { name: "Volume automation lane" }).getByRole("button", { name: /^Automation point / });
   await step("assembly overview: the finishing steps from the real cut, one card per scene; a card jumps to its scene", async () => {
     const guide = page.getByRole("region", { name: "Assembly overview" });

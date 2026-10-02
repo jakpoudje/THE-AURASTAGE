@@ -6,7 +6,7 @@ const P = "11111111-1111-4111-8111-111111111111", ORG = "22222222-2222-4222-8222
 const now = () => new Date().toISOString();
 let project = { id: P, org_id: ORG, title: "Shadows of Lagos", type: "feature_film", genre: "Thriller", target_runtime_minutes: 110, status: "draft", created_at: now(), updated_at: now() };
 let script = null; const versions = []; let scenes = [];
-const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; let timeline = null, tclips = []; const renders = []; const tversions = [], locks = []; const assets = [], asessions = [], atracks = [], aclips = [], ameasures = [], aversions = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = [], packages = [], takes = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
+const chars = [], aliases = [], apps = [], rels = [], looks = [], dlines = []; let timeline = null, tclips = []; const renders = []; const tversions = [], locks = [], tundo = []; const assets = [], asessions = [], atracks = [], aclips = [], ameasures = [], aversions = []; const sdna = [], sdnaVersions = [], plans = [], shots = [], planVersions = [], packages = [], takes = []; let dlgSyncVersion = null, dlgSyncAt = null; let lastSyncVersion = null, lastSyncAt = null;
 const ws = () => {
   const cur = script && versions.find((v) => v.id === script.current_version_id);
   return { script, current_version: cur || null, versions: versions.map(({ id, version_number, note, parser_version, created_at }) => ({ id, version_number, note, parser_version, created_at })).reverse(), scenes, analysis: cur ? eng.sceneBoundaryEngine({ elements: cur.elements }).analysis : null };
@@ -1133,7 +1133,7 @@ http.createServer((req, res) => {
     });
     const edQC = (rows, clipsIn) => eng.editorialQCEngine({ fps: FPS, clips: clipsIn, issues: edIssues(rows), target_runtime_minutes: null, scenes: scenes.map((x) => ({ scene_id: x.id, number: x.number, heading: x.heading })) });
     const edErr = (code, msg, issues) => send(code, { error: { code: `AURA-EDT-${code}`, message: msg, issues } });
-    const edPersist = (clipsIn, action, breakLock) => {
+    const edPersist = (clipsIn, action, breakLock, summary) => {
       const withIds = clipsIn.map((c) => ({ ...c, id: c.id || crypto.randomUUID() }));
       if (timeline && timeline.status === "locked") {
         const lock = locks.find((l) => l.id === timeline.current_lock_id); const v = tversions.find((x) => x.id === lock.version_id);
@@ -1142,7 +1142,11 @@ http.createServer((req, res) => {
         Object.assign(lock, { broken_at: now(), impact: r.impact }); Object.assign(timeline, { status: "draft", current_lock_id: null });
       }
       if (!timeline) timeline = { id: crypto.randomUUID(), status: "draft", current_lock_id: null, review_state: "current", review_reason: null, automation: { A1: [] }, automation_revision: crypto.randomUUID() };
-      tclips = withIds; Object.assign(timeline, { revision: crypto.randomUUID(), updated_at: now() }); return true;
+      // Undo history (mirrors migration 0054): the cut before each edit, last 30; Undo gives back the revision it had.
+      const before = { clips: tclips.map((c) => ({ ...c })), revision: timeline.revision };
+      tclips = withIds; Object.assign(timeline, { revision: crypto.randomUUID(), updated_at: now() });
+      if (before.revision && action !== "undo") { tundo.push({ before_revision: before.revision, after_revision: timeline.revision, before_clips: before.clips, action, summary: summary || action, undone: false }); if (tundo.length > 30) tundo.shift(); }
+      return true;
     };
     const edVersion = (label, kind, qc) => { const v = { id: crypto.randomUUID(), version_number: tversions.length + 1, label, kind, clips: tclips.map((c) => ({ ...c })), automation: JSON.parse(JSON.stringify((timeline && timeline.automation) || { A1: [] })), qc, duration_frames: tclips.reduce((mx, c) => Math.max(mx, c.record_in + c.duration), 0), created_at: now() }; tversions.push(v); return v; };
     if (u === `/api/projects/${P}/editorial` && req.method === "GET") {
@@ -1165,7 +1169,8 @@ http.createServer((req, res) => {
       }
       sound_cues.sort((a, z) => a.at - z.at);
       return send(200, { fps: FPS, sound_cues, project: { title: project.title, target_runtime_minutes: null },
-        timeline: timeline ? { ...timeline, lock: lock ? { lock_number: lock.lock_number, locked_at: lock.locked_at } : null } : null,
+        timeline: timeline ? { ...timeline, lock: lock ? { lock_number: lock.lock_number, locked_at: lock.locked_at } : null,
+          undo: (() => { const h = [...tundo].reverse().find((x) => !x.undone && x.after_revision === timeline.revision); return h ? { action: h.action, summary: h.summary } : null; })() } : null,
         clips: tclips, issues, conformable: edConform(rows).length, qc: edQC(rows, tclips),
         versions: [...tversions].reverse().map(({ clips, qc, ...v }) => v), locks: [...locks].reverse(),
         bin: rows.filter((r) => r.pv || r.session).map((r) => ({ scene_id: r.scene.id, number: r.scene.number, heading: r.scene.heading, plan: r.pv ? { version_number: r.pv.version_number, usable: r.usable } : null,
@@ -1186,7 +1191,7 @@ http.createServer((req, res) => {
         shots: x.shots.map((sh) => { const at = approvedTake(sh.id); return { shot_id: sh.id, ordinal: sh.ordinal, size: sh.size || null, story_start: sh.story_start, story_end: sh.story_end, take: at ? { take_id: at.id, duration_seconds: takeFrames(at) === null ? null : at.params.duration_seconds } : null }; }),
         audio: x.mixCurrent ? { audio_session_version_id: x.mixCurrent.id, version_number: x.mixCurrent.version_number, scene_seconds: x.mixCurrent.measurement.duration_seconds } : null })) });
       if (timeline && timeline.status !== "locked" && tclips.length) edVersion("Before re-assembly", "auto", edQC(edScenes(), tclips));
-      if (!edPersist(r.clips, "assemble", !!b.break_lock)) return;
+      if (!edPersist(r.clips, "assemble", !!b.break_lock, "Assembly")) return;
       const on = r.clips.filter((c) => c.kind === "take").length, off = r.clips.filter((c) => c.kind === "slug").length;
       return send(200, { summary: `Assembled ${rows.length} scene${rows.length === 1 ? "" : "s"} from approved shots: ${on} picture clip${on === 1 ? "" : "s"}${off ? `, ${off} still offline (no approved take)` : ""}.`, rationale: r.rationale });
     }
@@ -1216,15 +1221,26 @@ http.createServer((req, res) => {
       let r;
       try { r = eng.editDecisionEngine({ clips: tclips, operation: op, new_clip, replacements: op.op === "conform" ? edConform(rows) : undefined }); }
       catch (e) { return edErr(e.code === "AURA-EDT-409" ? 409 : 400, e.message); }
-      if (!edPersist(r.clips, op.op, !!b.break_lock)) return;
+      if (!edPersist(r.clips, op.op, !!b.break_lock, r.summary)) return;
       return send(200, { summary: r.summary });
+    }
+    if (u === `/api/projects/${P}/editorial/undo`) {
+      const p = cc0.UndoTimelineSchema.safeParse(b); if (!p.success) return edErr(400, "base_revision isn't valid");
+      if (!timeline) return edErr(412, "Build the first assembly first.");
+      if (timeline.revision !== p.data.base_revision) return edErr(409, "The timeline changed — reload and try again.");
+      const h = [...tundo].reverse().find((x) => !x.undone && x.after_revision === timeline.revision);
+      if (!h) return edErr(404, "There is nothing to undo.");
+      if (timeline.status === "locked" && !p.data.break_lock) return edErr(423, "The picture is locked — undoing this edit changes the locked cut. Confirm to break the lock.", []);
+      if (!edPersist(h.before_clips.map((c) => ({ ...c })), "undo", true)) return;
+      timeline.revision = h.before_revision; h.undone = true;
+      return send(200, { summary: `Undid: ${h.summary}` });
     }
     if (u === `/api/projects/${P}/editorial/versions`) { const v = edVersion(b.label, "manual", edQC(edScenes(), tclips)); return send(200, { version_number: v.version_number, label: v.label }); }
     if ((m = u.match(/^\/api\/projects\/[^/]+\/editorial\/versions\/([^/]+)\/restore$/))) {
       if (timeline.revision !== b.base_revision) return edErr(409, "The timeline changed — reload and try again.");
       const v = tversions.find((x) => x.id === m[1]);
       if (timeline.status !== "locked") edVersion(`Before restoring v${v.version_number}`, "auto", edQC(edScenes(), tclips));
-      if (!edPersist(v.clips.map((c) => ({ ...c })), "restore", !!b.break_lock)) return;
+      if (!edPersist(v.clips.map((c) => ({ ...c })), "restore", !!b.break_lock, `Restored version ${v.version_number} — ${v.label}`)) return;
       if (v.automation && JSON.stringify(v.automation) !== JSON.stringify(timeline.automation)) Object.assign(timeline, { automation: JSON.parse(JSON.stringify(v.automation)), automation_revision: crypto.randomUUID() });
       return send(200, { summary: `Restored version ${v.version_number} (“${v.label}”). The cut before it was kept as a version.` });
     }

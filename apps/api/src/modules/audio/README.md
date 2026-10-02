@@ -123,3 +123,10 @@ counted, not waited for). The web mixer's fader, pan, mute and solo act on what 
 emotion/intensity → delivery), sound effects (≤ 30 s per cue) and music. Listed as "add a key to connect" until
 `ELEVENLABS_API_KEY` is set on the API and the generation worker; then chosen per clip, never by default. Prices are not
 quoted (ElevenLabs bills in plan credits) — the cost note links the price page.
+
+## Muted clips (migration 0053, 2026-10-02)
+`audio_clips.muted` — a clip a person has switched off without deleting it. `save_audio_clip` takes `muted` (and
+`source` when a deleted clip is recreated by Undo). Muted clips are skipped by browser playback/measurement
+(`mixEngine.buildGraph`) and by the render (`renderManifestEngine` 1.9.0, captions included), so the approved mix and
+the film never contain them; unmuting brings the sound back unchanged.
+

@@ -97,11 +97,20 @@ export default function EditorialPage() {
     return d.edit(op);
   };
 
+  const undo = () => {
+    player.current!.stop();
+    setPlaying(false);
+    return d.undo();
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
-      if (e.code === "Space") (e.preventDefault(), togglePlay());
+      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
+        e.preventDefault();
+        if (d.ws?.timeline?.undo && d.busy === null) undo();
+      } else if (e.code === "Space") (e.preventDefault(), togglePlay());
       else if (e.key === "ArrowRight") (e.preventDefault(), seek(frame + (e.shiftKey ? fps : 1)));
       else if (e.key === "ArrowLeft") (e.preventDefault(), seek(frame - (e.shiftKey ? fps : 1)));
       else if ((e.key === "b" || e.key === "B") && canEdit && d.busy === null) edit({ op: "blade", track: "V1", at: frame });
@@ -247,6 +256,11 @@ export default function EditorialPage() {
                       <input aria-label="Zoom" type="range" min={0.25} max={12} step={0.25} value={ppf} onChange={(e) => setPpf(Number(e.target.value))} />
                     </label>
                     <span className="flex-1" />
+                    <button onClick={() => undo()} disabled={!t?.undo || d.busy !== null}
+                      title={t?.undo ? `Undo: ${t.undo.summary} (Ctrl+Z)` : "Nothing to undo"} aria-label={t?.undo ? `Undo: ${t.undo.summary}` : "Undo (nothing to undo)"}
+                      className="rounded border border-aura-border px-3 py-1.5 text-xs disabled:opacity-40">
+                      ↶ Undo
+                    </button>
                     <button onClick={d.exportEdl} disabled={!clips.length || d.busy !== null} className="rounded border border-aura-border px-3 py-1.5 text-xs disabled:opacity-40">
                       Export EDL
                     </button>
@@ -262,7 +276,7 @@ export default function EditorialPage() {
                     cues={ws.sound_cues ?? []} audioHref={`/projects/${id}/audio`}
                   />
                   <p className="text-[11px] text-white/40">
-                    {TOOLS.find((x) => x.id === tool)!.hint}. Space plays, ←/→ step a frame (Shift: a second), B cuts at the playhead, Delete lifts and Shift+Delete extracts the selected clip. Sync lock is on: ripple edits move picture and sound together.
+                    {TOOLS.find((x) => x.id === tool)!.hint}. Space plays, ←/→ step a frame (Shift: a second), B cuts at the playhead, Delete lifts and Shift+Delete extracts the selected clip, Ctrl+Z undoes the last edit (up to 30). Sync lock is on: ripple edits move picture and sound together.
                   </p>
                 </>
               ) : (

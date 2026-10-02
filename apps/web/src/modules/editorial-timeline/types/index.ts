@@ -32,6 +32,8 @@ export interface EditorialWorkspace {
     lock: { lock_number: number; locked_at: string } | null; updated_at: string;
     /** Volume automation of the cut's sound (migration 0032) and its own revision. */
     automation: TimelineAutomation; automation_revision: string;
+    /** What Undo (Ctrl+Z) would take back on this revision (migration 0054), or null. */
+    undo?: { action: string; summary: string } | null;
   } | null;
   clips: TimelineClip[];
   issues: { clip_id: string; code: string; message: string }[];

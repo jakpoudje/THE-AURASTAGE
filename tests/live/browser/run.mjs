@@ -346,6 +346,18 @@ await check("editorial: build the assembly, blade, lift offline shots, lock; rel
   await page.getByText(/in two/).first().waitFor();
   await reload(marker);
   if ((await v1().count()) !== n + 1) throw new Error("blade lost after reload");
+  // 2026-10-02: Ctrl+Z takes the cut back (kept after reload), then the cut is made again.
+  await page.getByLabel("Viewer").click();
+  await page.keyboard.press("Control+z");
+  await page.getByText(/^Undid: /).first().waitFor();
+  await reload(marker);
+  if ((await v1().count()) !== n) throw new Error("undo lost after reload");
+  await page.getByLabel("Viewer").click();
+  await page.keyboard.press("Shift+ArrowRight");
+  await page.keyboard.press("b");
+  await page.getByText(/in two/).first().waitFor();
+  await reload(marker);
+  if ((await v1().count()) !== n + 1) throw new Error("re-blade lost after reload");
   for (let i = 0; i < 10; i++) {
     const slug = page.getByRole("group", { name: "Track V1" }).getByRole("button", { name: /no approved take|take too short|No shot covers/ }).first();
     if (!(await slug.count())) break;

@@ -29,7 +29,7 @@ function fakeDb(rows: Record<string, Row[]>, rpcImpl: (fn: string, a: Row) => { 
   const from = (t: string) => {
     const f: [string, unknown][] = [];
     const res = () => (rows[t] ?? []).filter((r) => f.every(([k, v]) => (v === null ? r[k] == null : r[k] === v)));
-    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), is: (k: string, v: unknown) => (f.push([k, v]), q), order: () => q,
+    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), is: (k: string, v: unknown) => (f.push([k, v]), q), order: () => q, limit: () => q,
       maybeSingle: async () => ({ data: res()[0] ?? null, error: null }), then: (ok: any) => ok({ data: res(), error: null }) };
     return q;
   };
@@ -254,5 +254,36 @@ describe("Editorial routes", () => {
     fake = fakeDb(rows, () => ({ error: { message: "AURA-EDT-409: the automation changed — reload and try again" } }));
     res = await (await app(fake)).inject({ method: "PUT", url: `/api/projects/${P}/editorial/automation`, payload: body });
     expect(res.statusCode).toBe(409);
+  });
+  it("owner request 2026-10-02: Undo takes back the newest edit on this revision through the gated save; nothing to undo is a 404; a locked cut asks first", async () => {
+    withTimeline();
+    rows.timeline_undo = [{ timeline_id: TL, after_revision: REV, undone_at: null, action: "lift", summary: "Lifted Scene 1 · Shot 2 (CU)", created_at: "2026-10-02T00:00:00Z" }];
+    let res = await (await app(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/editorial` });
+    expect(res.json().timeline.undo).toEqual({ action: "lift", summary: "Lifted Scene 1 · Shot 2 (CU)" });
+    const fake = fakeDb(rows, (fn) => (fn === "undo_timeline" ? { data: rows.timelines[0] } : { data: {} }));
+    res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/editorial/undo`, payload: { base_revision: REV } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().summary).toBe("Undid: Lifted Scene 1 · Shot 2 (CU)");
+    expect(fake.calls).toEqual([{ fn: "undo_timeline", args: { p_project_id: P, p_base_revision: REV, p_break_lock: false } }]);
+    // A stale revision is a conflict; no history is 404; bad input is 400.
+    res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/undo`, payload: { base_revision: LOCK } });
+    expect(res.statusCode).toBe(409);
+    res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/undo`, payload: {} });
+    expect(res.statusCode).toBe(400);
+    rows.timeline_undo = [];
+    res = await (await app(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/editorial` });
+    expect(res.json().timeline.undo).toBeNull();
+    res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/undo`, payload: { base_revision: REV } });
+    expect(res.statusCode).toBe(404);
+    // Locked picture: Undo asks for the break first, then passes it on.
+    rows.timeline_undo = [{ timeline_id: TL, after_revision: REV, undone_at: null, action: "trim", summary: "Trimmed", created_at: "2026-10-02T00:00:00Z" }];
+    rows.timelines[0] = { ...rows.timelines[0], status: "locked", current_lock_id: LOCK };
+    const locked = fakeDb(rows, () => ({ data: rows.timelines[0] }));
+    res = await (await app(locked)).inject({ method: "POST", url: `/api/projects/${P}/editorial/undo`, payload: { base_revision: REV } });
+    expect(res.statusCode).toBe(423);
+    expect(locked.calls).toEqual([]);
+    res = await (await app(locked)).inject({ method: "POST", url: `/api/projects/${P}/editorial/undo`, payload: { base_revision: REV, break_lock: true } });
+    expect(res.statusCode).toBe(200);
+    expect(locked.calls[0].args.p_break_lock).toBe(true);
   });
 });

@@ -20,7 +20,7 @@ character, scene, shot or technical truth.
 | GenerationPackage / Take | Visual Generation | Provider-neutral spec + generated result |
 | Asset / AssetVersion / AssetLink | Assets Library | Media/reference metadata, versions (a new file never overwrites an old one), usage links to scenes/characters; migration 0024 |
 | AudioSession / Track / Clip / Bus / Automation | Audio Studio | DAW session + mix objects |
-| AssemblyTimeline / PictureLock | Editorial | NLE timeline authority + approved lock |
+| AssemblyTimeline / PictureLock | Editorial | NLE timeline authority + approved lock (`timeline_undo` is edit history for Undo, never canonical clips) |
 | RenderManifest / Deliverable | Export | Immutable render spec + master/package output |
 | Task / Comment / Review / Approval | Collaboration | Human workflow |
 | Job / EngineRun | MOS | Execution state and telemetry |

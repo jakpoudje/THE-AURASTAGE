@@ -21,7 +21,13 @@ Only through SECURITY DEFINER functions: `save_timeline` (atomic replace of the 
 list against the revision; references must belong to the project, takes must be
 finished takes of their shot, mixes must be of their scene, music must be an audio asset of the project, no overlaps per track,
 transitions only on V1),
-`save_timeline_version`, `lock_picture`, `set_timeline_review`.
+`save_timeline_version`, `lock_picture`, `set_timeline_review`, `undo_timeline`.
+
+**Undo (migration 0054, 2026-10-02).** `save_timeline` now keeps the cut as it was just before each edit in
+`timeline_undo` (a ring of 30 slots per timeline, history only — never canonical clips). `undo_timeline` (gated
+`editorial/edit`, or `lock` when it breaks a Picture Lock) puts the newest entry for the current revision back through
+the same save and checks, and gives the timeline back that earlier revision, so repeated Undos walk back one edit at a
+time. An undone entry is marked (`undone_at`), not removed.
 
 ## Engines
 - `assemblyTimelineEngine` — first assembly: per scene, cut to the most recently started shot covering each moment of story time; no approved take → offline slug; mix on A1 in sync.
@@ -36,6 +42,7 @@ transitions only on V1),
 - `GET  /api/projects/:id/editorial` — timeline, clips, upstream issues, QC, versions, locks, media bin, `music_library` (the project's audio assets), signed media links, mix snapshots for playback
 - `POST /api/projects/:id/editorial/assemble` — `{base_revision, break_lock?}`; keeps the current cut as a version first
 - `POST /api/projects/:id/editorial/edit` — `EditRequest` (one NLE operation)
+- `POST /api/projects/:id/editorial/undo` — `{base_revision, break_lock?}`; 404 when there is nothing to undo, 423 on a locked picture until the break is confirmed. The workspace's `timeline.undo` names what Undo would take back
 - `POST /api/projects/:id/editorial/versions` — `{label}`
 - `POST /api/projects/:id/editorial/versions/:versionId/restore` — `{base_revision, break_lock?}`; keeps the current cut as a version first
 - `POST /api/projects/:id/editorial/lock` — `{base_revision}`; 412 with the failing checks

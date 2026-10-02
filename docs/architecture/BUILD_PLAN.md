@@ -138,6 +138,10 @@ changes, the shots that used it are flagged "needs review".
   alongside the procedural generator; auto-placement from the script's action lines.
 - ✅ Built-in **presets**: channel presets (e.g. phone call) and genre mix templates.
 - ✅ Ask AuraStage changes a scene's mix (quieter / louder / mute a family of tracks), with undo.
+- ✅ Clip editing on the timeline (2026-10-02): split, mute/unmute (a muted clip is left out of playback, the approved
+  mix and the film), delete, trim from either edge or to the playhead, fades, ±3 dB, duplicate, keyboard shortcuts and
+  Undo (Ctrl+Z, last 30 changes, a deleted clip comes back with its sound). Mixing and presets shape the final sound:
+  the browser preview and the render worker use the same chain, and the approved version keeps the exact settings.
 
 ### Stage 9 — Editorial & Timeline
 - ✅ First assembly from approved takes and mixes; NLE tools (trim, ripple, roll, slip, slide, blade, lift, extract);
@@ -147,6 +151,8 @@ changes, the shots that used it are flagged "needs review".
   theme under them, on video deliverables.
 - ✅ Transitions per shot (dissolve, fade from black, fade to black) set in the Inspector, saved with the cut and
   rendered by the render worker (manifest 1.6.0).
+- ✅ Undo on the picture timeline (2026-10-02, migration 0054): ↶ Undo and Ctrl+Z take back the last 30 edits one at a
+  time through the same checks and picture-lock rule as any edit.
 - ⬜ A second picture track for inserts; music on its own timeline track across scenes.
 
 ### Stage 10 — Export & Deliver
@@ -272,6 +278,7 @@ Everything not yet done, in build order. When an item is finished it moves up in
 | 35 | ✅ Realism R1: prompt compiler 2.0 — every field reaches the shot (characters incl. physicality & mannerisms, accent, scene DNA, video timing, continuity). Ranked blocks: each provider gets a prompt inside its own limit (Runway 1,000 characters … OpenAI 32,000) with the camera, action, people and dialogue kept first; separate timed video prompt; field-by-field list in `PROMPT_FIELD_MAP.md`. Verified live 2026-10-02 (smoke 124/124) | Each shot's package shows every source used and a check for anything missing |
 | 36 | 🟡 ElevenLabs voices with African and other accents, sound effects and music (one key). Built 2026-10-02 (`providers/audio/elevenlabs`): Casting accent → ElevenLabs library accent (Nigerian incl. Yoruba/Igbo/Hausa, Ghanaian, Kenyan, South African, Ugandan, Tanzanian, Ethiopian, Cameroonian, Senegalese, Zimbabwean, Rwandan, Sierra Leonean, Jamaican, British Isles, Indian, North American, Australian, French) + gender + age band; a voice already in the account is reused, otherwise the library's best match is added once; says plainly when no voice with that accent exists; each line's emotion and intensity set the delivery; sound effects up to 30 s per cue; music for score. Chosen per clip in Audio Studio ("Generator: Built-in (free) / ElevenLabs (paid)") with the cost note; never the default. Waiting for the key to verify live | Lines, effects and music are made by ElevenLabs when its key is added |
 | 37 | 🟡 One click for every page, in workflow order, with every item still editable by hand (owner request 2026-10-02). Done: Casting's whole-cast fill also saves the relationships the dialogue states, plus **Add all suggested relationships**; Locations & Props **Make reference pictures for every place and prop (free)**; Visual Generation **1 Compile every shot's prompt · 2 Sketch every shot (free) · 3 Approve a take for every shot** — so the whole film can be assembled in Editorial from sketches before any paid provider has credit; Audio Studio **1 Spot all scenes · 2 Generate all planned sounds · 3 Place all generated sounds on their marked spots** (and per scene); mixer fader, pan, mute and solo now act on what is playing; Editorial **Make a watchable film from everything approved (one click)** (assembly if none → Picture Lock → Review Copy render); Visual Generation shows the **1,000-character version** of each prompt that fits every provider. Next: Dialogue and Scene DNA "every scene" buttons, measure + approve every scene mix | Each page has its whole-film buttons; nothing approved is overwritten |
+| 38 | ✅ Timeline editing on both timelines (owner request 2026-10-02: "no means of deleting or editing audio further … removing or reinstating the parts I didn't want … must be considered even for video timelines"). Audio Studio: Clip tools bar (split, mute/unmute, trim start/end to playhead, edge-drag trims, fades, ±3 dB, duplicate, delete), keyboard shortcuts and Undo (last 30, a delete included); muted clips are kept but left out of playback, the approved mix and the render (migration 0053, renderManifest 1.9.0). Editorial: ↶ Undo / Ctrl+Z for every edit, one at a time (migration 0054) | Unwanted sound can be removed or muted and brought back; any picture edit can be undone |
 | 16 | ✅ Casting whole-cast buttons and "Save & next" (2026-09-30); remaining: the same "save & continue + what's next" on every other stage (item 17) | Owner request 2026-09-30 |
 | 17 | ✅ "What's next" on every stage: the stage's next step and progress from the production overview (never a made-up percentage), updated after every save; "Continue to …" once the stage is done, "Skip ahead" otherwise — 2026-09-30 | Owner request 2026-09-30 |
 | 18 | ✅ Delete any asset, with a warning that lists exactly where it is used (migration 0043, 2026-09-30) | Owner request 2026-09-30 |

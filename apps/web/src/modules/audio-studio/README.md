@@ -18,6 +18,14 @@ apps/api/src/modules/audio (AudioSession / Mix). Recordings belong to Assets.
 - Loudness & delivery: measure the rendered mix (BS.1770-4), readiness checks with evidence, approve, WAV export of the full mix and DX/FX/BG/MX stems.
 - Tools & generators: AI voice/music/SFX/clean-up shown as not connected (no key yet).
 
+### Clip tools (owner request 2026-10-02)
+Select a clip, then **✂ Split** at the playhead, **🔇 Mute clip / 🔈 Unmute clip** (a muted clip stays on the timeline,
+striped, and is left out of playback, measurement, the approved mix and the film — migration 0053, renderManifest
+1.9.0), **⇤ Trim start / Trim end ⇥** to the playhead, drag either edge of a clip to trim it, **◢ Fade in / Fade out ◣**,
+**−3 dB / +3 dB**, **⧉ Duplicate**, **🗑 Delete**. **↶ Undo** (Ctrl/Cmd+Z) takes back the last 30 clip changes, a delete
+included (the clip comes back with its sound, place and settings). Keys: Space play, S split, M mute, [ / ] trim,
+D duplicate, Delete remove.
+
 ## State
 `state/mixEngine.ts` builds one Web Audio graph used for playback, offline render,
 measurement and export, so what is measured and exported is exactly what is heard.

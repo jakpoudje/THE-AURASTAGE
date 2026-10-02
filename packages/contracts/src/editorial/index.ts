@@ -118,6 +118,8 @@ export type EditRequest = z.infer<typeof EditRequestSchema>;
 export const AssembleRequestSchema = z.object({ base_revision: z.string().uuid().nullable(), break_lock: z.boolean().optional() }).strict();
 export const SaveTimelineVersionSchema = z.object({ label: z.string().trim().min(1).max(120) }).strict();
 export const RestoreTimelineVersionSchema = z.object({ base_revision: z.string().uuid(), break_lock: z.boolean().optional() }).strict();
+/** Undo the newest edit made on this revision (migration 0054); the cut before it comes back with its revision. */
+export const UndoTimelineSchema = z.object({ base_revision: z.string().uuid(), break_lock: z.boolean().optional() }).strict();
 export const PictureLockRequestSchema = z.object({ base_revision: z.string().uuid() }).strict();
 
 /** One automation point on the timeline: a level (dB, relative to the scene mixes) at a frame (migration 0032). */

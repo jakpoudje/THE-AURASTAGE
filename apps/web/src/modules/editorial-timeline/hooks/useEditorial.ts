@@ -15,7 +15,7 @@ import { deliveryApi } from "@/modules/export-deliver/api/deliveryApi";
 import { useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 import type { EditorialWorkspace } from "../types";
 
-type Busy = null | "assemble" | "edit" | "version" | "restore" | "lock" | "export" | "automation";
+type Busy = null | "assemble" | "edit" | "undo" | "version" | "restore" | "lock" | "export" | "automation";
 export interface PendingBreak { message: string; impact: PictureImpact[]; retry: () => Promise<unknown> }
 
 export function useEditorial(projectId: string) {
@@ -89,6 +89,8 @@ export function useEditorial(projectId: string) {
     cancelBreak: () => setPendingBreak(null),
     assemble: () => run("assemble", (b) => editorialApi.assemble(projectId, rev(), b), (r) => r.summary),
     edit: (op: EditOperation) => run("edit", (b) => editorialApi.edit(projectId, rev()!, op, b), (r) => r.summary),
+    /** Takes back the newest edit (the cut before it comes back exactly); the server keeps the last 30 edits. */
+    undo: () => run("undo", (b) => editorialApi.undo(projectId, rev()!, b), (r) => `${r.summary}. Undo again (Ctrl+Z) to go back further.`),
     saveVersion: (label: string) => run("version", () => editorialApi.saveVersion(projectId, label), (r) => `Saved version ${r.version_number} — “${r.label}”.`),
     restore: (versionId: string) => run("restore", (b) => editorialApi.restore(projectId, versionId, rev()!, b), (r) => r.summary),
     /** Volume automation: sound, not picture — saved against its own revision, never breaks the Picture Lock. */

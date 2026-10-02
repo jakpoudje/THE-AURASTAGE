@@ -9,7 +9,7 @@ apps/api/src/modules/editorial (AssemblyTimeline / PictureLock).
 ## What's on the page
 - Media bin: approved shots (with their approved take) and approved scene mixes; Insert / Overwrite at the playhead.
 - Viewer: the V1 frame under the playhead with the grade preview, timecode, fps.
-- Timeline: V1 picture and A1 scene mixes; tools Select, Ripple, Roll, Slip, Slide, Blade; keyboard (Space, ←/→, B, Delete, Shift+Delete).
+- Timeline: V1 picture and A1 scene mixes; tools Select, Ripple, Roll, Slip, Slide, Blade; keyboard (Space, ←/→, B, Delete, Shift+Delete, Ctrl/Cmd+Z); **↶ Undo** takes back the last edit (up to 30, one at a time; its tooltip says which).
 - Inspector: exact timecodes, frame-accurate trims/slip/slide, grade (exposure, contrast, saturation, temperature), lift/extract.
 - Timeline checks with timecodes that jump to the problem; versions; Picture Lock and the break-lock confirmation with impact.
 

@@ -82,6 +82,15 @@ export const saveTimeline = (db: SupabaseClient, a: { projectId: string; baseRev
     p_project_id: a.projectId, p_base_revision: a.baseRevision, p_clips: a.clips, p_action: a.action, p_summary: a.summary,
     p_engine_version: a.engineVersion, p_break_lock: a.breakLock, p_impact: a.impact,
   });
+/** The newest edit Undo can take back on this revision (migration 0054), or null. */
+export async function getUndoHead(db: SupabaseClient, timelineId: string, revision: string) {
+  const { data, error } = await db.from("timeline_undo").select("action, summary, created_at").eq("timeline_id", timelineId).eq("after_revision", revision)
+    .is("undone_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error;
+  return (data as Row | null) ?? null;
+}
+export const undoTimeline = (db: SupabaseClient, projectId: string, baseRevision: string, breakLock: boolean) =>
+  rpc<Row>(db, "undo_timeline", { p_project_id: projectId, p_base_revision: baseRevision, p_break_lock: breakLock });
 export const saveVersion = (db: SupabaseClient, projectId: string, label: string, kind: "manual" | "auto", qc: unknown) =>
   rpc(db, "save_timeline_version", { p_project_id: projectId, p_label: label, p_kind: kind, p_qc: qc });
 export const lockPicture = (db: SupabaseClient, projectId: string, baseRevision: string, qc: unknown) =>

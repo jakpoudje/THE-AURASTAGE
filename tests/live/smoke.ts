@@ -639,6 +639,20 @@ await check("editorial: versions restore (current cut kept first) and the EDL ex
   assert(edl.status === 200 && text.includes("FCM: NON-DROP FRAME") && /^001  /m.test(text), `edl ${edl.status}`);
   return `${ws.versions.length} versions, EDL ${text.split("\n").length} lines`;
 });
+await check("editorial Undo (migration 0054): an edit is taken back exactly, revision included; nothing left → 404; stale → 409", async () => {
+  let ws = await edWs();
+  const before = { rev: ws.timeline.revision, clips: ws.clips.length };
+  assert(ws.timeline.undo, "the restore just made should be undoable");
+  const pic = ws.clips.find((c: any) => c.track === "V1" && c.duration >= 4);
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "blade", track: "V1", at: pic.record_in + 2 } });
+  ws = await edWs();
+  assert(ws.clips.length === before.clips + 1 && ws.timeline.undo, `blade not applied (${ws.clips.length})`);
+  await api("POST", `/api/projects/${projectId}/editorial/undo`, { base_revision: before.rev }, [409]);
+  const u = await api("POST", `/api/projects/${projectId}/editorial/undo`, { base_revision: ws.timeline.revision });
+  ws = await edWs();
+  assert(ws.clips.length === before.clips && ws.timeline.revision === before.rev, `undo didn't restore the cut exactly (${ws.clips.length} clips)`);
+  return `${u.summary}; next in line: ${ws.timeline.undo?.summary ?? "nothing"}`;
+});
 await check("editorial item 9: an approved shot laid over the picture (V2) and music across scenes (A2) — the cut doesn't move; level set; the recording can't be deleted while in use", async () => {
   let ws = await edWs();
   const v1Before = JSON.stringify(ws.clips.filter((c: any) => c.track === "V1").map((c: any) => [c.id, c.record_in, c.duration]));
@@ -1107,6 +1121,12 @@ await check("audio tracks: add your own track (any department), duplicate name 4
   const order = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1).tracks.map((x: any) => x.id);
   assert(order.indexOf(t.id) === order.length - 2, `not moved up: ${order.indexOf(t.id)} of ${order.length}`);
   const c = await api("POST", `/api/audio-sessions/${sid}/clips`, { track_id: t.id, label: "Radio news", start_seconds: 0.5, duration_seconds: 1 });
+  // 2026-10-02 (migration 0053): a clip can be muted and brought back without deleting it.
+  const muted = await api("PATCH", `/api/audio-clips/${c.id}`, { muted: true });
+  assert(muted.muted === true, `mute not saved: ${JSON.stringify(muted).slice(0, 160)}`);
+  const seen = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.find((x: any) => x.scene.id === s1).clips.find((x: any) => x.id === c.id);
+  assert(seen?.muted === true, "muted clip not read back");
+  assert((await api("PATCH", `/api/audio-clips/${c.id}`, { muted: false })).muted === false, "unmute not saved");
   await api("DELETE", `/api/audio-tracks/${t.id}`, undefined, [409]);
   const spotted = sc.tracks.find((x: any) => !x.added_by_hand);
   await api("DELETE", `/api/audio-tracks/${spotted.id}`, undefined, [400]);
