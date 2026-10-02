@@ -257,6 +257,15 @@ describe("Visual Generation routes", () => {
     expect(reads.filter((t) => t === "scene_dna_versions").length).toBeLessThanOrEqual(2);
   });
 
+  it("regression (2026-10-02, 884-shot film timed out): the shot list leaves the prompt text out; it is read per package", async () => {
+    rows.generation_packages = [{ id: PKG, project_id: P, shot_id: SHOT, shot_plan_version_id: PV1, content: { prompt: "A long prompt", project: { look: null } }, review_state: "current", review_reason: null, engine_version: "2.0.0", created_at: NOW }];
+    const a = await app(fakeDb(rows), { MEDIA_BUCKET: "b" });
+    const ws = (await a.inject({ method: "GET", url: `/api/projects/${P}/visual` })).json();
+    expect(ws.scenes[0].shots[0].package).toMatchObject({ id: PKG, content: null, review_state: "current" });
+    const d = (await a.inject({ method: "GET", url: `/api/visual/packages/${PKG}` })).json();
+    expect(d).toMatchObject({ id: PKG, content: { prompt: "A long prompt" } });
+  });
+
   it("refuses other projects (403)", async () => {
     rows.projects = [];
     expect((await (await app(fakeDb(rows), {})).inject({ method: "GET", url: `/api/projects/${P}/visual` })).statusCode).toBe(403);

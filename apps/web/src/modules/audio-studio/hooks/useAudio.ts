@@ -72,11 +72,15 @@ export function useAudio(projectId: string) {
 
   // Generation runs in the worker: check back every 2 s while anything is waiting or being made.
   const waiting = ws?.scenes.some((sc) => sc.generations?.some((g) => g.status === "queued" || g.status === "running")) ?? false;
+  // One refresh at a time, and less often when many sounds are queued (a whole film's worth).
+  const many = (ws?.scenes.reduce((n, sc) => n + (sc.generations?.filter((g) => g.status === "queued" || g.status === "running").length ?? 0), 0) ?? 0) > 30;
   useEffect(() => {
     if (!waiting) return;
-    const t = setInterval(() => reload().catch(() => null), 2000);
-    return () => clearInterval(t);
-  }, [waiting, reload]);
+    let stop = false, t: ReturnType<typeof setTimeout>;
+    const tick = async () => { await reload().catch(() => null); if (!stop) t = setTimeout(tick, many ? 8000 : 2500); };
+    t = setTimeout(tick, many ? 8000 : 2500);
+    return () => { stop = true; clearTimeout(t); };
+  }, [waiting, reload, many]);
 
   async function run<T>(kind: Busy, fn: () => Promise<T>, message: (r: T) => string | null) {
     setBusy(kind);

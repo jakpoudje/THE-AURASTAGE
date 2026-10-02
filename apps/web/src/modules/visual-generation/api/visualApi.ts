@@ -1,4 +1,5 @@
 // Thin client for the Visual Generation API (apps/api/src/modules/generation). No logic here.
+import type { GenerationPackageContent } from "@aurastage/contracts";
 import type { RequestTakeInput, Take } from "@aurastage/contracts";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import type { VisualWorkspace } from "../types";
@@ -11,6 +12,8 @@ export const visualApi = {
   compileAll: (projectId: string) => apiPost<{ compiled: number; remaining: number; already: number; waiting_scenes: number[]; failed?: string[] }>(`/api/projects/${projectId}/visual/compile-all`, {}),
   sketchAll: (projectId: string) => apiPost<{ requested: number; remaining: number; already: number; needs_prompt: number }>(`/api/projects/${projectId}/visual/sketch-all`, {}),
   approveAll: (projectId: string) => apiPost<{ approved: number; remaining: number; waiting: number; total: number }>(`/api/projects/${projectId}/visual/approve-all`, {}),
+  /** One package's full prompt (the shot list leaves it out so long films load fast). */
+  getPackage: (packageId: string) => apiGet<{ id: string; content: GenerationPackageContent }>(`/api/visual/packages/${packageId}`),
   requestTakes: (packageId: string, input: Partial<RequestTakeInput>) => apiPost<{ takes: Take[] }>(`/api/visual/packages/${packageId}/takes`, input),
   approve: (takeId: string) => apiPost<Take>(`/api/takes/${takeId}/approve`, {}),
   reject: (takeId: string) => apiPost<Take>(`/api/takes/${takeId}/reject`, {}),

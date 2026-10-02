@@ -5,7 +5,7 @@ export interface VisualShot {
     id: string; ordinal: number; purpose: string; size: string; angle: string; movement: string; lens_mm: number | null; focus: string;
     duration_seconds: number; description: string; composition: string | null; character_ids: string[]; dialogue_line_ids: string[];
   };
-  package: { id: string; content: GenerationPackageContent; review_state: "current" | "review_required" | "stale"; review_reason: string | null; engine_version: string; created_at: string } | null;
+  package: { id: string; content: GenerationPackageContent | null; review_state: "current" | "review_required" | "stale"; review_reason: string | null; engine_version: string; created_at: string } | null;
   takes: Take[];
   approved_take_id: string | null;
 }

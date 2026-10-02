@@ -53,11 +53,22 @@ export function useVisual(projectId: string) {
 
   // Poll while work is in flight (the worker finishes takes in the background).
   const inFlight = !!ws && ws.queue.waiting + ws.queue.running > 0;
+  // While takes are being made, refresh — one request at a time (the next waits for the last to finish), and less
+  // often when hundreds are queued (2026-10-02: overlapping 3-second refreshes of an 884-shot film overloaded the
+  // database and starved the worker making the sketches).
+  const queued = ws ? ws.queue.waiting + ws.queue.running : 0;
+  const tier = queued > 100 ? 2 : queued > 20 ? 1 : 0;
   useEffect(() => {
     if (!inFlight) return;
-    const t = setInterval(() => void reload().catch(() => undefined), 3000);
-    return () => clearInterval(t);
-  }, [inFlight, reload]);
+    let stop = false, t: ReturnType<typeof setTimeout>;
+    const delay = [4000, 8000, 15000][tier];
+    const tick = async () => {
+      await reload().catch(() => undefined);
+      if (!stop) t = setTimeout(tick, delay);
+    };
+    t = setTimeout(tick, delay);
+    return () => { stop = true; clearTimeout(t); };
+  }, [inFlight, reload, tier]);
 
   async function run<T>(kind: Busy, fn: () => Promise<T>, message: (r: T) => string) {
     setBusy(kind);

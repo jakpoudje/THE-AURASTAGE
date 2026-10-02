@@ -343,7 +343,10 @@ await check("realism R1: physicality saves (≤2000) and reaches the shot; the p
     const all = ws.scenes.flatMap((sc: any) => sc.shots.map((x: any) => x.shot));
     const shot = all.find((x: any) => (x.character_ids ?? []).includes(amaraId)) ?? all[0];
     const r = await api("POST", `/api/projects/${projectId}/visual/shots/${shot.id}/compile`, { aspect_ratio: "16:9" });
-    const c = (await api("GET", `/api/projects/${projectId}/visual`)).scenes.flatMap((sc: any) => sc.shots).find((x: any) => x.package?.id === r.package_id)?.package?.content ?? {};
+    // The shot list stays light (2026-10-02); the prompt itself is read per package.
+    const listed = (await api("GET", `/api/projects/${projectId}/visual`)).scenes.flatMap((sc: any) => sc.shots).find((x: any) => x.package?.id === r.package_id);
+    assert(listed && listed.package.content === null, "the shot list should leave the prompt text out");
+    const c = (await api("GET", `/api/visual/packages/${r.package_id}`)).content ?? {};
     assert(/-second cinematic video shot/.test(c.video_prompt ?? ""), "no timed video prompt: " + String(c.video_prompt).slice(0, 120));
     assert(Array.isArray(c.blocks) && c.blocks.length >= 4 && c.blocks.some((b: any) => b.id === "header" && b.rank === 1), "ranked blocks missing");
     assert(!/says "/.test(c.prompt), "still prompt quotes dialogue");

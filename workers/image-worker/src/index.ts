@@ -130,10 +130,26 @@ async function planLane() {
   }
 }
 
+// Takes have their own lanes (2026-10-02: "Sketch every shot" queued 826 sketches on an 884-shot film and one loop
+// shared with sounds and reference pictures made ~1–2 a minute). Claims use FOR UPDATE SKIP LOCKED, so lanes never
+// take the same job.
+const TAKE_LANES = Math.min(8, Math.max(1, Number(env.TAKE_LANES) || 4));
+async function takeLane() {
+  while (!stopping) {
+    try {
+      if (!(await runOnce(deps))) await new Promise((r) => setTimeout(r, 3000));
+    } catch (e) {
+      log("worker.error", { lane: "takes", error: (e as Error).message });
+      await new Promise((r) => setTimeout(r, 10000));
+    }
+  }
+}
+
 (async () => {
   void planLane();
   for (let i = 0; i < WRITING_LANES; i++) void writingLane();
-  log("worker.started", { writing_lanes: WRITING_LANES, providers: providerStatuses(env).filter((p) => p.state === "configured").map((p) => p.id), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
+  for (let i = 0; i < TAKE_LANES; i++) void takeLane();
+  log("worker.started", { writing_lanes: WRITING_LANES, take_lanes: TAKE_LANES, providers: providerStatuses(env).filter((p) => p.state === "configured").map((p) => p.id), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
   while (!stopping) {
     try {
       // Assistant plans have their own lane (planLane), so a long generation never keeps a suggestion waiting.
@@ -141,7 +157,7 @@ async function planLane() {
       const sounded = await audioOnce(audioDeps);
       const drew = await refOnce(refDeps);
       const drewWorld = await refOnce(worldRefDeps);
-      const worked = (await runOnce(deps)) || planned || sounded || drew || drewWorld;
+      const worked = planned || sounded || drew || drewWorld;
       if (!worked) await new Promise((r) => setTimeout(r, 3000));
     } catch (e) {
       log("worker.error", { error: (e as Error).message });

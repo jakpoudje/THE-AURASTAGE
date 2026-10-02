@@ -3,7 +3,9 @@
 // Auto-compiled prompt with evidence badges (location applied, wardrobe applied…) and the reference images a provider
 // conditions on (characters in frame, the scene's location at its time of day, its props).
 import { useReferenceImage } from "@/modules/casting-characters/components/LookPanel";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { GenerationPackageContent } from "@aurastage/contracts";
+import { visualApi } from "../api/visualApi";
 import { promptCompiler } from "@aurastage/engines";
 import type { VisualShot } from "../types";
 
@@ -13,8 +15,23 @@ function RefThumb({ assetId }: { assetId: string }) {
   return url ? <img src={url} alt="" className="h-8 w-8 rounded bg-black object-cover" /> : <span className="h-8 w-8 rounded bg-white/5" />;
 }
 
+/** The shot's full prompt: from the list when it carries it, otherwise fetched for this package only (long films). */
+function usePackageContent(pkg: VisualShot["package"]) {
+  const [loaded, setLoaded] = useState<{ id: string; content: GenerationPackageContent } | null>(null);
+  useEffect(() => {
+    if (!pkg || pkg.content || loaded?.id === pkg.id) return;
+    let live = true;
+    visualApi.getPackage(pkg.id).then((r) => live && setLoaded({ id: pkg.id, content: r.content })).catch(() => undefined);
+    return () => { live = false; };
+  }, [pkg, loaded?.id]);
+  if (!pkg) return null;
+  const content = pkg.content ?? (loaded?.id === pkg.id ? loaded.content : null);
+  return content ? { ...pkg, content } : null;
+}
+
 export function PromptPanel({ s, usable, busy, onCompile }: { s: VisualShot; usable: boolean; busy: boolean; onCompile: () => void }) {
-  const pkg = s.package;
+  const pkg = usePackageContent(s.package);
+  const loadingPrompt = !!s.package && !pkg;
   // 2.0 packages carry a separate moving-picture prompt (timing, dialogue for lip sync, how people move).
   const [mode, setMode] = useState<"image" | "video">("image");
   const videoPrompt = pkg?.content.video_prompt;
@@ -30,13 +47,13 @@ export function PromptPanel({ s, usable, busy, onCompile }: { s: VisualShot; usa
       <div className="flex items-center gap-3">
         <h3 className="flex-1 font-display text-lg">Auto-compiled prompt</h3>
         <button onClick={onCompile} disabled={!usable || busy} className="rounded-md border border-aura-gold/60 px-3 py-1 text-xs text-aura-gold disabled:opacity-40">
-          {busy ? "Compiling…" : pkg ? "Recompile" : "Compile prompt"}
+          {busy ? "Compiling…" : s.package ? "Recompile" : "Compile prompt"}
         </button>
       </div>
       {!usable && <p className="mt-2 text-xs text-aura-gold">The shot plan changed — approve it again in Storyboard before generating.</p>}
-      {pkg?.review_state && pkg.review_state !== "current" && (
+      {s.package?.review_state && s.package.review_state !== "current" && (
         <p className="mt-2 rounded border border-aura-gold/40 px-3 py-2 text-xs text-aura-gold">
-          {pkg.review_reason} Recompile to use the latest approved version. Existing takes are kept.
+          {s.package.review_reason} Recompile to use the latest approved version. Existing takes are kept.
         </p>
       )}
       {pkg ? (
@@ -89,7 +106,7 @@ export function PromptPanel({ s, usable, busy, onCompile }: { s: VisualShot; usa
           <p className="mt-2 text-[11px] text-white/35">Avoid: {pkg.content.negative.join("; ")}</p>
         </>
       ) : (
-        <p className="mt-3 text-sm text-white/40">Compile the prompt from the approved shot, its locked Scene DNA, the cast and the dialogue.</p>
+        <p className="mt-3 text-sm text-white/40">{loadingPrompt ? "Loading this shot's prompt…" : "Compile the prompt from the approved shot, its locked Scene DNA, the cast and the dialogue."}</p>
       )}
     </div>
   );

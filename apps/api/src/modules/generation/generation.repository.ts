@@ -26,6 +26,17 @@ async function rows(q: PromiseLike<{ data: unknown[] | null; error: unknown }>):
   if (error) throw error;
   return (data ?? []) as Row[];
 }
+/** All rows past PostgREST's 1,000-row cap (884-shot films have more takes and packages than that), 1,000 at a time. */
+async function paged(make: () => any): Promise<Row[]> {
+  const first = make();
+  if (typeof first.range !== "function") return rows(first);
+  const out: Row[] = [];
+  for (let i = 0, q = first; ; i++, q = make()) {
+    const page = await rows(q.range(i * 1000, i * 1000 + 999));
+    out.push(...page);
+    if (page.length < 1000) return out;
+  }
+}
 async function one(q: PromiseLike<{ data: unknown; error: unknown }>): Promise<Row | null> {
   const { data, error } = await q;
   if (error) throw error;
@@ -75,9 +86,20 @@ export const listWorldRefs = (db: SupabaseClient, projectId: string) =>
 export const listCharacterRefs = (db: SupabaseClient, projectId: string) =>
   rows(db.from("character_reference_images").select("character_id, look_id, age_state_id, angle, size, asset_id, created_at").eq("project_id", projectId).eq("status", "succeeded").not("asset_id", "is", null).order("created_at", { ascending: false }));
 export const listPackages = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("generation_packages").select("*").eq("project_id", projectId).order("created_at", { ascending: false }));
+  paged(() => db.from("generation_packages").select("*").eq("project_id", projectId).order("created_at", { ascending: false }));
+/**
+ * Every package WITHOUT its prompt text — only what review and the shot list need (2026-10-02: reading every package's
+ * full content, ~10 MB on an 884-shot film, on each page load timed the database out). The prompt itself is read for
+ * one package at a time (getPackage). `content` is rebuilt with just the fields packageReview reads.
+ */
+export async function listPackageHeads(db: SupabaseClient, projectId: string) {
+  const list = await paged(() => db.from("generation_packages")
+    .select("id, shot_id, scene_id, shot_plan_version_id, review_state, review_reason, engine_version, created_at, look:content->project->>look, world_revisions:content->provenance->world_revisions, world:content->world")
+    .eq("project_id", projectId).order("created_at", { ascending: false }));
+  return list.map((r) => (r.content ? r : { ...r, content: { project: { look: r.look ?? null }, provenance: { world_revisions: r.world_revisions ?? {} }, world: r.world ?? null }, light: true }));
+}
 export const listTakes = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("takes").select("*").eq("project_id", projectId).order("take_number", { ascending: true }));
+  paged(() => db.from("takes").select("*").eq("project_id", projectId).order("take_number", { ascending: true }));
 export const getPackage = (db: SupabaseClient, id: string) => one(db.from("generation_packages").select("*").eq("id", id).maybeSingle());
 export const getTake = (db: SupabaseClient, id: string) => one(db.from("takes").select("*").eq("id", id).maybeSingle());
 

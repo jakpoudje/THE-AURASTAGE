@@ -69,7 +69,7 @@ export async function getVisualWorkspace(db: SupabaseClient, projectId: string, 
     repo.listScenes(db, projectId),
     repo.listPlans(db, projectId),
     repo.listPlanVersions(db, projectId),
-    repo.listPackages(db, projectId),
+    repo.listPackageHeads(db, projectId),
     repo.listTakes(db, projectId),
   ]);
   const worldItems = await repo.listWorldItems(db, projectId);
@@ -102,7 +102,8 @@ export async function getVisualWorkspace(db: SupabaseClient, projectId: string, 
           composition: shot.composition, character_ids: shot.character_ids ?? [], dialogue_line_ids: shot.dialogue_line_ids ?? [],
         },
         package: pkg
-          ? { id: pkg.id, content: pkg.content, review_state: pkg.review_state, review_reason: pkg.review_reason, engine_version: pkg.engine_version, created_at: pkg.created_at }
+          // The prompt text is fetched per shot (GET /api/visual/packages/:id) — the list stays light on long films.
+          ? { id: pkg.id, content: null, review_state: pkg.review_state, review_reason: pkg.review_reason, engine_version: pkg.engine_version, created_at: pkg.created_at }
           : null,
         takes: shotTakes,
         approved_take_id: shotTakes.find((t) => t.approval === "approved")?.id ?? null,
@@ -157,6 +158,14 @@ export async function loadCompileContext(db: SupabaseClient, projectId: string) 
   };
 }
 export type CompileContext = Awaited<ReturnType<typeof loadCompileContext>>;
+
+/** One compiled package with its full prompt (the Visual page asks for the shot being viewed). */
+export async function getPackageDetail(db: SupabaseClient, packageId: string) {
+  await assertPackageAccess(db, packageId);
+  const pkg = await repo.getPackage(db, packageId);
+  if (!pkg) throw new GenerationNotFoundError("Package not found");
+  return { id: pkg.id, shot_id: pkg.shot_id, content: pkg.content, review_state: pkg.review_state, review_reason: pkg.review_reason, engine_version: pkg.engine_version, created_at: pkg.created_at };
+}
 
 export async function compileShot(db: SupabaseClient, projectId: string, shotId: string, payload: unknown) {
   const { aspect_ratio } = validateCompile(payload);

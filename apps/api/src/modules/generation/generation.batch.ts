@@ -39,7 +39,7 @@ async function lightState(db: SupabaseClient, projectId: string) {
   await refreshShotPlanReview(db, projectId);
   const [current, scenes, plans, versions, packages, takes, worldItems] = await Promise.all([
     readProjectSettings(db, projectId), repo.listScenes(db, projectId), repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId),
-    repo.listPackages(db, projectId), repo.listTakes(db, projectId), repo.listWorldItems(db, projectId),
+    repo.listPackageHeads(db, projectId), repo.listTakes(db, projectId), repo.listWorldItems(db, projectId),
   ]);
   const look = norm(current.settings.style.look);
   const world: WorldRevisions = new Map([...worldItems.locations, ...worldItems.props].filter((x) => !x.archived_at).map((x) => [x.id as string, { name: x.name as string, revision: Number(x.revision) }]));
