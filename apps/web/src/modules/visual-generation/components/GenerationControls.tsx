@@ -61,7 +61,9 @@ export function GenerationControls({
   const model = models.find((m) => m.id === modelId) ?? models[0];
   const [ratio, setRatio] = useState<AspectRatio>((defaults?.aspect_ratio as AspectRatio) ?? "16:9");
   const [variations, setVariations] = useState(1);
-  const [duration, setDuration] = useState(5);
+  // Providers make 5 s or 10 s takes; pick the one that covers the shot (a 1.5 s shot is cut to length in Editorial).
+  const shotSeconds = Number(s.shot.duration_seconds) || 5;
+  const [duration, setDuration] = useState(shotSeconds > 5 ? 10 : 5);
   const [seed, setSeed] = useState("");
   const frames = s.takes.filter((t) => t.status === "succeeded" && t.capability === "image" && t.media_type !== "image/svg+xml");
   const [sourceId, setSourceId] = useState<string>("");
@@ -136,6 +138,7 @@ export function GenerationControls({
               <option value={5}>5 s</option>
               <option value={10}>10 s</option>
             </select>
+            <span className="mt-1 block normal-case tracking-normal text-white/35">The shot is {shotSeconds} s{shotSeconds < duration ? "; Editorial trims the take to it" : ""}.</span>
           </label>
         )}
         <label className="block text-[11px] uppercase tracking-wider text-white/50">

@@ -4,6 +4,7 @@
 import type { GenerateRequest, GenerateResult, ProviderAdapter, ReferenceImage, StillRequest } from "../../types";
 import { ProviderError } from "../../types";
 import { describeReferences } from "../../references";
+import { avoid, framedPrompt } from "../../promptFor";
 
 const SIZE: Record<string, string> = { "16:9": "1536x1024", "2.39:1": "1536x1024", "4:3": "1536x1024", "9:16": "1024x1536", "1:1": "1024x1024" };
 
@@ -20,7 +21,7 @@ export const openaiImageAdapter: ProviderAdapter = {
     if (req.capability !== "image") throw new ProviderError("OpenAI Images only makes still frames.");
     const refs = (req.reference_images ?? []).slice(0, 6);
     const lead = describeReferences(refs, (i) => `reference image ${i + 1}`);
-    const prompt = `${lead}${req.package.prompt} Avoid: ${req.package.negative.join("; ")}.`;
+    const prompt = framedPrompt(req.package, "image", 32000, lead, avoid(req.package));
     return refs.length ? editsApi(prompt, refs, req.model, req.aspect_ratio, env, opts) : imagesApi(prompt, req.model, req.aspect_ratio, env, opts);
   },
   async generateStill(req: StillRequest, env, opts = {}): Promise<GenerateResult> {

@@ -5,6 +5,7 @@
 import type { GenerateRequest, GenerateResult, ProviderAdapter, StillRequest } from "../../types";
 import { ProviderError } from "../../types";
 import { download, jsonOrThrow, poll, type CallOpts } from "../../http";
+import { avoid, framedPrompt } from "../../promptFor";
 
 const BASE = "https://api.lumalabs.ai/dream-machine/v1";
 const RATIO: Record<string, string> = { "16:9": "16:9", "9:16": "9:16", "1:1": "1:1", "2.39:1": "21:9", "4:3": "4:3" };
@@ -44,7 +45,7 @@ export const lumaAdapter: ProviderAdapter = {
   references: { image: { max: 4, media_types: ["image/png", "image/jpeg", "image/webp"], max_bytes: 10_000_000 } },
   isConfigured: (env) => !!env.LUMA_API_KEY,
   async generate(req: GenerateRequest, env, opts = {}) {
-    const prompt = `${req.package.prompt} Avoid: ${req.package.negative.join("; ")}.`.slice(0, 5000);
+    const prompt = framedPrompt(req.package, req.capability, 5000, "", avoid(req.package));
     if (req.capability === "video") {
       const frame = req.source_image?.url;
       return create("/generations", {

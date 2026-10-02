@@ -66,14 +66,23 @@ export const GenerationPackageContentSchema = z.object({
       gender: z.string().optional(),
       /** The character's age state in this scene (Casting, chosen in Scene DNA; promptCompilerEngine ≥ 1.3.0). */
       age_state: z.object({ id: z.string(), label: z.string(), description: z.string().nullable() }).optional(),
+      /** As written in Casting (≥ 2.0.0); never inferred. */
+      nationality: z.string().optional(), accent: z.string().optional(), physicality: z.string().optional(),
     })
   ),
-  performance: z.object({ action: z.string(), dialogue: z.array(z.object({ speaker: z.string(), text: z.string(), emotion: z.string().nullable() })) }),
+  performance: z.object({ action: z.string(), dialogue: z.array(z.object({ speaker: z.string(), text: z.string(), emotion: z.string().nullable(),
+    intensity: z.number().optional(), intention: z.string().optional(), parenthetical: z.string().optional() })) }),
   lighting: z.string().nullable(),
   technical: z.object({ aspect_ratio: AspectRatioSchema }),
   negative: z.array(z.string()),
-  /** Provider-neutral prompt text assembled from the blocks above. */
+  /** Provider-neutral prompt text assembled from the blocks above (stills). */
   prompt: z.string(),
+  /** The moving-picture prompt (≥ 2.0.0): timed action, lip-synced dialogue, how people move, screen direction. */
+  video_prompt: z.string().optional(),
+  /** Ranked prompt blocks (≥ 2.0.0); providers compose them to their own length limit (composePrompt). */
+  blocks: z.array(z.object({ id: z.string(), rank: z.number().int().min(1).max(5), image: z.string(), video: z.string() })).optional(),
+  /** Screen direction kept from the master shot and the neighbouring shots (≥ 2.0.0). */
+  continuity: z.object({ screen: z.record(z.enum(["left", "right", "center"])), previous: z.string().nullable(), next: z.string().nullable() }).optional(),
   /** Every exact source version this package was compiled from (CLAUDE.md rule 10). */
   provenance: z.object({
     shot_id: z.string().uuid(),

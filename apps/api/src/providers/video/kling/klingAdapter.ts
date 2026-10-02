@@ -6,6 +6,7 @@ import { createHmac } from "node:crypto";
 import type { GenerateRequest, GenerateResult, ProviderAdapter } from "../../types";
 import { ProviderError } from "../../types";
 import { b64, download, jsonOrThrow, poll } from "../../http";
+import { promptFor } from "../../promptFor";
 
 const DEFAULT_BASE = "https://api-singapore.klingai.com";
 const RATIO: Record<string, string> = { "16:9": "16:9", "9:16": "9:16", "1:1": "1:1", "2.39:1": "16:9", "4:3": "16:9" };
@@ -40,7 +41,7 @@ export const klingAdapter: ProviderAdapter = {
     const auth = () => ({ Authorization: `Bearer ${klingToken(env.KLING_ACCESS_KEY!, env.KLING_SECRET_KEY!)}`, "Content-Type": "application/json" });
     const kind = req.source_image ? "image2video" : "text2video";
     const body: Record<string, unknown> = {
-      model_name: req.model, prompt: req.package.prompt.slice(0, 2500), negative_prompt: req.package.negative.join(", ").slice(0, 2500),
+      model_name: req.model, prompt: promptFor(req.package, req.capability, 2500), negative_prompt: req.package.negative.join(", ").slice(0, 2500),
       duration: (req.duration_seconds ?? 5) > 5 ? "10" : "5", mode: "pro", cfg_scale: 0.5,
       ...(req.source_image ? { image: b64(req.source_image.bytes) } : { aspect_ratio: RATIO[req.aspect_ratio] ?? "16:9" }),
     };

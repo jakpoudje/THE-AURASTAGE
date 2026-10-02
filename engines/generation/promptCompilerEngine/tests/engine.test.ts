@@ -34,7 +34,9 @@ describe("promptCompilerEngine", () => {
     expect(p.prompt).toContain("In frame: Amara Bello (32) — Activist.");
     expect(p.prompt).toContain("Exterior: LAGOS HARBOUR, night.");
     expect(p.prompt).toContain("Lighting: Sodium streetlight.");
-    expect(p.prompt).toContain('AMARA (fear) says "They know everything."');
+    // 2.0.0: stills never quote the words (image models paint text into the frame) — the face mid-line instead.
+    expect(p.prompt).toContain("Performance: AMARA (fear) mid-line, speaking.");
+    expect(p.prompt).not.toContain("They know everything");
     expect(p.prompt).toContain("Style: Thriller, Tense; Lagos, Nigeria, Present day.");
   });
 
@@ -66,7 +68,7 @@ describe("promptCompilerEngine", () => {
   it("applies the Project Settings look and records its settings version (1.1.0)", () => {
     const withLook = { ...base(), project: { ...base().project, look: "Desaturated teal-and-amber, handheld" }, provenance: { ...base().provenance, settings_version: 3 } };
     const { package: p, engine_version } = promptCompilerEngine(withLook);
-    expect(engine_version).toBe("1.5.0");
+    expect(engine_version).toBe("2.0.0");
     expect(p.prompt).toContain("Look: Desaturated teal-and-amber, handheld.");
     expect(p.provenance.settings_version).toBe(3);
     expect(p.checks.find((c) => c.id === "style")).toMatchObject({ ok: true, evidence: expect.stringContaining("settings v3") });

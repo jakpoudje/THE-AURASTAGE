@@ -22,7 +22,7 @@ export type CharacterProfileInput = z.input<typeof CharacterProfileInputSchema>;
 /** Only the fields there is something to say about; limits match CharacterProfileFieldsSchema. */
 export const CharacterProfileOutputSchema = z.object({
   fields: z.object({
-    age: z.string().max(40), gender: z.string().max(60), nationality: z.string().max(100), occupation: z.string().max(150), description: z.string().max(2000), accent: z.string().max(120), languages: z.string().max(200),
+    age: z.string().max(40), gender: z.string().max(60), nationality: z.string().max(100), occupation: z.string().max(150), description: z.string().max(2000), physicality: z.string().max(2000), accent: z.string().max(120), languages: z.string().max(200),
     personality: z.string().max(4000), backstory: z.string().max(8000), motivation: z.string().max(2000), fears: z.string().max(2000), strengths: z.string().max(2000), weaknesses: z.string().max(2000), arc: z.string().max(4000),
   }).partial(),
   evidence: z.record(z.string(), z.string().max(300)),

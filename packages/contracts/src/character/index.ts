@@ -26,6 +26,8 @@ export const CharacterProfileFieldsSchema = z.object({
   pronunciation: z.string().max(200).nullable().optional(),
   occupation: z.string().max(150).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
+  /** Physicality & mannerisms (migration 0051): posture, gait, gestures, habits — used in every shot the character is in. */
+  physicality: z.string().max(2000).nullable().optional(),
   personality: z.string().max(4000).nullable().optional(),
   backstory: z.string().max(8000).nullable().optional(),
   motivation: z.string().max(2000).nullable().optional(),

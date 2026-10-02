@@ -6,6 +6,7 @@ import type { GenerateRequest, GenerateResult, ProviderAdapter, ReferenceImage, 
 import { ProviderError } from "../types";
 import { b64, download, jsonOrThrow, poll, type CallOpts } from "../http";
 import { describeReferences } from "../references";
+import { promptFor } from "../promptFor";
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 const key = (env: Record<string, string | undefined>) => env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
@@ -41,7 +42,7 @@ async function geminiImage(prompt: string, aspect: string, refs: ReferenceImage[
 async function veo(req: GenerateRequest, k: string, opts: CallOpts): Promise<GenerateResult> {
   const f = opts.fetchImpl ?? fetch;
   const headers = { "x-goog-api-key": k, "Content-Type": "application/json" };
-  const instance: Record<string, unknown> = { prompt: req.package.prompt.slice(0, 8000) };
+  const instance: Record<string, unknown> = { prompt: promptFor(req.package, "video", 8000) };
   if (req.source_image) instance.image = { bytesBase64Encoded: b64(req.source_image.bytes), mimeType: req.source_image.media_type };
   const start = await f(`${BASE}/models/${req.model}:predictLongRunning`, {
     method: "POST", headers, signal: opts.signal,
@@ -83,9 +84,9 @@ export const googleAdapter: ProviderAdapter = {
     const avoid = ` Avoid: ${req.package.negative.join("; ")}.`;
     if (req.model === GEMINI_IMAGE) {
       const refs = (req.reference_images ?? []).slice(0, 3);
-      return geminiImage(`${describeReferences(refs, (i) => `reference image ${i + 1}`)}${req.package.prompt}${avoid}`, req.aspect_ratio, refs, k, opts);
+      return geminiImage(`${describeReferences(refs, (i) => `reference image ${i + 1}`)}${promptFor(req.package, "image", 28000)}${avoid}`, req.aspect_ratio, refs, k, opts);
     }
-    return imagen(req.model, `${req.package.prompt}${avoid}`, req.aspect_ratio, k, opts);
+    return imagen(req.model, `${promptFor(req.package, "image", 7000)}${avoid}`, req.aspect_ratio, k, opts);
   },
   async generateStill(req: StillRequest, env, opts = {}) {
     const k = key(env);

@@ -68,14 +68,16 @@ describe("Visual Generation routes", () => {
   beforeEach(() => {
     rows = {
       projects: [{ id: P, title: "Shadows of Lagos", genre: "Thriller", tone: "Tense", setting: "Lagos", time_period: null }],
-      scenes: [{ id: S1, project_id: P, number: 1, heading: "EXT. HARBOUR - NIGHT", int_ext: "EXT", location: "HARBOUR", time_of_day: "NIGHT", status: "active" }],
+      scenes: [{ id: S1, project_id: P, number: 1, heading: "EXT. HARBOUR - NIGHT", int_ext: "EXT", location: "HARBOUR", time_of_day: "NIGHT", status: "active", source_version_id: "99999999-9999-4999-8999-99999999999a", element_start: 0, element_end: 3 }],
+      script_versions: [{ id: "99999999-9999-4999-8999-99999999999a", elements: [{ index: 0, type: "scene_heading", text: "EXT. HARBOUR - NIGHT" }, { index: 1, type: "action", text: "Tunde waits under the lamp, collar up." },
+        { index: 2, type: "character", text: "TUNDE" }, { index: 3, type: "dialogue", text: "You came." }] }],
       shot_plans: [{ id: PLAN, project_id: P, scene_id: S1, status: "approved", review_state: "current", review_reason: null, approved_version_id: PV1 }],
       shot_plan_versions: [{ id: PV1, project_id: P, plan_id: PLAN, version_number: 1, scene_dna_version_id: DV, shots: [shotSnap] }],
       scene_dna_versions: [{ id: DV, version_number: 1, content: { editable: { purpose: "Commit", mood: ["tense"], lighting_intent: "Sodium lamp", wardrobe: { [T]: LOOK } } } }],
       scripts: [{ project_id: P, approved_version_id: null }],
-      characters: [{ id: T, project_id: P, name: "Tunde Okafor", age: "35", description: "Journalist" }],
+      characters: [{ id: T, project_id: P, name: "Tunde Okafor", age: "35", description: "Journalist", accent: "Nigerian English (Igbo)", physicality: "Shoulders hunched; checks his watch" }],
       wardrobe_looks: [{ id: LOOK, project_id: P, character_id: T, name: "Field outfit", description: "Khaki jacket" }],
-      dialogue_lines: [{ id: L1, project_id: P, speaker_name: "TUNDE", text: "You came.", emotion: "relief" }],
+      dialogue_lines: [{ id: L1, project_id: P, speaker_name: "TUNDE", text: "You came.", emotion: "relief", character_id: T, element_index: 2 }],
       generation_packages: [],
       takes: [],
     };
@@ -142,7 +144,11 @@ describe("Visual Generation routes", () => {
     expect(fn).toBe("create_generation_package");
     expect(args).toMatchObject({ p_shot_id: SHOT, p_shot_plan_version_id: PV1, p_scene_id: S1 });
     expect(args.p_content.prompt).toContain("Tunde Okafor (35) — Journalist wearing Field outfit: Khaki jacket");
-    expect(args.p_content.prompt).toContain('TUNDE (relief) says "You came."');
+    expect(args.p_content.prompt).toContain("Performance: TUNDE (relief) mid-line, speaking.");
+    expect(args.p_content.video_prompt).toContain('TUNDE says "You came." (relief), Nigerian English (Igbo) accent');
+    expect(args.p_content.video_prompt).toContain("From the script: Tunde waits under the lamp, collar up.");
+    expect(args.p_content.video_prompt).toContain("How they move: Tunde Okafor: Shoulders hunched; checks his watch.");
+    expect(args.p_content.video_prompt).toContain("lips, jaw and face move naturally in sync with every word");
     expect(args.p_content.provenance).toMatchObject({ shot_plan_version_id: PV1, scene_dna_version_id: DV, settings_version: 2 });
     expect(args.p_content.prompt).toContain("Look: Desaturated, handheld.");
     expect(args.p_content.prompt).toContain("Exterior: Lagos Harbour, night — Rusted cranes over black water.");

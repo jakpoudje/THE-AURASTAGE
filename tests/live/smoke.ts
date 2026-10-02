@@ -332,6 +332,28 @@ await check("visual: honest provider status; compile a prompt from the approved 
   assert(/Cinematic film still/.test(c.prompt), "no prompt");
   return ws.providers.map((p: any) => `${p.id}:${p.state}`).join(", ");
 });
+await check("realism R1: physicality saves (≤2000) and reaches the shot; the package carries a timed video prompt and ranked blocks; the still never quotes dialogue", async () => {
+  const amara = async () => (await api("GET", `/api/projects/${projectId}/characters`)).characters.find((c: any) => c.id === amaraId);
+  const before = (await amara()).physicality ?? null;
+  await api("PATCH", `/api/characters/${amaraId}`, { physicality: "x".repeat(2001) }, [400]);
+  await api("PATCH", `/api/characters/${amaraId}`, { physicality: "Taps her pen on the desk when she is thinking." });
+  try {
+    assert((await amara()).physicality === "Taps her pen on the desk when she is thinking.", "physicality not saved");
+    const ws = await api("GET", `/api/projects/${projectId}/visual`);
+    const all = ws.scenes.flatMap((sc: any) => sc.shots.map((x: any) => x.shot));
+    const shot = all.find((x: any) => (x.character_ids ?? []).includes(amaraId)) ?? all[0];
+    const r = await api("POST", `/api/projects/${projectId}/visual/shots/${shot.id}/compile`, { aspect_ratio: "16:9" });
+    const c = (await api("GET", `/api/projects/${projectId}/visual`)).scenes.flatMap((sc: any) => sc.shots).find((x: any) => x.package?.id === r.package_id)?.package?.content ?? {};
+    assert(/-second cinematic video shot/.test(c.video_prompt ?? ""), "no timed video prompt: " + String(c.video_prompt).slice(0, 120));
+    assert(Array.isArray(c.blocks) && c.blocks.length >= 4 && c.blocks.some((b: any) => b.id === "header" && b.rank === 1), "ranked blocks missing");
+    assert(!/says "/.test(c.prompt), "still prompt quotes dialogue");
+    const withAmara = (shot.character_ids ?? []).includes(amaraId);
+    if (withAmara) assert(/Taps her pen/.test(c.prompt + c.video_prompt), "physicality not in the shot's prompts");
+    return `${c.blocks.length} blocks; video prompt ${c.video_prompt.length} chars${withAmara ? "; Amara's physicality in the prompt" : " (no shot with Amara)"}`;
+  } finally {
+    await api("PATCH", `/api/characters/${amaraId}`, { physicality: before });
+  }
+});
 await check("visual: the worker generates a sketch take in the background; media is private + signed", async () => {
   let ws = await api("GET", `/api/projects/${projectId}/visual`);
   const pkgId = ws.scenes[0].shots[0].package.id;

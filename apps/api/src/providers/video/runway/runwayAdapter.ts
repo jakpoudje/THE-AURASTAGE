@@ -5,6 +5,7 @@
 import type { GenerateRequest, GenerateResult, ProviderAdapter, ReferenceImage } from "../../types";
 import { ProviderError } from "../../types";
 import { describeReferences } from "../../references";
+import { avoid, framedPrompt } from "../../promptFor";
 
 const BASE = "https://api.dev.runwayml.com/v1";
 const VERSION = "2024-11-06";
@@ -33,8 +34,7 @@ export function runwayPrompt(req: GenerateRequest) {
   const refs = req.capability === "image" ? (req.reference_images ?? []) : [];
   const tags = runwayTags(refs);
   const lead = describeReferences(refs, (i) => `@${tags[i]}`);
-  const text = `${lead}${p.prompt} Avoid: ${p.negative.join("; ")}.`;
-  return text.length > 1000 ? text.slice(0, 997) + "…" : text;
+  return framedPrompt(p, req.capability, 1000, lead, avoid(p));
 }
 
 export const runwayAdapter: ProviderAdapter = {

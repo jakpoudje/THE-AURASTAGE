@@ -3,6 +3,7 @@
 // Auto-compiled prompt with evidence badges (location applied, wardrobe applied…) and the reference images a provider
 // conditions on (characters in frame, the scene's location at its time of day, its props).
 import { useReferenceImage } from "@/modules/casting-characters/components/LookPanel";
+import { useState } from "react";
 import type { VisualShot } from "../types";
 
 function RefThumb({ assetId }: { assetId: string }) {
@@ -13,6 +14,10 @@ function RefThumb({ assetId }: { assetId: string }) {
 
 export function PromptPanel({ s, usable, busy, onCompile }: { s: VisualShot; usable: boolean; busy: boolean; onCompile: () => void }) {
   const pkg = s.package;
+  // 2.0 packages carry a separate moving-picture prompt (timing, dialogue for lip sync, how people move).
+  const [mode, setMode] = useState<"image" | "video">("image");
+  const videoPrompt = pkg?.content.video_prompt;
+  const shown = mode === "video" && videoPrompt ? videoPrompt : pkg?.content.prompt;
   return (
     <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
       <div className="flex items-center gap-3">
@@ -29,8 +34,21 @@ export function PromptPanel({ s, usable, busy, onCompile }: { s: VisualShot; usa
       )}
       {pkg ? (
         <>
-          <p className="mt-3 whitespace-pre-wrap rounded bg-black/40 p-3 font-mono text-xs leading-relaxed text-white/80" aria-label="Compiled prompt">
-            {pkg.content.prompt}
+          {videoPrompt && (
+            <div className="mt-3 flex gap-1.5" role="tablist" aria-label="Prompt for">
+              {(["image", "video"] as const).map((m) => (
+                <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
+                  className={`rounded-full border px-2.5 py-0.5 text-[11px] ${mode === m ? "border-aura-gold text-aura-gold" : "border-aura-border text-white/50"}`}>
+                  {m === "image" ? "Still image" : "Video"}
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="mt-3 whitespace-pre-wrap rounded bg-black/40 p-3 font-mono text-xs leading-relaxed text-white/80" aria-label={mode === "video" && videoPrompt ? "Compiled video prompt" : "Compiled prompt"}>
+            {shown}
+          </p>
+          <p className="mt-1 text-[11px] text-white/35">
+            Full prompt, {(shown ?? "").length.toLocaleString()} characters. Providers with a shorter limit get a shortened version that keeps the camera, action, people and dialogue first.
           </p>
           <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Prompt checks">
             {pkg.content.checks.map((c) => (

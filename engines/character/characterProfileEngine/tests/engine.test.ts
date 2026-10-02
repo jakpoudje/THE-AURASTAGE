@@ -49,3 +49,16 @@ describe("characterProfileEngine", () => {
     expect(nameOnly.fields.accent).toBeUndefined();
   });
 });
+
+describe("characterProfileEngine 1.1.0 — physicality & mannerisms (realism R1)", () => {
+  it("quotes only what the script shows them doing with their body; nothing when it shows nothing", () => {
+    const out = characterProfileEngine({
+      character: { name: "Amara Bello" },
+      introduction: "AMARA BELLO (32), wiry, close-cropped hair. She paces when she thinks.",
+      mentions: [{ scene: 2, text: "Amara touches her collar. The rain gets heavier." }, { scene: 3, text: "Amara reads the note." }],
+    });
+    expect(out.fields.physicality).toBe("As the script shows them: She paces when she thinks. Amara touches her collar.");
+    expect(out.evidence.physicality).toBe("2 action line(s) about how they move");
+    expect(characterProfileEngine({ character: { name: "Kemi" }, mentions: [{ scene: 1, text: "Kemi reads the note." }] }).fields.physicality).toBeUndefined();
+  });
+});

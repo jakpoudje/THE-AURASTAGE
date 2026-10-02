@@ -200,6 +200,18 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
     const ref = pickRef("prop", pr.id, ["hero", "three_quarter"]);
     if (ref) references.push({ kind: "prop", object_id: pr.id, name: pr.name, view: String(ref.view_key), asset_id: ref.asset_id });
   }
+  // 2.0.0 (realism R1): the script's own action around this shot, screen direction kept from the master, and the
+  // shots before and after it.
+  const elements = await repo.getScriptElements(db, (scene.source_version_id as string | null) ?? scriptVersionId);
+  const lineIdx = lines.filter((l) => (shot.dialogue_line_ids ?? []).includes(l.id)).map((l) => Number(l.element_index)).filter((n) => Number.isFinite(n));
+  const script_action = elements.length && scene.element_start !== null && scene.element_start !== undefined
+    ? promptCompiler.scriptActionForShot({ elements, scene: { start: Number(scene.element_start), end: Number(scene.element_end) }, lineElementIndexes: lineIdx, purpose: (shot.purpose as string) ?? null })
+    : [];
+  const planShots = (version.shots as Row[]).map((x) => ({ id: x.id, ordinal: Number(x.ordinal), purpose: x.purpose ?? null, size: x.size ?? null, description: x.description ?? null, character_ids: x.character_ids ?? [], dialogue_line_ids: x.dialogue_line_ids ?? [] }));
+  const screen = promptCompiler.screenDirection(planShots);
+  const around = promptCompiler.neighbours(planShots, shotId, promptCompiler.SIZE_WORDS);
+  // The location's sub-area when the scene heading names it ("INT. KUNLE'S HOME - KITCHEN - MORNING").
+  const area = loc ? (((loc.areas as string[] | null) ?? []).find((a) => new RegExp(`\\b${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(String(scene.heading))) ?? null) : null;
   const lookText = (charId: string) => {
     const l = looks.find((x) => x.id === wardrobe[charId]);
     return l ? [l.name, l.description].filter(Boolean).join(": ") : null;
@@ -207,28 +219,37 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
   const { package: content, engine_version } = promptCompilerEngine({
     project: {
       title: project!.title, genre: project!.genre ?? null, tone: project!.tone ?? null, setting: project!.setting ?? null, time_period: project!.time_period ?? null,
-      look: norm(current.settings.style.look),
+      look: norm(current.settings.style.look), subgenre: project!.subgenre ?? null,
     },
     scene: {
       number: scene.number, heading: scene.heading, location: scene.location, int_ext: scene.int_ext, time_of_day: scene.time_of_day,
       purpose: editable.purpose ?? null, mood: editable.mood ?? [], weather: editable.weather ?? null, atmosphere: editable.atmosphere ?? null,
       lighting_intent: editable.lighting_intent ?? null,
+      stakes: editable.stakes ?? null, story_time: editable.story_time ?? null, continuity_notes: editable.continuity_notes ?? null,
+      silent: !!editable.silent_scene, area,
     },
+    script_action,
+    continuity: { screen: Object.fromEntries(Object.entries(screen).filter(([id]) => (shot.character_ids ?? []).includes(id))), previous: around.previous, next: around.next },
     shot: {
       id: shot.id, size: shot.size, angle: shot.angle, movement: shot.movement, focus: shot.focus, lens_mm: shot.lens_mm,
       duration_seconds: Number(shot.duration_seconds), description: shot.description, composition: shot.composition ?? null,
       lighting: shot.lighting ?? null, character_ids: shot.character_ids ?? [], dialogue_line_ids: shot.dialogue_line_ids ?? [],
+      support: shot.support ?? null, transition_in: shot.transition_in ?? null, purpose: shot.purpose ?? null,
     },
     characters: chars.filter((c) => (shot.character_ids ?? []).includes(c.id)).map((c) => {
       const st = ageOf(c.id);
       return {
         id: c.id, name: c.name, age: st ? st.age : c.age ?? null, description: c.description ?? null, wardrobe: lookText(c.id), gender: c.gender ?? null,
+        nationality: c.nationality ?? null, accent: c.accent ?? null, languages: c.languages ?? null, physicality: c.physicality ?? null, personality: c.personality ?? null,
         age_state: st ? { id: st.id, label: st.label, description: st.description ?? null } : null,
       };
     }),
-    dialogue: lines.filter((l) => (shot.dialogue_line_ids ?? []).includes(l.id)).map((l) => ({ id: l.id, speaker: l.speaker_name, text: l.text, emotion: l.emotion ?? null })),
+    dialogue: lines.filter((l) => (shot.dialogue_line_ids ?? []).includes(l.id)).map((l) => ({ id: l.id, speaker: l.speaker_name, text: l.text, emotion: l.emotion ?? null,
+      character_id: l.character_id ?? null, intensity: l.intensity ?? null, intention: l.intention ?? null, subtext: l.subtext ?? null, parenthetical: l.parenthetical ?? null,
+      estimated_seconds: l.estimated_seconds === null || l.estimated_seconds === undefined ? null : Number(l.estimated_seconds) })),
     location: loc ? { id: loc.id, name: loc.name, description: loc.description ?? "", revision: Number(loc.revision) } : null,
-    props: props.map((x) => ({ id: x.id, name: x.name, description: x.description ?? "", category: x.category ?? "prop", revision: Number(x.revision), state: propState.get(x.id) ?? null })),
+    props: props.map((x) => ({ id: x.id, name: x.name, description: x.description ?? "", category: x.category ?? "prop", revision: Number(x.revision), state: propState.get(x.id) ?? null,
+      descriptors: Array.isArray(x.descriptors) ? (x.descriptors as unknown[]).map(String).slice(0, 8) : [] })),
     references,
     aspect_ratio,
     provenance: {

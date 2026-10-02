@@ -11,6 +11,7 @@ import {
   sceneBoundaryEngine,
   storyAccentEngine,
   characterDuplicateEngine,
+  characterProfileEngine,
   relationshipMapEngine,
   pronunciationEngine,
   type Resolution,
@@ -85,10 +86,25 @@ function accentSuggestions(chars: Record<string, any>[], apps: Record<string, an
 }
 
 const blank = (v: unknown) => v === null || v === undefined || String(v).trim() === "";
+const escRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The approved script's action lines that name a character (by full name, or a name part written as a name), with scene numbers. */
+function actionMentions(elements: { type: string; text: string }[], name: string): { scene: number; text: string }[] {
+  const words = name.split(/\s+/).filter((w) => w.length >= 3 && !/^(the|and|mr|mrs|ms|dr|old|young|man|woman|boy|girl)$/i.test(w));
+  const res = [new RegExp(`\\b${escRe(name)}\\b`, "i"), ...words.map((w) => new RegExp(`\\b(?:${escRe(w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}|${escRe(w.toUpperCase())})\\b`))];
+  const out: { scene: number; text: string }[] = [];
+  let scene = 0;
+  for (const e of elements) {
+    if (e.type === "scene_heading") { scene++; continue; }
+    if (e.type === "action" && res.some((re) => re.test(e.text))) out.push({ scene, text: e.text.slice(0, 2000) });
+    if (out.length >= 60) break;
+  }
+  return out;
+}
 
 /**
  * One click for the whole cast (owner request 2026-09-30): fills only EMPTY profile fields from what the platform already
- * knows without AI — the age and introduction the script gives, and the accent and languages the story suggests. Written
+ * knows without AI — the age, introduction and physicality the script gives, and the accent and languages the story suggests. Written
  * fields are never changed. Each character is saved through the same gated save as a manual edit.
  */
 export async function applySuggestedProfiles(db: SupabaseClient, projectId: string) {
@@ -105,6 +121,14 @@ export async function applySuggestedProfiles(db: SupabaseClient, projectId: stri
     const cand = fromScript.get(c.id as string);
     if (blank(c.age) && cand?.age) patch.age = String(cand.age).slice(0, 40);
     if (blank(c.description) && cand?.introduction) patch.description = String(cand.introduction).slice(0, 2000);
+    // How they move, as the script's own action lines show it (realism R1) — only sentences with movement words.
+    if (blank(c.physicality) && resolved) {
+      const phys = characterProfileEngine({
+        character: { name: String(c.name).slice(0, 120) }, introduction: cand?.introduction ? String(cand.introduction).slice(0, 4000) : null,
+        mentions: actionMentions(resolved.version.elements as { type: string; text: string }[], String(c.name)),
+      }).fields.physicality;
+      if (phys) patch.physicality = phys;
+    }
     const sug = accents[c.id as string]?.suggestion;
     if (sug && blank(c.accent)) patch.accent = sug.accent.slice(0, 120);
     if (sug && blank(c.languages) && sug.languages.length) patch.languages = sug.languages.join(", ").slice(0, 200);

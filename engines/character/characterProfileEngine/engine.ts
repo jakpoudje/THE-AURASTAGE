@@ -12,6 +12,8 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const quote = (s: string, n = 90) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t; };
 const list = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 const clip = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
+/** Words that describe how a body moves or a habit of the hands, face or voice. */
+const MOVE_RE = /\b(walks?|walking|limps?|limping|paces|pacing|strides?|shuffles?|leans?|slumps?|hunche[sd]|hunched|straightens|fidget\w*|taps?|tapping|drums? (?:his|her|their) fingers|rubs?|scratch\w*|nods?|shrugs?|cross(?:es)? (?:his|her|their) arms|folds? (?:his|her|their) arms|glances?|stares?|squints?|clench\w*|grips?|clutch\w*|wipes?|adjusts?|fiddles?|bites? (?:his|her|their) (?:lip|nails)|sighs?|tilts?|gestur\w*|points?|waves?|chews?|hums?|whistles?|sways?|hobbles?|struts?|creeps?|tiptoes?|swagger\w*|lumbers?|darts?|freezes|flinch\w*|trembl\w*|shak(?:es|ing)|smok(?:es|ing)|touches (?:his|her|their))\b/i;
 const article = (w: string) => (/^[aeiou]/i.test(w) ? "an" : "a");
 
 const TRAITS: Record<E, [string, string]> = {
@@ -77,6 +79,15 @@ export function characterProfileEngine(raw: unknown): CharacterProfileOutput {
   if (occ && !character.occupation) { f.occupation = cap(occ).slice(0, 150); ev.occupation = titled ? "their title in the script" : "the action about them"; }
   const described = intro ?? mentions.slice(0, 3).map((m) => m.text).join(" ");
   if (described) { f.description = clip(described, 2000); ev.description = intro ? "the script's introduction" : "the action lines that name them"; }
+  // Physicality & mannerisms (1.1.0): only what the script shows them doing with their body — the sentences about
+  // them that use a movement or gesture word — quoted, never invented.
+  const moves = [...(intro ? [intro] : []), ...mentions.map((m) => m.text)]
+    .flatMap((t) => t.split(/(?<=[.!?])\s+/))
+    .filter((t) => MOVE_RE.test(t))
+    .map((t) => t.replace(/\s+/g, " ").trim())
+    .filter((t, i, a) => a.indexOf(t) === i)
+    .slice(0, 4);
+  if (moves.length) { f.physicality = clip(`As the script shows them: ${moves.join(" ")}`, 2000); ev.physicality = `${moves.length} action line(s) about how they move`; }
   if (accent) {
     // The nationality the story's accent names ("Lagos Nigerian English" → Nigerian) — from where the story is set.
     const dem = accent.accent.match(/\b(Nigerian|Ghanaian|Kenyan|South African|Ugandan|Tanzanian|Rwandan|Ethiopian|Cameroonian|Senegalese|Ivorian|Sierra Leonean|Liberian|Zimbabwean|Zambian|Egyptian|Moroccan|British|Scottish|Welsh|Irish|American|Canadian|Jamaican|Trinidadian|Australian|New Zealand|Indian|Pakistani|Bangladeshi|Sri Lankan|Filipino|Singaporean|Malaysian|Chinese|Japanese|Korean|French|German|Spanish|Italian|Portuguese|Brazilian|Mexican|Argentinian|Colombian|Dutch|Swedish|Norwegian|Danish|Polish|Russian|Turkish|Lebanese)\b/)?.[1];

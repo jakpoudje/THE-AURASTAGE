@@ -38,9 +38,9 @@ async function rpc<T = Row>(db: SupabaseClient, fn: string, args: Row): Promise<
 }
 
 export const getProject = (db: SupabaseClient, id: string) =>
-  one(db.from("projects").select("id, title, genre, tone, setting, time_period").eq("id", id).maybeSingle());
+  one(db.from("projects").select("id, title, genre, subgenre, tone, setting, time_period").eq("id", id).maybeSingle());
 export const listScenes = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status").eq("project_id", projectId).order("number", { ascending: true }));
+  rows(db.from("scenes").select("id, number, heading, int_ext, location, time_of_day, status, source_version_id, element_start, element_end").eq("project_id", projectId).order("number", { ascending: true }));
 export const listPlans = (db: SupabaseClient, projectId: string) =>
   rows(db.from("shot_plans").select("id, scene_id, status, review_state, review_reason, approved_version_id").eq("project_id", projectId));
 export const listPlanVersions = (db: SupabaseClient, projectId: string) =>
@@ -49,18 +49,21 @@ export const getDnaVersion = (db: SupabaseClient, id: string) =>
   one(db.from("scene_dna_versions").select("id, version_number, content").eq("id", id).maybeSingle());
 export const getScriptVersionId = async (db: SupabaseClient, projectId: string) =>
   ((await one(db.from("scripts").select("approved_version_id").eq("project_id", projectId).maybeSingle()))?.approved_version_id as string | undefined) ?? null;
+/** The script elements of one version (Scriptwriter, read-only) — the action lines around each shot. */
+export const getScriptElements = async (db: SupabaseClient, versionId: string | null) =>
+  versionId ? (((await one(db.from("script_versions").select("elements").eq("id", versionId).maybeSingle()))?.elements as { index: number; type: string; text: string }[] | undefined) ?? []) : [];
 export const listCharacters = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("characters").select("id, name, age, gender, description, merged_into").eq("project_id", projectId));
+  rows(db.from("characters").select("id, name, age, gender, description, merged_into, nationality, accent, languages, physicality, personality").eq("project_id", projectId));
 export const listLooks = (db: SupabaseClient, projectId: string) =>
   rows(db.from("wardrobe_looks").select("id, character_id, name, description").eq("project_id", projectId));
 export const listAgeStates = (db: SupabaseClient, projectId: string) =>
   rows(db.from("character_age_states").select("id, character_id, label, age, description").eq("project_id", projectId));
 export const listLines = (db: SupabaseClient, projectId: string) =>
-  rows(db.from("dialogue_lines").select("id, speaker_name, text, emotion").eq("project_id", projectId));
+  rows(db.from("dialogue_lines").select("id, speaker_name, text, emotion, character_id, intensity, intention, subtext, parenthetical, estimated_seconds, element_index").eq("project_id", projectId));
 // Read-only views of Locations & Props and the reference images (their own domains write them).
 export const listWorldItems = async (db: SupabaseClient, projectId: string) => ({
-  locations: await rows(db.from("locations").select("id, name, description, revision, archived_at").eq("project_id", projectId)),
-  props: await rows(db.from("props").select("id, name, description, category, revision, archived_at").eq("project_id", projectId)),
+  locations: await rows(db.from("locations").select("id, name, description, revision, archived_at, areas").eq("project_id", projectId)),
+  props: await rows(db.from("props").select("id, name, description, category, revision, archived_at, descriptors").eq("project_id", projectId)),
 });
 export const listSceneAppearances = (db: SupabaseClient, sceneId: string) =>
   rows(db.from("world_appearances").select("object_type, object_id").eq("scene_id", sceneId));

@@ -4,6 +4,7 @@
 import type { GenerateRequest, GenerateResult, ProviderAdapter } from "../../types";
 import { ProviderError } from "../../types";
 import { dataUri, download, jsonOrThrow, poll } from "../../http";
+import { promptFor } from "../../promptFor";
 
 const DEFAULT_BASE = "https://api.minimax.io";
 type Base = { base_resp?: { status_code?: number; status_msg?: string } };
@@ -30,7 +31,7 @@ export const minimaxAdapter: ProviderAdapter = {
     const start = await f(`${base}/v1/video_generation`, {
       method: "POST", headers, signal: opts.signal,
       body: JSON.stringify({
-        model: req.model, prompt: req.package.prompt.slice(0, 2000), prompt_optimizer: false,
+        model: req.model, prompt: promptFor(req.package, req.capability, 2000), prompt_optimizer: false,
         ...(req.model === "MiniMax-Hailuo-02" ? { duration: (req.duration_seconds ?? 6) > 6 ? 10 : 6, resolution: "768P" } : {}),
         ...(req.source_image ? { first_frame_image: dataUri(req.source_image) } : {}),
       }),

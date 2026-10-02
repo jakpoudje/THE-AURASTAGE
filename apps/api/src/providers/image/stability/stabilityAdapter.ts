@@ -4,6 +4,7 @@
 import type { GenerateRequest, GenerateResult, ProviderAdapter, StillRequest } from "../../types";
 import { ProviderError } from "../../types";
 import type { CallOpts } from "../../http";
+import { promptFor } from "../../promptFor";
 
 const BASE = "https://api.stability.ai/v2beta/stable-image/generate";
 // Stability's aspect ratios; the nearest one is used for the film ratios it doesn't have.
@@ -50,7 +51,7 @@ export const stabilityAdapter: ProviderAdapter = {
   isConfigured: (env) => !!env.STABILITY_API_KEY,
   async generate(req: GenerateRequest, env, opts = {}) {
     if (req.capability !== "image") throw new ProviderError("Stability AI makes still frames here; choose a video provider for motion.");
-    return generate(req.model, req.package.prompt, req.package.negative, req.aspect_ratio, req.seed, env, opts);
+    return generate(req.model, promptFor(req.package, "image", 10000), req.package.negative, req.aspect_ratio, req.seed, env, opts);
   },
   async generateStill(req: StillRequest, env, opts = {}) {
     return generate(req.model, req.prompt, req.negative, req.aspect_ratio, req.seed, env, opts);

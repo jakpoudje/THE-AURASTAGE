@@ -44,7 +44,7 @@ const ROLES: CharacterRole[] = ["lead", "supporting", "minor", "extra"];
 import { pronunciationEngine } from "@aurastage/engines";
 import { PROFILE_FIELDS, STORY_FIELDS, type ProfileField as Field } from "../state/completeness";
 export const LABELS: Record<Field, string> = {
-  name: "Name", age: "Age", gender: "Gender", nationality: "Nationality", accent: "Accent", languages: "Languages", occupation: "Occupation", description: "Description",
+  name: "Name", age: "Age", gender: "Gender", nationality: "Nationality", accent: "Accent", languages: "Languages", occupation: "Occupation", description: "Description", physicality: "Physicality & mannerisms",
   personality: "Personality", backstory: "Background", motivation: "Motivation", fears: "Fears", strengths: "Strengths",
   weaknesses: "Weaknesses", arc: "Character arc (by act)",
 };
@@ -263,6 +263,8 @@ export function CharacterProfile({
               )}
             </div>
             {field("description", true)}
+            {field("physicality", true)}
+            <p className="-mt-2 text-[11px] text-white/40">How they move and carry themselves — posture, walk, gestures, habits (“rubs his thumb over his ring when he lies”). Used in every shot they're in, so they move like the same person throughout.</p>
             <div data-testid="profile-completeness" className="flex flex-wrap items-center gap-2 rounded-md border border-aura-border p-3 text-xs">
               {empty.length === 0 ? <span className="text-emerald-300">Every field is filled in.</span> : (
                 <>

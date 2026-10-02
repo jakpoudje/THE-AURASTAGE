@@ -75,6 +75,14 @@ async function api(method, path, body) {
     if (!/Cinematic film still/.test(prompt)) throw new Error("no prompt: " + prompt);
     await page.getByRole("list", { name: "Prompt checks" }).getByText("Location applied").waitFor();
   });
+  await step("realism R1: the separate video prompt says how long the shot runs; the still prompt never quotes dialogue", async () => {
+    await page.getByRole("tab", { name: "Video" }).click();
+    const video = await page.getByLabel("Compiled video prompt").innerText();
+    if (!/-second cinematic video shot/.test(video)) throw new Error("no video prompt: " + video);
+    await page.getByRole("tab", { name: "Still image" }).click();
+    const still = await page.getByLabel("Compiled prompt").innerText();
+    if (/says "/.test(still)) throw new Error("still prompt quotes dialogue: " + still);
+  });
   await step("choosing an unconnected provider explains why generation is off", async () => {
     await page.getByLabel("Provider", { exact: true }).selectOption("runway");
     await page.getByText("Runway isn't connected yet — its API key hasn't been added.").waitFor();

@@ -5,6 +5,7 @@ import type { GenerateRequest, GenerateResult, ProviderAdapter, ReferenceImage, 
 import { ProviderError } from "../../types";
 import { b64, download, jsonOrThrow, poll, type CallOpts } from "../../http";
 import { describeReferences } from "../../references";
+import { avoid, framedPrompt } from "../../promptFor";
 
 const BASE = "https://api.bfl.ai/v1";
 const SIZE: Record<string, [number, number]> = { "16:9": [1408, 800], "9:16": [800, 1408], "1:1": [1024, 1024], "2.39:1": [1440, 608], "4:3": [1184, 896] };
@@ -51,7 +52,7 @@ export const bflAdapter: ProviderAdapter = {
     if (req.capability !== "image") throw new ProviderError("FLUX makes still frames; choose a video provider for motion.");
     const refs = req.model === "flux-kontext-pro" ? (req.reference_images ?? []).slice(0, 1) : [];
     const lead = refs.length ? describeReferences(refs, () => "the input image") : "";
-    return run(req.model, `${lead}${req.package.prompt} Avoid: ${req.package.negative.join("; ")}.`, req.aspect_ratio, req.seed, refs, env, opts);
+    return run(req.model, framedPrompt(req.package, "image", 8000, lead, avoid(req.package)), req.aspect_ratio, req.seed, refs, env, opts);
   },
   async generateStill(req: StillRequest, env, opts = {}) {
     return run(req.model === "flux-kontext-pro" ? "flux-pro-1.1" : req.model, `${req.prompt} Avoid: ${req.negative.join("; ")}.`, req.aspect_ratio, req.seed, [], env, opts);

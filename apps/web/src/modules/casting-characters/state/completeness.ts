@@ -2,7 +2,7 @@
 // continue to the next logical step"). Pure; shared by the profile, the whole-cast bar and "Save & next".
 import type { Character } from "@aurastage/contracts";
 
-export const PROFILE_FIELDS = ["name", "age", "gender", "nationality", "accent", "languages", "occupation", "description"] as const;
+export const PROFILE_FIELDS = ["name", "age", "gender", "nationality", "accent", "languages", "occupation", "description", "physicality"] as const;
 export const STORY_FIELDS = ["personality", "backstory", "motivation", "fears", "strengths", "weaknesses", "arc"] as const;
 export type ProfileField = (typeof PROFILE_FIELDS)[number] | (typeof STORY_FIELDS)[number];
 

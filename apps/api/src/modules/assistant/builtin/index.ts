@@ -20,7 +20,7 @@ type Row = Record<string, any>;
 type Call = Plan["calls"][number];
 const blank = (v: unknown) => v === null || v === undefined || (typeof v === "string" && v.trim() === "") || (Array.isArray(v) && v.length === 0);
 const call = (tool: string, input: unknown, reason: string): Call => ({ tool, input_json: JSON.stringify(input), reason: reason.slice(0, 400) });
-const PROFILE_FIELDS = ["age", "gender", "nationality", "occupation", "description", "accent", "languages", "personality", "backstory", "motivation", "fears", "strengths", "weaknesses", "arc"] as const;
+const PROFILE_FIELDS = ["age", "gender", "nationality", "occupation", "description", "physicality", "accent", "languages", "personality", "backstory", "motivation", "fears", "strengths", "weaknesses", "arc"] as const;
 const OVERVIEW = ["purpose", "stakes", "story_time", "mood"] as const;
 const VISUAL = ["weather", "atmosphere", "lighting_intent", "sound_intent", "camera_energy"] as const;
 const CONTINUITY = ["continuity_notes"] as const;
