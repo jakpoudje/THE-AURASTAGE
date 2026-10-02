@@ -18,6 +18,9 @@ http.createServer((req, res) => {
     if (req.method === "OPTIONS") return res.end();
     const send = (code, obj) => { res.statusCode = code; res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(obj)); };
     const b = body ? JSON.parse(body) : {}; const u = req.url.split("?")[0];
+    // The mock calling its own endpoints (production runs reuse the batch endpoints, as the real service reuses its functions).
+    const self = (path, method = "POST", bodyIn = {}) => fetch(`http://localhost:3911${path}`, { method, headers: { "Content-Type": "application/json", Authorization: req.headers.authorization || "" }, body: method === "GET" ? undefined : JSON.stringify(bodyIn) })
+      .then((r) => r.json().then((j) => ({ status: r.status, j }), () => ({ status: r.status, j: {} })));
     console.log(req.method, u);
     // ---- Project Settings (mirrors apps/api/src/modules/settings + migration 0023) ----
     const cc0 = require(require("path").resolve(__dirname, "../../../packages/contracts/dist/index.js"));
@@ -871,6 +874,24 @@ http.createServer((req, res) => {
         if (!t) { waiting++; continue; } t.approval = "approved"; approved++; }
       return send(200, { approved, remaining: 0, waiting, total: vUsable().length });
     }
+    // Where every scene's pictures stand (mirrors generation.progress.ts — counted from the records).
+    if (u === `/api/projects/${P}/visual/progress` && req.method === "GET") {
+      runWorker();
+      const rows = scenes.map((sc) => {
+        const xs = vUsable().filter((x) => x.plan.scene_id === sc.id);
+        const base = { scene_id: sc.id, number: sc.number, heading: sc.heading || "" };
+        if (!xs.length) return { ...base, stage: "needs_plan", label: "Needs an approved shot plan", pct: 0, counts: { shots: 0, prompts: 0, making: 0, made: 0, approved: 0, failed: 0 } };
+        const k = { shots: xs.length, prompts: 0, making: 0, made: 0, approved: 0, failed: 0 };
+        for (const x of xs) { const st = takes.filter((t) => t.shot_id === x.shot.id); if (vPkg(x)) k.prompts++; if (st.some((t) => t.approval === "approved")) k.approved++;
+          if (st.some((t) => t.status === "queued" || t.status === "running")) k.making++; if (st.some((t) => t.status === "succeeded")) k.made++; }
+        const stage = k.approved === k.shots ? ["approved", "Every shot has an approved take"] : k.making ? ["making", `Making ${k.making} take${k.making === 1 ? "" : "s"}`]
+          : k.prompts < k.shots ? ["compiling", `${k.shots - k.prompts} prompts to compile`] : k.made > k.approved ? ["to_approve", `${k.made - k.approved} takes to approve`] : ["ready_to_make", `${k.shots - k.made} shots ready for a take`];
+        return { ...base, stage: stage[0], label: stage[1], pct: Math.round((100 * k.approved) / k.shots), counts: k };
+      });
+      const sum = (f) => rows.reduce((n, x) => n + f(x), 0);
+      return send(200, { scenes: rows, totals: { scenes: rows.length, planned: rows.filter((x) => x.stage !== "needs_plan").length, shots: sum((x) => x.counts.shots), prompts: sum((x) => x.counts.prompts), making: sum((x) => x.counts.making), made: sum((x) => x.counts.made), approved: sum((x) => x.counts.approved), failed: 0 },
+        generator: { queued: takes.filter((t) => t.status === "queued").length, running: takes.filter((t) => t.status === "running").length, run_queue: 0 }, at: now() });
+    }
     if ((m = u.match(/^\/api\/visual\/packages\/([^/]+)\/takes$/))) {
       const pkg = packages.find((x) => x.id === m[1]); const a = gw.getAdapter(b.provider);
       if (!a.isConfigured({})) return send(412, { error: { code: "AURA-GEN-412", message: `${a.name} isn't connected yet — its API key hasn't been added to the server.` } });
@@ -983,6 +1004,76 @@ http.createServer((req, res) => {
         else if (agens.some((x) => x.clip_id === c.id && (x.status === "queued" || x.status === "running"))) still++; else none++;
       }
       return send(200, { placed, still_making: still, not_generated: none });
+    }
+    if (u === `/api/projects/${P}/audio/spot-all` && req.method === "POST") {
+      return (async () => { const spotted = [], waiting = [];
+        for (const sc of scenes) { if (asessions.some((x) => x.scene_id === sc.id)) continue; const pl = plans.find((x) => x.scene_id === sc.id);
+          if (!pl || pl.status !== "approved" || pl.review_state !== "current") { waiting.push(sc.number); continue; }
+          const r = await self(`/api/projects/${P}/audio/scenes/${sc.id}/spot`); if (r.status === 200) spotted.push(sc.number); }
+        send(200, { spotted, waiting, already: asessions.length - spotted.length, remaining: 0 }); })();
+    }
+    // Where every scene's sound stands (mirrors audio.progress.ts — counted from the records).
+    if (u === `/api/projects/${P}/audio/progress` && req.method === "GET") {
+      agens.forEach(agenWork);
+      const rows = scenes.map((sc) => {
+        const base = { scene_id: sc.id, number: sc.number, heading: sc.heading || "" }; const s = asessions.find((x) => x.scene_id === sc.id);
+        const zero = { total: 0, placed: 0, made: 0, making: 0, failed: 0, waiting: 0, muted: 0 };
+        if (!s) { const pl = plans.find((x) => x.scene_id === sc.id); const ok = pl && pl.status === "approved" && pl.review_state === "current";
+          return { ...base, stage: ok ? "ready_to_spot" : "needs_plan", label: ok ? "Ready to spot" : "Needs an approved shot plan", pct: 0, counts: zero }; }
+        const mine = aclips.filter((c) => c.session_id === s.id); const k = { ...zero, total: mine.length };
+        for (const c of mine) { if (c.muted) k.muted++; if (c.kind === "asset" && c.asset_id) { k.placed++; continue; } const g = agens.find((x) => x.clip_id === c.id);
+          if (!g) k.waiting++; else if (g.status === "queued" || g.status === "running") k.making++; else if (g.status === "succeeded") k.made++; else if (g.status === "failed") k.failed++; else k.waiting++; }
+        const approved = s.status === "approved" && s.review_state === "current";
+        const st = approved ? ["approved", "Mix approved"] : k.making ? ["making", `Making ${k.making} sounds`] : k.made ? ["placing", `${k.made} made, ready to place`] : !k.total ? ["nothing_planned", "Spotted — nothing planned"] : k.placed === k.total ? ["ready_to_mix", "Every sound in place — ready to mix"] : ["waiting", `${k.waiting + k.failed} planned sounds still to make`];
+        return { ...base, stage: st[0], label: st[1], pct: approved ? 100 : k.total ? Math.round((100 * k.placed) / k.total) : 0, counts: k };
+      });
+      const sum = (f) => rows.reduce((n, x) => n + f(x), 0);
+      return send(200, { scenes: rows, totals: { scenes: rows.length, spotted: rows.filter((x) => !["needs_plan", "ready_to_spot"].includes(x.stage)).length, approved: rows.filter((x) => x.stage === "approved").length,
+        clips: sum((x) => x.counts.total), placed: sum((x) => x.counts.placed), made: sum((x) => x.counts.made), making: sum((x) => x.counts.making), failed: sum((x) => x.counts.failed), waiting: sum((x) => x.counts.waiting) },
+        generator: { queued: agens.filter((g) => g.status === "queued").length, running: agens.filter((g) => g.status === "running").length, run_queue: 0 }, at: now() });
+    }
+    // ---- Production runs (mirrors apps/api/src/modules/runs + migration 0056). Each round calls this mock's own batch
+    // endpoints, the way the real service calls the batch functions; mock batches finish in one round. ----
+    const RUNS = globalThis.__runs || (globalThis.__runs = []);
+    const activeRun = (area) => RUNS.find((r) => r.area === area && (r.status === "running" || r.status === "paused")) || null;
+    if (u === `/api/projects/${P}/runs` && req.method === "GET") return send(200, { runs: [...RUNS].reverse().slice(0, 8), active: { audio: activeRun("audio"), visual: activeRun("visual") } });
+    if (u === `/api/projects/${P}/runs` && req.method === "POST") {
+      const p = cc0.StartRunSchema.safeParse(b); if (!p.success) return send(400, { error: { code: "AURA-RUN-400", message: "Unknown kind of run" } });
+      const area = p.data.kind.split(".")[0]; const cur = activeRun(area); if (cur) return send(200, { run: cur, joined: true });
+      const r = { id: crypto.randomUUID(), project_id: P, area, kind: p.data.kind, scene_id: p.data.scene_id || null, status: "running", phase: cc0.RUN_PHASES[p.data.kind][0], message: null,
+        progress: { phases: cc0.RUN_PHASES[p.data.kind], phase_index: 0 }, log: [{ at: now(), text: "Started" }], rounds: 0, started_by_label: "test", started_at: now(), updated_at: now(), finished_at: null, idle: false };
+      RUNS.push(r); return send(200, { run: r, joined: false });
+    }
+    if ((m = u.match(/^\/api\/runs\/([^/]+)\/control$/)) && req.method === "POST") {
+      const r = RUNS.find((x) => x.id === m[1]); if (!r) return send(404, { error: { code: "AURA-RUN-404", message: "Run not found" } });
+      if (b.action === "pause" && r.status === "running") { r.status = "paused"; r.log.push({ at: now(), text: "Paused by test" }); }
+      else if (b.action === "resume" && r.status === "paused") { r.status = "running"; r.log.push({ at: now(), text: "Resumed by test" }); }
+      else if (b.action === "stop" && ["running", "paused"].includes(r.status)) Object.assign(r, { status: "cancelled", finished_at: now(), message: "Stopped by test. Everything already made is kept." });
+      r.updated_at = now(); return send(200, { run: r });
+    }
+    if ((m = u.match(/^\/api\/runs\/([^/]+)\/step$/)) && req.method === "POST") {
+      const r = RUNS.find((x) => x.id === m[1]); if (!r) return send(404, { error: { code: "AURA-RUN-404", message: "Run not found" } });
+      if (r.status !== "running") return send(200, { run: r, driving: false, wait_ms: 0 });
+      return (async () => {
+        const phases = cc0.RUN_PHASES[r.kind], film = r.kind.endsWith(".film"); let next = r.phase, done = false, msg = "", wait = 0;
+        const sc = r.scene_id;
+        if (r.phase === "spot") { const x = (await self(`/api/projects/${P}/audio/spot-all`)).j; msg = `Spotted ${x.spotted.length} scenes.`; if (film) next = "generate"; else done = true; }
+        else if (r.phase === "generate") { const x = (await self(sc ? `/api/projects/${P}/audio/scenes/${sc}/generate-cues` : `/api/projects/${P}/audio/generate-all`)).j;
+          const n = Array.isArray(x.requested) ? x.requested.length : x.requested; msg = `Asked the generator for ${n} sounds.`;
+          if (film) { const pl = (await self(`/api/projects/${P}/audio${sc ? `/scenes/${sc}` : ""}/place-generated`)).j; msg += ` Placed ${pl.placed}.`; next = "finish"; } else done = true; }
+        else if (r.area === "audio" && (r.phase === "place" || r.phase === "finish")) { await self(`/api/projects/${P}/audio`, "GET"); const pl = (await self(`/api/projects/${P}/audio${sc ? `/scenes/${sc}` : ""}/place-generated`)).j;
+          msg = `Placed ${pl.placed} sounds.${pl.still_making ? ` ${pl.still_making} still being made.` : ""}`; done = !(film && pl.still_making); wait = done ? 0 : 800; }
+        else if (r.phase === "compile") { const x = (await self(`/api/projects/${P}/visual/compile-all`)).j; msg = `Compiled ${x.compiled} prompts.`;
+          if (film) { await self(`/api/projects/${P}/visual/sketch-all`); next = "make"; } else done = true; }
+        else if (r.phase === "make" || r.phase === "sketch") { const x = (await self(`/api/projects/${P}/visual/sketch-all`)).j; msg = `Started ${x.requested} free sketches.`;
+          if (film) { await self(`/api/projects/${P}/visual/approve-all`); next = "finish"; } else done = true; }
+        else { await self(`/api/projects/${P}/visual`, "GET"); const x = (await self(`/api/projects/${P}/visual/approve-all`)).j;
+          const making = takes.filter((t) => t.status === "queued" || t.status === "running").length; msg = `Approved ${x.approved} takes.${making ? ` ${making} still being made.` : ""}`; done = !(film && making); wait = done ? 0 : 800; }
+        Object.assign(r, { phase: next, message: done ? `Done. ${msg}` : msg, rounds: r.rounds + 1, updated_at: now(), progress: { phases, phase_index: Math.max(0, phases.indexOf(next)) } });
+        r.log.push({ at: now(), text: done ? `Finished — ${msg}` : msg });
+        if (done) Object.assign(r, { status: "completed", finished_at: now() });
+        send(200, { run: r, driving: true, wait_ms: wait });
+      })();
     }
     const amusic = (scene, pv) => {
       const dv = pv && sdnaVersions.find((x) => x.id === pv.scene_dna_version_id); const ed = (dv && dv.content.editable) || {}; const ids = new Set((dv && dv.content.proposal && dv.content.proposal.dialogue && dv.content.proposal.dialogue.line_ids) || []);

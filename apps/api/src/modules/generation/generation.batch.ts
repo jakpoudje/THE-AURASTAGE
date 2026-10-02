@@ -13,6 +13,7 @@ import { readProjectSettings } from "../settings/settings.read";
 import { refreshShotPlanReview } from "../shots/shots.service";
 import { assertProjectAccess } from "./generation.permissions";
 import * as repo from "./generation.repository";
+import { GenerationBusyError } from "./generation.validator";
 import { compileWithContext, loadCompileContext, norm, packageReview, planUsable, requestTakes, setTakeApproval, type WorldRevisions } from "./generation.service";
 
 type Env = Record<string, string | undefined>;
@@ -35,7 +36,7 @@ async function pool<T>(items: T[], fn: (item: T) => Promise<void>, size = 6, bud
 }
 
 /** Usable plans' shots with their newest package's review state and their takes — no signed links, no per-shot reads. */
-async function lightState(db: SupabaseClient, projectId: string) {
+export async function lightState(db: SupabaseClient, projectId: string) {
   await refreshShotPlanReview(db, projectId);
   const [current, scenes, plans, versions, packages, takes, worldItems] = await Promise.all([
     readProjectSettings(db, projectId), repo.listScenes(db, projectId), repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId),
@@ -60,7 +61,10 @@ async function lightState(db: SupabaseClient, projectId: string) {
 }
 
 /** Compiles every shot of every usable plan whose prompt is missing or needs review (in rounds; `remaining` > 0 → call again). */
-export async function compileAllShots(db: SupabaseClient, projectId: string) {
+/** `opts.budgetMs`: how long one round may take (production runs give each step a share of a round). */
+export type Round = { budgetMs?: number };
+
+export async function compileAllShots(db: SupabaseClient, projectId: string, opts: Round = {}) {
   await assertProjectAccess(db, projectId);
   const st = await lightState(db, projectId);
   const todo = st.shots.filter((x) => !x.pkgCurrent);
@@ -70,30 +74,42 @@ export async function compileAllShots(db: SupabaseClient, projectId: string) {
   const compiled = await pool(todo, async (x) => {
     try { await compileWithContext(db, ctx, x.shot.id, st.aspect); }
     catch (e) { failed.push(`scene ${x.scene} shot ${x.shot.ordinal}: ${(e as Error).message}`); }
-  });
+  }, 6, opts.budgetMs);
   return { compiled: compiled - failed.length, remaining: todo.length - compiled, already: st.shots.length - todo.length, waiting_scenes: st.waiting, failed: failed.slice(0, 10) };
 }
 
 /** One free AuraStage Sketch for every shot with a current prompt and no take made or being made. */
-export async function sketchAllShots(db: SupabaseClient, projectId: string, env: Env = process.env) {
+export async function sketchAllShots(db: SupabaseClient, projectId: string, env: Env = process.env, opts: Round = {}) {
   await assertProjectAccess(db, projectId);
   const st = await lightState(db, projectId);
   const needs_prompt = st.shots.filter((x) => !x.pkgCurrent).length;
   const ready = st.shots.filter((x) => x.pkgCurrent);
   const todo = ready.filter((x) => !x.takes.some((t) => t.status === "queued" || t.status === "running" || t.status === "succeeded"));
-  const requested = await pool(todo, async (x) => {
-    await requestTakes(db, x.pkg!.id, { provider: "aurastage-sketch", model: "sketch-v1", capability: "image", variations: 1 }, `sketchall_${x.pkg!.id}_${x.takes.length}`, env);
-  });
-  return { requested, remaining: todo.length - requested, already: ready.length - todo.length, needs_prompt };
+  // Through the generator's run queue (migration 0055): when it is full, stop with `busy`; the page carries on as it catches up.
+  let requested = 0, busy = false;
+  const failed: string[] = [];
+  await pool(todo, async (x) => {
+    if (busy) return;
+    try {
+      await requestTakes(db, x.pkg!.id, { provider: "aurastage-sketch", model: "sketch-v1", capability: "image", variations: 1 }, `sketchall_${x.pkg!.id}_${x.takes.length}`, env, { batch: true });
+      requested++;
+    } catch (e) {
+      if (e instanceof GenerationBusyError) { busy = true; return; }
+      failed.push(`scene ${x.scene} shot ${x.shot.ordinal}: ${(e as Error).message}`);
+    }
+  }, 6, opts.budgetMs);
+  const making = st.shots.reduce((n, x) => n + x.takes.filter((t) => t.status === "queued" || t.status === "running").length, 0) + requested;
+  return { requested, remaining: todo.length - requested - failed.length, already: ready.length - todo.length, needs_prompt, busy, making, failed: failed.slice(0, 10) };
 }
 
 /** Approves the newest finished, not-rejected take of every shot that has no approved take. */
-export async function approveAllShots(db: SupabaseClient, projectId: string, env: Env = process.env) {
+export async function approveAllShots(db: SupabaseClient, projectId: string, env: Env = process.env, opts: Round = {}) {
   await assertProjectAccess(db, projectId);
   const st = await lightState(db, projectId);
   const open = st.shots.filter((x) => !x.takes.some((t) => t.approval === "approved"));
   const pick = (x: (typeof open)[number]) => x.takes.filter((t) => t.status === "succeeded" && t.approval !== "rejected").sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
   const todo = open.filter((x) => pick(x));
-  const approved = await pool(todo, async (x) => { await setTakeApproval(db, pick(x).id, "approve", env); });
-  return { approved, remaining: todo.length - approved, waiting: open.length - todo.length, total: st.shots.length };
+  const approved = await pool(todo, async (x) => { await setTakeApproval(db, pick(x).id, "approve", env); }, 6, opts.budgetMs);
+  const making = st.shots.reduce((n, x) => n + x.takes.filter((t) => t.status === "queued" || t.status === "running").length, 0);
+  return { approved, remaining: todo.length - approved, waiting: open.length - todo.length, total: st.shots.length, making };
 }

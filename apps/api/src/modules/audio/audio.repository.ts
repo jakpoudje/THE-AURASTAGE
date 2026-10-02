@@ -25,6 +25,17 @@ async function rows(q: PromiseLike<{ data: unknown[] | null; error: unknown }>):
   if (error) throw error;
   return (data ?? []) as Row[];
 }
+/** Every row past PostgREST's 1,000-row cap (a 69-scene film has more clips than that), 1,000 at a time. */
+async function paged(make: () => any): Promise<Row[]> {
+  const first = make();
+  if (typeof first.range !== "function") return rows(first);
+  const out: Row[] = [];
+  for (let i = 0, q = first; ; i++, q = make()) {
+    const page = await rows(q.range(i * 1000, i * 1000 + 999));
+    out.push(...page);
+    if (page.length < 1000) return out;
+  }
+}
 async function rpc<T = Row>(db: SupabaseClient, fn: string, args: Row): Promise<T> {
   const { data, error } = await db.rpc(fn, args);
   if (error) throw mapDbError(error);
@@ -51,9 +62,9 @@ export async function scriptElementLines(db: SupabaseClient, versionId: string):
   return new Map(((data?.elements ?? []) as { index: number; line: number }[]).map((e) => [e.index, e.line]));
 }
 export const listCharacters = (db: SupabaseClient, p: string) => rows(db.from("characters").select("id, name, pronunciation").eq("project_id", p));
-export const listSessions = (db: SupabaseClient, p: string) => rows(db.from("audio_sessions").select("*").eq("project_id", p));
-export const listTracks = (db: SupabaseClient, p: string) => rows(db.from("audio_tracks").select("*").eq("project_id", p).order("ordinal", { ascending: true }));
-export const listClips = (db: SupabaseClient, p: string) => rows(db.from("audio_clips").select("*").eq("project_id", p).order("start_seconds", { ascending: true }));
+export const listSessions = (db: SupabaseClient, p: string) => paged(() => db.from("audio_sessions").select("*").eq("project_id", p).order("id"));
+export const listTracks = (db: SupabaseClient, p: string) => paged(() => db.from("audio_tracks").select("*").eq("project_id", p).order("ordinal", { ascending: true }).order("id"));
+export const listClips = (db: SupabaseClient, p: string) => paged(() => db.from("audio_clips").select("*").eq("project_id", p).order("start_seconds", { ascending: true }).order("id"));
 export const listMeasurements = (db: SupabaseClient, p: string) =>
   rows(db.from("audio_measurements").select("*").eq("project_id", p).order("measured_at", { ascending: false }));
 export const listVersions = (db: SupabaseClient, p: string) => rows(db.from("audio_session_versions").select("id, session_id, version_number, created_at").eq("project_id", p));
@@ -80,6 +91,9 @@ export const approve = (db: SupabaseClient, projectId: string, sceneId: string) 
 export const setReview = (db: SupabaseClient, id: string, state: string, reason: string | null) => rpc(db, "set_audio_review", { p_session_id: id, p_state: state, p_reason: reason });
 
 // ---- Generation (migration 0026): requests only; the worker makes the file and the Assets domain registers it ----
+/** Every generation's state (light: no results) — for whole-film runs and progress, where the newest 300 aren't enough. */
+export const listGenerationStates = (db: SupabaseClient, p: string) =>
+  paged(() => db.from("audio_generations").select("id, scene_id, clip_id, status, asset_id, batch, error, created_at").eq("project_id", p).order("created_at", { ascending: false }).order("id"));
 export const listGenerations = (db: SupabaseClient, p: string) =>
   rows(db.from("audio_generations").select("id, scene_id, clip_id, kind, description, duration_seconds, provider, model, execution, seed, status, asset_id, result, error, created_at, completed_at")
     .eq("project_id", p).order("created_at", { ascending: false }).limit(300));

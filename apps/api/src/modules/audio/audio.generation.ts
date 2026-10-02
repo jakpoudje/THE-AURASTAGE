@@ -7,7 +7,7 @@ import { proceduralAudio, sayNames, voiceCasting } from "@aurastage/engines";
 import { audioBackendsFor, audioStatuses, getAudioAdapter, type AudioKind } from "../../providers";
 import { assertProjectAccess, assertSceneInProject } from "./audio.permissions";
 import * as repo from "./audio.repository";
-import { AudioNotReadyError, AudioValidationError } from "./audio.validator";
+import { AudioBusyError, AudioNotReadyError, AudioValidationError } from "./audio.validator";
 
 type Env = Record<string, string | undefined>;
 type Row = Record<string, any>;
@@ -58,9 +58,15 @@ function pickBackend(kind: AudioKind, provider: string | undefined, env: Env) {
   return a;
 }
 
-export async function generateSound(db: SupabaseClient, projectId: string, sceneId: string, body: unknown, env: Env = process.env) {
-  await assertProjectAccess(db, projectId);
-  await assertSceneInProject(db, projectId, sceneId);
+/**
+ * `opts.batch`: part of a whole-film run (migration 0055) — bounded by the run's queue instead of the per-minute click cap,
+ * and made after anything a person asks for. `opts.checked`: the caller already checked access to the project and scene.
+ */
+export async function generateSound(db: SupabaseClient, projectId: string, sceneId: string, body: unknown, env: Env = process.env, opts: { batch?: boolean; checked?: boolean } = {}) {
+  if (!opts.checked) {
+    await assertProjectAccess(db, projectId);
+    await assertSceneInProject(db, projectId, sceneId);
+  }
   const p = GenerateInput.safeParse(body);
   if (!p.success) throw new AudioValidationError(p.error.issues, p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
   const a = pickBackend(p.data.kind, p.data.provider, env);
@@ -85,7 +91,7 @@ export async function generateSound(db: SupabaseClient, projectId: string, scene
   const g = await repo.requestGeneration(db, {
     project: projectId, scene: sceneId, clip: p.data.clip_id, kind: p.data.kind, description, duration: p.data.duration_seconds, mood: p.data.mood,
     provider: a.id, model: a.models.find((m) => m.kinds.includes(p.data.kind))?.id ?? a.models[0].id, execution: a.execution,
-    seed: p.data.seed ?? Math.floor(Math.random() * 2 ** 31), engineVersion, params,
+    seed: p.data.seed ?? Math.floor(Math.random() * 2 ** 31), engineVersion, params: opts.batch ? { ...params, batch: true } : params,
   });
   return dto(g);
 }
@@ -95,13 +101,19 @@ async function clipLine(db: SupabaseClient, projectId: string, clipId: string) {
   return (c?.source?.dialogue_line_id as string | undefined) ?? null;
 }
 
+/** The request for one planned cue: a spoken line for dialogue, its label as the description for everything else. */
+export function cueRequest(c: Row, kind: string) {
+  return { clip_id: c.id as string, kind, ...(kind === "voice" ? {} : { description: String(c.label).slice(0, 500) }), duration_seconds: Math.min(300, Math.max(0.2, Number(c.duration_seconds))) };
+}
+
 /** Suggest-and-generate: one request per planned cue (ambience, effects, Foley, score) that has no audio and no generation yet. */
 export async function generateSceneCues(db: SupabaseClient, projectId: string, sceneId: string, env: Env = process.env) {
   await assertProjectAccess(db, projectId);
   await assertSceneInProject(db, projectId, sceneId);
-  const [sessions, tracks, clips, gens] = await Promise.all([repo.listSessions(db, projectId), repo.listTracks(db, projectId), repo.listClips(db, projectId), repo.listGenerations(db, projectId)]);
+  const [sessions, tracks, clips, gens] = await Promise.all([repo.listSessions(db, projectId), repo.listTracks(db, projectId), repo.listClips(db, projectId), repo.listGenerationStates(db, projectId)]);
   const session = sessions.find((s) => s.scene_id === sceneId);
   if (!session) throw new AudioNotReadyError("Spot this scene first — the cues come from its approved shot plan.");
+  let waiting = 0;
   const pending = new Set(gens.filter((g) => g.status !== "failed" && g.clip_id).map((g) => g.clip_id));
   const out: Row[] = [];
   const skipped: string[] = [];
@@ -114,7 +126,14 @@ export async function generateSceneCues(db: SupabaseClient, projectId: string, s
     if (pending.has(c.id)) { skipped.push(c.label); continue; }
     const a = audioBackendsFor(kind, env)[0];
     if (!a) { skipped.push(c.label); continue; }
-    out.push(await generateSound(db, projectId, sceneId, { clip_id: c.id, kind, ...(kind === "voice" ? {} : { description: String(c.label).slice(0, 500) }), duration_seconds: Math.min(300, Math.max(0.2, Number(c.duration_seconds))) }, env));
+    if (waiting) { waiting++; continue; }
+    try {
+      out.push(await generateSound(db, projectId, sceneId, cueRequest(c, kind), env, { batch: true, checked: true }));
+    } catch (e) {
+      // The generator's queue for runs is full (migration 0055): the rest are asked for on the next press / round.
+      if (e instanceof AudioBusyError) { waiting = 1; continue; }
+      throw e;
+    }
   }
-  return { requested: out, skipped };
+  return { requested: out, skipped, waiting };
 }

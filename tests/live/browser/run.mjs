@@ -613,33 +613,29 @@ await check("one click (owner 2026-10-02): Audio Studio generates every planned 
   await page.getByText("Professional Sound for").waitFor();
   const planned = () => page.getByText("planned", { exact: true }).count();
   const before = await planned();
-  await page.getByRole("button", { name: "2 · Generate all planned sounds" }).click();
-  await page.getByText(/^Generating \d+ planned sounds? across|^Nothing new to generate/).waitFor({ timeout: 60000 });
-  let note = "";
-  for (let i = 0; i < 12; i++) {
-    await page.waitForTimeout(5000);
-    await page.getByRole("button", { name: "3 · Place all generated sounds on their marked spots" }).click();
-    note = await page.getByText(/^Placed \d+ generated sound/).innerText({ timeout: 60000 });
-    if (!/still being made/.test(note)) break;
-  }
+  // 2026-10-02: one production run does spot → generate → place in batches, scene by scene, showing each scene's stage.
+  await page.getByRole("button", { name: "▶ Do 1–3 for the whole film, scene by scene" }).click();
+  const panel = page.getByRole("region", { name: "Background activity" });
+  await panel.getByText(/^Whole film sound/).waitFor();
+  await panel.getByText("completed", { exact: true }).waitFor({ timeout: 240000 });
+  const note = await panel.getByText(/^Done\./).innerText();
   await reload("Professional Sound for");
   const after = await planned();
-  if (/^Placed [1-9]/.test(note) && !(after < before)) throw new Error(`placed but the timeline still shows ${after} planned (was ${before})`);
+  if (/Placed [1-9]/.test(note) && !(after < before)) throw new Error(`placed but the timeline still shows ${after} planned (was ${before})`);
+  await page.getByRole("region", { name: "Background activity" }).getByText("completed", { exact: true }).waitFor();
   return `${note.split(".")[0]}; planned cues on screen ${before} → ${after}`;
 });
 await check("one click (owner 2026-10-02): Visual Generation — compile every prompt, sketch every shot (free), approve a take for each; reload: counts kept", async () => {
   await page.goto(projectUrl + "/visual");
   await page.getByText("Stunning Visuals").waitFor();
-  await page.getByRole("button", { name: "1 · Compile every shot's prompt" }).click();
-  await page.getByText(/^Compiled \d+ shot prompts?|^Every shot's prompt is already up to date/).waitFor({ timeout: 120000 });
-  await page.getByRole("button", { name: "2 · Sketch every shot (free)" }).click();
-  await page.getByText(/^Sketching \d+ shots?|^No shots need a sketch/).waitFor({ timeout: 60000 });
-  await page.waitForTimeout(20000);
-  await page.getByRole("button", { name: "3 · Approve a take for every shot" }).click();
-  const note = await page.getByText(/^Approved a take for \d+ shots?/).innerText({ timeout: 60000 });
+  await page.getByRole("button", { name: "▶ Do 1–3 for the whole film, scene by scene" }).click();
+  const panel = page.getByRole("region", { name: "Background activity" });
+  await panel.getByText(/^Whole film pictures/).waitFor();
+  await panel.getByText("completed", { exact: true }).waitFor({ timeout: 300000 });
+  const note = await panel.getByText(/^Done\./).innerText();
   await reload("Stunning Visuals");
   const summary = await page.getByText(/\d+ of \d+ shots have an approved take/).first().innerText();
-  return `${note.split("(")[0].trim()}; after reload: ${summary.split("·")[0].trim()}`;
+  return `${note.slice(0, 120)}; after reload: ${summary.split("·")[0].trim()}`;
 });
 await check("one click (owner 2026-10-02): Editorial makes a watchable film from everything approved — assemble, lock, Review Copy render; Export lists it after reload", async () => {
   await page.goto(projectUrl + "/editorial");

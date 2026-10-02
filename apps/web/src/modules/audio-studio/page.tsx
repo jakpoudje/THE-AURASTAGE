@@ -15,6 +15,8 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useAudio } from "./hooks/useAudio";
+import { RunPanel } from "@/modules/production-runs/RunPanel";
+import { useProductionRun } from "@/modules/production-runs/useProductionRun";
 import { Timeline } from "./components/Timeline";
 import { ClipInspector } from "./components/ClipInspector";
 import { Mixer } from "./components/Mixer";
@@ -29,6 +31,14 @@ export default function AudioStudioPage() {
   const d = useAudio(id);
   const access = useProjectAccess(id);
   const canGenerate = can(access, "audio", "generate");
+  // Whole-film work runs in batches, scene by scene, shared with the team (production runs, migration 0056). The timeline
+  // below refreshes as scenes fill in.
+  const lastReload = useRef(0);
+  const runs = useProductionRun(id, "audio", {
+    onRound: () => { if (Date.now() - lastReload.current > 8000) { lastReload.current = Date.now(); void d.reload().catch(() => undefined); } },
+    onFinished: () => void d.reload().catch(() => undefined),
+  });
+  const runBusy = runs.active || runs.starting;
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [clipId, setClipId] = useState<string | null>(null);
   const [trackId, setTrackId] = useState<string | null>(null);
@@ -133,14 +143,18 @@ export default function AudioStudioPage() {
           <div className="rounded-xl border border-aura-gold/30 bg-aura-panel p-3" aria-label="Whole film">
             <p className="text-xs uppercase tracking-wider text-white/50">Whole film — one click each, in order (every scene can still be done by hand below)</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <button onClick={() => d.spotAll()} disabled={d.busy !== null} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+              <button onClick={() => runs.start("audio.film")} disabled={runBusy || d.busy !== null || !canGenerate} title={canGenerate ? "Spots every scene, asks the generator for every planned sound in batches and places each one as it finishes — scene by scene" : "Your role can't generate audio"}
+                className="rounded-md bg-aura-gold px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40">
+                ▶ Do 1–3 for the whole film, scene by scene
+              </button>
+              <button onClick={() => runs.start("audio.spot")} disabled={runBusy || d.busy !== null || !canGenerate} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
                 1 · Spot all scenes
               </button>
-              <button onClick={() => d.generateAll()} disabled={d.busy !== null || !canGenerate || !ws.scenes.some((x) => x.session)} title={canGenerate ? undefined : "Your role can't generate audio"}
+              <button onClick={() => runs.start("audio.generate")} disabled={runBusy || d.busy !== null || !canGenerate || !ws.scenes.some((x) => x.session)} title={canGenerate ? undefined : "Your role can't generate audio"}
                 className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
                 2 · Generate all planned sounds
               </button>
-              <button onClick={() => d.placeGenerated(null)} disabled={d.busy !== null || !ws.scenes.some((x) => x.session)} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+              <button onClick={() => runs.start("audio.place")} disabled={runBusy || d.busy !== null || !canGenerate || !ws.scenes.some((x) => x.session)} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
                 3 · Place all generated sounds on their marked spots
               </button>
               <button onClick={() => d.measureApproveAll(ws.scenes)} disabled={d.busy !== null || !ws.scenes.some((x) => x.session)} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
@@ -150,6 +164,7 @@ export default function AudioStudioPage() {
             </div>
           </div>
         )}
+        <RunPanel area="audio" run={runs.run} progress={runs.progress} error={runs.error} onControl={runs.control} canRun={canGenerate} />
 
         {!s ? (
           <div className="rounded-xl border border-dashed border-aura-border p-10 text-center text-sm text-white/50">

@@ -3,7 +3,7 @@
 // (scenes), Scene DNA, Storyboard (shot plans + approved versions), Casting and
 // Dialogue read-only; writes only via the migration-0013 functions.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { GenerationConflictError, GenerationNotFoundError, GenerationNotReadyError, GenerationValidationError } from "./generation.validator";
+import { GenerationBusyError, GenerationConflictError, GenerationNotFoundError, GenerationNotReadyError, GenerationValidationError } from "./generation.validator";
 import { GenerationForbiddenError } from "./generation.permissions";
 import { colForbiddenMessage } from "../../infrastructure/permissions";
 
@@ -17,6 +17,7 @@ function mapDbError(error: { message?: string; code?: string }): Error {
   // Monthly paid-take cap from Project Settings (migration 0023).
   if (msg.startsWith("AURA-GEN-402")) return new GenerationNotReadyError(text);
   if (msg.startsWith("AURA-GEN-404")) return new GenerationNotFoundError(text);
+  if (msg.startsWith("AURA-GEN-429")) return new GenerationBusyError(text);
   if (msg.startsWith("AURA-GEN-403") || error.code === "42501") return new GenerationForbiddenError(colForbiddenMessage(error));
   if (msg.startsWith("AURA-GEN-400") || error.code === "23514") return new GenerationValidationError([], text || "That value isn't allowed");
   return Object.assign(new Error(msg || "Database error"), { cause: error });

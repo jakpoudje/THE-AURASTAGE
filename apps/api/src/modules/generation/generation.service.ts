@@ -291,7 +291,8 @@ export async function compileWithContext(db: SupabaseClient, ctx: CompileContext
   return { package_id: pkg.id, checks: content.checks, prompt: content.prompt };
 }
 
-export async function requestTakes(db: SupabaseClient, packageId: string, payload: unknown, idempotencyKey: string | null, env: Env = process.env) {
+/** `opts.batch`: part of a whole-film run — queued behind anyone's own requests and bounded per project (migration 0055). */
+export async function requestTakes(db: SupabaseClient, packageId: string, payload: unknown, idempotencyKey: string | null, env: Env = process.env, opts: { batch?: boolean } = {}) {
   const input = validateRequestTakes(payload);
   await assertPackageAccess(db, packageId);
   const adapter = getAdapter(input.provider)!;
@@ -305,7 +306,7 @@ export async function requestTakes(db: SupabaseClient, packageId: string, payloa
     provider: input.provider,
     model: input.model,
     capability: input.capability,
-    params: { aspect_ratio: input.aspect_ratio, duration_seconds: input.duration_seconds },
+    params: { aspect_ratio: input.aspect_ratio, duration_seconds: input.duration_seconds, ...(opts.batch ? { batch: true } : {}) },
     seed: input.seed,
     variations: input.variations,
     sourceTakeId: input.source_take_id,

@@ -88,7 +88,7 @@ export function useVisual(projectId: string) {
   }
 
   return {
-    project, ws, loading, busy, error, notice, inFlight,
+    project, ws, loading, busy, error, notice, inFlight, reload,
     compile: (shotId: string, aspect: string) => run("compile", () => visualApi.compile(projectId, shotId, aspect), () => "Prompt compiled from the approved shot plan."),
     generate: (packageId: string, input: Partial<RequestTakeInput>) =>
       run("generate", () => visualApi.requestTakes(packageId, input), (r) => `Queued ${r.takes.length} ${r.takes.length === 1 ? "take" : "takes"}. They appear here when ready.`),

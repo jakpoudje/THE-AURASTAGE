@@ -15,6 +15,10 @@ export class GenerationNotFoundError extends Error {
 export class GenerationConflictError extends Error {
   code = "AURA-GEN-409";
 }
+/** The generator's queue for whole-film runs is full (migration 0055) — the run adds more as takes finish. */
+export class GenerationBusyError extends Error {
+  code = "AURA-GEN-429";
+}
 export class GenerationNotReadyError extends Error {
   code = "AURA-GEN-412";
 }

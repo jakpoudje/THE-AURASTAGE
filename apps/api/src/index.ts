@@ -24,6 +24,7 @@ import { registerHelpRoutes } from "./modules/help/help.controller";
 import { registerSettingsRoutes } from "./modules/settings/settings.controller";
 import { registerAssistantRoutes } from "./modules/assistant/assistant.controller";
 import { registerWorldRoutes } from "./modules/world/world.controller";
+import { registerRunRoutes } from "./modules/runs/runs.controller";
 
 const app = Fastify({ logger: true });
 
@@ -57,6 +58,7 @@ async function main() {
   await registerSettingsRoutes(app);
   await registerAssistantRoutes(app);
   await registerWorldRoutes(app);
+  await registerRunRoutes(app);
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });

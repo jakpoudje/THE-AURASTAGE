@@ -10,9 +10,12 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useVisual } from "./hooks/useVisual";
+import { RunPanel } from "@/modules/production-runs/RunPanel";
+import { useProductionRun } from "@/modules/production-runs/useProductionRun";
+import { can, useProjectAccess } from "@/lib/useProjectAccess";
 import { ShotRail, shotStatus } from "./components/ShotRail";
 import { TakeViewer } from "./components/TakeViewer";
 import { PromptPanel } from "./components/PromptPanel";
@@ -27,6 +30,15 @@ export default function VisualGenerationPage() {
   const { id } = useParams<{ id: string }>();
   const d = useVisual(id);
   const [shotId, setShotId] = useState<string | null>(null);
+  const access = useProjectAccess(id);
+  const canGenerate = can(access, "generation", "generate");
+  // Whole-film work in batches, scene by scene, shared with the team (production runs, migration 0056).
+  const lastReload = useRef(0);
+  const runs = useProductionRun(id, "visual", {
+    onRound: () => { if (Date.now() - lastReload.current > 10000) { lastReload.current = Date.now(); void d.reload().catch(() => undefined); } },
+    onFinished: () => void d.reload().catch(() => undefined),
+  });
+  const runBusy = runs.active || runs.starting;
 
   if (d.loading) return <div className="p-12 text-center text-white/50">Opening Visual Generation…</div>;
   if (!d.project || !d.ws) {
@@ -91,19 +103,24 @@ export default function VisualGenerationPage() {
           <div className="rounded-xl border border-aura-gold/30 bg-aura-panel p-3" aria-label="Whole film">
             <p className="text-xs uppercase tracking-wider text-white/50">Whole film — one click each, in order (every shot can still be done by hand below)</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <button onClick={() => d.compileAll()} disabled={d.busy !== null} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+              <button onClick={() => runs.start("visual.film")} disabled={runBusy || d.busy !== null || !canGenerate} title={canGenerate ? "Compiles every prompt, sketches each shot (free) in batches and approves each take as it finishes — scene by scene" : "Your role can't generate pictures"}
+                className="rounded-md bg-aura-gold px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40">
+                ▶ Do 1–3 for the whole film, scene by scene
+              </button>
+              <button onClick={() => runs.start("visual.compile")} disabled={runBusy || d.busy !== null || !canGenerate} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
                 1 · Compile every shot's prompt
               </button>
-              <button onClick={() => d.sketchAll()} disabled={d.busy !== null} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+              <button onClick={() => runs.start("visual.sketch")} disabled={runBusy || d.busy !== null || !canGenerate} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
                 2 · Sketch every shot (free)
               </button>
-              <button onClick={() => d.approveAll()} disabled={d.busy !== null} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+              <button onClick={() => runs.start("visual.approve")} disabled={runBusy || d.busy !== null || !canGenerate} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
                 3 · Approve a take for every shot
               </button>
               <span className="self-center text-[11px] text-white/40">Sketches let you assemble and watch the whole film in Editorial before any paid image or video service is connected.</span>
             </div>
           </div>
         )}
+        <RunPanel area="visual" run={runs.run} progress={runs.progress} error={runs.error} onControl={runs.control} canRun={canGenerate} />
         {(d.error || d.notice) && (
           <div className={`rounded-md border px-4 py-2 text-sm ${d.error ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300"}`}>{d.error ?? d.notice}</div>
         )}

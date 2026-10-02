@@ -110,6 +110,7 @@ export function useAudio(projectId: string) {
   const missing = (s: AudioScene) => s.clips.filter((c) => c.asset_id && !buffers.has(c.asset_id)).length;
 
   return {
+    reload,
     project, ws, loading, busy, error, notice, buffers,
     spot: (sceneId: string) =>
       run("spot", () => audioApi.spot(projectId, sceneId), (r) => `Spotted ${r.cues} cues on ${r.tracks} tracks from shot plan version ${r.shot_plan_version_number}. Recordings you've placed are kept.`),

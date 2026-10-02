@@ -377,19 +377,20 @@ async function api(method, p, body) {
   await step("owner 2026-10-02: whole film in one click each — generate every planned sound, then place each on its marked spot; reload: placed; clips still editable", async () => {
     const planned = () => page.getByText("planned", { exact: true }).count();
     const before = await planned();
-    await page.getByRole("button", { name: "2 · Generate all planned sounds" }).click();
-    await page.getByText(/Generating \d+ planned sounds? across \d+ scenes?|Nothing new to generate/).waitFor();
-    // Generated sounds finish in the background; place until none are still being made.
-    let note = "";
-    for (let i = 0; i < 20; i++) {
-      await page.waitForTimeout(800);
-      await reload();
-      await page.getByRole("button", { name: "3 · Place all generated sounds on their marked spots" }).click();
-      note = await page.getByText(/^Placed \d+ generated sound/).innerText();
-      if (!/still being made/.test(note)) break;
-    }
-    if (!/^Placed [1-9]/.test(note) && !/^Placed 0/.test(note)) throw new Error(note);
+    // 2026-10-02: one run does 1–3 in batches, scene by scene, and shows what is happening (production runs, migration 0056).
+    await page.getByRole("button", { name: "▶ Do 1–3 for the whole film, scene by scene" }).click();
+    const panel = page.getByRole("region", { name: "Background activity" });
+    await panel.getByText(/^Whole film sound — spot, generate and place/).waitFor();
+    await panel.getByRole("list", { name: "Steps" }).getByText(/Spot scenes/).waitFor();
+    await panel.getByText("completed", { exact: true }).waitFor({ timeout: 90000 });
+    const note = await panel.getByText(/^Done\./).innerText();
+    await panel.getByText(/Every scene \(\d+\)/).click().catch(() => undefined);
+    await panel.getByRole("list", { name: "Scene progress" }).getByRole("listitem", { name: /^Scene 1: .*, \d+%$/ }).waitFor();
+    await panel.getByText(/What it has done/).click();
+    await panel.getByRole("list", { name: "Run log" }).getByText(/Finished —/).waitFor();
     await reload();
+    // Shared and kept: after a reload the finished run is still shown, with its result.
+    await page.getByRole("region", { name: "Background activity" }).getByText("completed", { exact: true }).waitFor();
     const after = await planned();
     if (!(after < before)) throw new Error(`planned cues ${before} → ${after}; ${note}`);
     // Still editable by hand: select a placed clip and its inspector opens.

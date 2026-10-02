@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { addTrack, approveSession, createClip, deleteClip, deleteTrack, getAudioWorkspace, moveTrack, recordMeasurement, spotScene, updateClip, updateMix, updateTrack } from "./audio.service";
 import { AudioBusyError, AudioConflictError, AudioNotFoundError, AudioNotReadyError, AudioValidationError } from "./audio.validator";
 import { generateSceneCues, generateSound } from "./audio.generation";
+import { getAudioProgress } from "./audio.progress";
 import { AudioForbiddenError } from "./audio.permissions";
 import { generateAllCues, placeGenerated, spotAllScenes } from "./audio.batch";
 
@@ -37,6 +38,7 @@ export async function registerAudioRoutes(app: FastifyInstance) {
   app.post("/api/projects/:id/audio/scenes/:sceneId/generate", route(({ params, body, db }) => generateSound(db, params.id, params.sceneId, body)));
   app.post("/api/projects/:id/audio/scenes/:sceneId/generate-cues", route(({ params, db }) => generateSceneCues(db, params.id, params.sceneId)));
   // One click for the whole film or one scene (owner, 2026-10-02).
+  app.get("/api/projects/:id/audio/progress", route(({ params, db }) => getAudioProgress(db, params.id)));
   app.post("/api/projects/:id/audio/spot-all", route(({ params, db }) => spotAllScenes(db, params.id)));
   app.post("/api/projects/:id/audio/generate-all", route(({ params, db }) => generateAllCues(db, params.id, null)));
   app.post("/api/projects/:id/audio/place-generated", route(({ params, db }) => placeGenerated(db, params.id, null)));

@@ -151,13 +151,15 @@ async function api(method, path, body) {
     const sb = await api("GET", `/api/projects/${P}/storyboard`);
     for (const sc of sb.scenes) if (sc.plan && (sc.plan.status !== "approved" || sc.plan.review_state !== "current")) await api("POST", `/api/projects/${P}/storyboard/scenes/${sc.scene.id}/approve`, {});
     await reload();
-    await page.getByRole("button", { name: "1 · Compile every shot's prompt" }).click();
-    await page.getByText(/^Compiled \d+ shot prompts?|^Every shot's prompt is already up to date/).waitFor();
-    await page.getByRole("button", { name: "2 · Sketch every shot (free)" }).click();
-    await page.getByText(/^Sketching \d+ shots? with AuraStage Sketch|^No shots need a sketch/).waitFor();
-    for (let i = 0; i < 4; i++) { await reload(); await page.waitForTimeout(300); } // the mock worker finishes takes as the workspace is read
-    await page.getByRole("button", { name: "3 · Approve a take for every shot" }).click();
-    await page.getByText(/^Approved a take for \d+ shots?/).waitFor();
+    // 2026-10-02: one run does 1–3 in batches, scene by scene, and shows what is happening (production runs, migration 0056).
+    await page.getByRole("button", { name: "▶ Do 1–3 for the whole film, scene by scene" }).click();
+    const panel = page.getByRole("region", { name: "Background activity" });
+    await panel.getByText(/^Whole film pictures — compile, sketch and approve/).waitFor();
+    await panel.getByText("completed", { exact: true }).waitFor({ timeout: 90000 });
+    await panel.getByText(/^Done\. Approved \d+ takes?/).waitFor();
+    await panel.getByLabel("Overall 100%").waitFor();
+    await panel.getByText(/Every scene \(\d+\)/).click();
+    await panel.getByRole("list", { name: "Scene progress" }).getByRole("listitem", { name: /^Scene \d+: Every shot has an approved take, 100%$/ }).first().waitFor();
     await reload();
     const ws = await api("GET", `/api/projects/${P}/visual`);
     if (ws.summary.with_approved_take !== ws.summary.shots) throw new Error(`${ws.summary.with_approved_take} of ${ws.summary.shots} approved`);

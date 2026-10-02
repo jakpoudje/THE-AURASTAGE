@@ -5,8 +5,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { approveAllShots, compileAllShots, sketchAllShots } from "./generation.batch";
 import { cancelTake, compileShot, getPackageDetail, getVisualWorkspace, requestTakes, setTakeApproval } from "./generation.service";
-import { GenerationConflictError, GenerationNotFoundError, GenerationNotReadyError, GenerationValidationError } from "./generation.validator";
+import { GenerationBusyError, GenerationConflictError, GenerationNotFoundError, GenerationNotReadyError, GenerationValidationError } from "./generation.validator";
 import { GenerationForbiddenError } from "./generation.permissions";
+import { getVisualProgress } from "./generation.progress";
 
 function handleError(err: unknown, reply: FastifyReply) {
   const send = (status: number, e: Error & { code: string; issues?: unknown }) =>
@@ -16,6 +17,7 @@ function handleError(err: unknown, reply: FastifyReply) {
   if (err instanceof GenerationNotFoundError) return send(404, err);
   if (err instanceof GenerationConflictError) return send(409, err);
   if (err instanceof GenerationNotReadyError) return send(412, err);
+  if (err instanceof GenerationBusyError) return send(429, err);
   reply.log.error({ err }, "Unhandled error in generation module");
   return reply.code(500).send({ error: { code: "AURA-GEN-500", message: "Unexpected error" } });
 }
@@ -39,6 +41,7 @@ export async function registerGenerationRoutes(app: FastifyInstance) {
     route(({ params, body, db, req }) => requestTakes(db, params.id, body, (req.headers["idempotency-key"] as string | undefined) ?? null))
   );
   // One click for the whole film (owner, 2026-10-02).
+  app.get("/api/projects/:id/visual/progress", route(({ params, db }) => getVisualProgress(db, params.id)));
   app.post("/api/projects/:id/visual/compile-all", route(({ params, db }) => compileAllShots(db, params.id)));
   app.post("/api/projects/:id/visual/sketch-all", route(({ params, db }) => sketchAllShots(db, params.id)));
   app.post("/api/projects/:id/visual/approve-all", route(({ params, db }) => approveAllShots(db, params.id)));
