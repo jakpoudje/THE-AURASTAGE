@@ -25,7 +25,7 @@ export function freeLicence(meta) {
 }
 /** Titles that are not field recordings of the thing: pronunciations, speech, music, spoken articles. */
 export function unsuitableTitle(title) {
-  return /^File:(LL-Q\d|[A-Z][a-z]-[a-z]{2}-|[A-Z][a-z]-[A-ZÄÖÜ])|pronunc|lingua ?libre|spoken|speech|interview|lecture|lectio|reading|recitation|song\b|music|anthem|sings?\b|choir|orchestra|piano|guitar|symphony|concert|\bmidi\b|ringtone remix|podcast|news ?cast|wikipedia|audacity|noise reduction|tutorial|\bdemo\b|test tone|radio|dispatch|\batc\b|cockpit|\bcall\b|wilhelm|scream|festival|\bfolk\b|march\b|national anthem|sermon|poem|audiobook|librivox|episode/i.test(title);
+  return /^File:(LL-Q\d|[A-Z][a-z]-[a-z]{2}-|[A-Z][a-z]-[A-ZÄÖÜ])|pronunc|lingua ?libre|spoken|speech|interview|lecture|lectio|reading|recitation|song\b|music|anthem|sings?\b|choir|orchestra|piano|guitar|symphony|concert|\bmidi\b|ringtone remix|podcast|news ?cast|wikipedia|audacity|noise reduction|tutorial|\bdemo\b|test tone|radio|dispatch|\batc\b|cockpit|\bcall\b|wilhelm|scream|festival|\bfolk\b|march\b|national anthem|sermon|poem|audiobook|librivox|episode|\bmars\b|nasa|rover|board|meeting|council|hearing|commission|session/i.test(title);
 }
 /**
  * Commons' own filing decides whether a file is a recording of a sound (live build 2026-10-02: titles alone let through

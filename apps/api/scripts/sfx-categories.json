@@ -254,7 +254,7 @@
   "bed": false,
   "max_seconds": 10,
   "title": "\\bcars?\\b|engine|vehicle|motor|truck|lorry|horn|automobile|motorcycle|scooter",
-  "not": "jet engine|search engine|airplane|aircraft|stereo|radio|tape ?deck|cd player"
+  "not": "jet engine|search engine|airplane|aircraft|stereo|radio|tape ?deck|cd player|steam"
  },
  {
   "id": "typing",
