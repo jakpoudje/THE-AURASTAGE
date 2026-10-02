@@ -132,6 +132,11 @@ describe("production runs (owner request 2026-10-02: batches, scene by scene, al
     const old = new Date(Date.now() - 5 * 60_000).toISOString();
     expect(toRunDTO(run({ updated_at: old })).idle).toBe(true);
     expect(toRunDTO(run()).idle).toBe(false);
+    // Regression (live smoke 2026-10-02): a brand-new run is on its first step, not "start", and lists its steps.
+    const fresh = toRunDTO(run({ phase: "start", progress: {} }));
+    expect(fresh.phase).toBe("spot");
+    expect(fresh.progress.phases).toEqual(["spot", "generate", "finish"]);
+    expect(toRunDTO(run({ kind: "visual.film", area: "visual", phase: "start" })).phase).toBe("compile");
     const list = (await a.inject({ method: "GET", url: `/api/projects/${P}/runs` })).json();
     expect(list.active.audio.id).toBe(R);
   });

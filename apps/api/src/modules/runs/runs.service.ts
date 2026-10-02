@@ -23,9 +23,15 @@ const IDLE_MS = 90_000;
 
 export function toRunDTO(r: Row, now = Date.now()): ProductionRun {
   const idle = r.status === "running" && now - new Date(r.updated_at).getTime() > IDLE_MS && (!r.lease_until || new Date(r.lease_until).getTime() < now);
+  // A run that hasn't had its first round yet is on its first step (the database starts every run at 'start'), so the
+  // steps list shows "1 · Spot scenes" (or "Compile prompts") as current from the moment it starts.
+  const phases = (RUN_PHASES as Record<string, readonly string[]>)[r.kind] ?? [];
+  const phase = phases.includes(r.phase) || !phases.length ? r.phase : phases[0];
+  const progress = { ...(r.progress ?? {}) } as Row;
+  if (!Array.isArray(progress.phases) && phases.length) Object.assign(progress, { phases: [...phases], phase_index: Math.max(0, phases.indexOf(phase)) });
   return ProductionRunSchema.parse({
-    id: r.id, project_id: r.project_id, area: r.area, kind: r.kind, scene_id: r.scene_id ?? null, status: r.status, phase: r.phase,
-    message: r.message ?? null, progress: r.progress ?? {}, log: Array.isArray(r.log) ? r.log.map((x: Row) => ({ at: String(x.at), text: String(x.text) })) : [],
+    id: r.id, project_id: r.project_id, area: r.area, kind: r.kind, scene_id: r.scene_id ?? null, status: r.status, phase,
+    message: r.message ?? null, progress, log: Array.isArray(r.log) ? r.log.map((x: Row) => ({ at: String(x.at), text: String(x.text) })) : [],
     rounds: Number(r.rounds ?? 0), started_by_label: r.started_by_label ?? null, started_at: String(r.started_at), updated_at: String(r.updated_at),
     finished_at: r.finished_at ? String(r.finished_at) : null, idle,
   });
