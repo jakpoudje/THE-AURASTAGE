@@ -82,6 +82,12 @@ async function api(method, path, body) {
     await page.getByRole("tab", { name: "Still image" }).click();
     const still = await page.getByLabel("Compiled prompt").innerText();
     if (/says "/.test(still)) throw new Error("still prompt quotes dialogue: " + still);
+    // Owner 2026-10-02: a compact version that fits every provider (≤ 1,000 characters), camera first.
+    await page.getByLabel("Show the 1,000-character version").check();
+    const small = await page.getByLabel("Compiled prompt").innerText();
+    if (small.length > 1000 || !/^Cinematic film still/.test(small)) throw new Error(`compact prompt ${small.length} chars: ${small.slice(0, 80)}`);
+    await page.getByText(/^Compact: [\d,]+ of 1,000 characters — fits every provider/).waitFor();
+    await page.getByLabel("Show the 1,000-character version").uncheck();
   });
   await step("choosing an unconnected provider explains why generation is off", async () => {
     await page.getByLabel("Provider", { exact: true }).selectOption("runway");

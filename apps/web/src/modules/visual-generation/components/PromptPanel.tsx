@@ -4,6 +4,7 @@
 // conditions on (characters in frame, the scene's location at its time of day, its props).
 import { useReferenceImage } from "@/modules/casting-characters/components/LookPanel";
 import { useState } from "react";
+import { promptCompiler } from "@aurastage/engines";
 import type { VisualShot } from "../types";
 
 function RefThumb({ assetId }: { assetId: string }) {
@@ -17,7 +18,13 @@ export function PromptPanel({ s, usable, busy, onCompile }: { s: VisualShot; usa
   // 2.0 packages carry a separate moving-picture prompt (timing, dialogue for lip sync, how people move).
   const [mode, setMode] = useState<"image" | "video">("image");
   const videoPrompt = pkg?.content.video_prompt;
-  const shown = mode === "video" && videoPrompt ? videoPrompt : pkg?.content.prompt;
+  // Owner 2026-10-02: the compact version that fits every provider (Runway's 1,000 characters is the shortest limit),
+  // built from the same ranked blocks: camera, action, people and dialogue first; lower-ranked detail shortened or dropped.
+  const [compact, setCompact] = useState(false);
+  const blocks = pkg?.content.blocks;
+  const fullText = mode === "video" && videoPrompt ? videoPrompt : pkg?.content.prompt;
+  const small = compact && blocks?.length ? promptCompiler.composePrompt(blocks as promptCompiler.PromptBlock[], mode === "video" && videoPrompt ? "video" : "image", 1000) : null;
+  const shown = small ? small.text : fullText;
   return (
     <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
       <div className="flex items-center gap-3">
@@ -47,9 +54,18 @@ export function PromptPanel({ s, usable, busy, onCompile }: { s: VisualShot; usa
           <p className="mt-3 whitespace-pre-wrap rounded bg-black/40 p-3 font-mono text-xs leading-relaxed text-white/80" aria-label={mode === "video" && videoPrompt ? "Compiled video prompt" : "Compiled prompt"}>
             {shown}
           </p>
-          <p className="mt-1 text-[11px] text-white/35">
-            Full prompt, {(shown ?? "").length.toLocaleString()} characters. Providers with a shorter limit get a shortened version that keeps the camera, action, people and dialogue first.
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-white/35">
+            <span>
+              {small
+                ? `Compact: ${small.chars.toLocaleString()} of 1,000 characters — fits every provider.${small.dropped.length ? ` Left out: ${small.dropped.join(", ")}.` : ""}${small.shortened.length ? ` Shortened: ${small.shortened.join(", ")}.` : ""}`
+                : `Full prompt, ${(shown ?? "").length.toLocaleString()} characters. Providers with a shorter limit get a shortened version that keeps the camera, action, people and dialogue first.`}
+            </span>
+            {!!blocks?.length && (
+              <label className="flex items-center gap-1 text-white/60">
+                <input type="checkbox" checked={compact} onChange={(e) => setCompact(e.target.checked)} aria-label="Show the 1,000-character version" /> Show the 1,000-character version
+              </label>
+            )}
+          </div>
           <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Prompt checks">
             {pkg.content.checks.map((c) => (
               <li key={c.id} title={c.evidence} className={`rounded-full border px-2 py-0.5 text-[11px] ${c.ok ? "border-emerald-400/40 text-emerald-300" : "border-aura-gold/50 text-aura-gold"}`}>
