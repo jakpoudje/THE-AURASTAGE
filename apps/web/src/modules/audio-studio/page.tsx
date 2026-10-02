@@ -48,6 +48,9 @@ export default function AudioStudioPage() {
     return () => cancelAnimationFrame(raf);
   }, [playing, player]);
   useEffect(() => () => player.stop(), [player]);
+  // Saved track settings (or a failed save's rollback) always reach what is playing.
+  const curTracks = (d.ws?.scenes.find((x) => x.scene.id === sceneId) ?? d.ws?.scenes[0])?.tracks;
+  useEffect(() => { if (curTracks) player.setLive(curTracks); }, [curTracks, player]);
 
   if (d.loading) return <div className="p-12 text-center text-white/50">Opening the Audio Studio…</div>;
   if (!d.project || !d.ws) {
@@ -124,6 +127,25 @@ export default function AudioStudioPage() {
         </p>
         {(d.error || d.notice) && (
           <div className={`rounded-md border px-4 py-2 text-sm ${d.error ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300"}`}>{d.error ?? d.notice}</div>
+        )}
+
+        {ws.scenes.length > 0 && (
+          <div className="rounded-xl border border-aura-gold/30 bg-aura-panel p-3" aria-label="Whole film">
+            <p className="text-xs uppercase tracking-wider text-white/50">Whole film — one click each, in order (every scene can still be done by hand below)</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button onClick={() => d.spotAll()} disabled={d.busy !== null} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+                1 · Spot all scenes
+              </button>
+              <button onClick={() => d.generateAll()} disabled={d.busy !== null || !canGenerate || !ws.scenes.some((x) => x.session)} title={canGenerate ? undefined : "Your role can't generate audio"}
+                className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+                2 · Generate all planned sounds
+              </button>
+              <button onClick={() => d.placeGenerated(null)} disabled={d.busy !== null || !ws.scenes.some((x) => x.session)} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+                3 · Place all generated sounds on their marked spots
+              </button>
+              <span className="self-center text-[11px] text-white/40">Then listen, adjust and approve each scene's mix.</span>
+            </div>
+          </div>
         )}
 
         {!s ? (
@@ -218,7 +240,7 @@ export default function AudioStudioPage() {
                       onSelectClip={setClipId}
                       onMoveClip={(cid, start) => d.updateClip(cid, { start_seconds: start }, `Moved to ${start.toFixed(2)}s.`)}
                       onSeek={(t) => (player.stop(), setPlaying(false), setPos(t))}
-                      onTrackChange={(tid, patch) => d.updateTrack(tid, patch, patch.name ? `Renamed to “${patch.name}”.` : null)}
+                      onTrackChange={(tid, patch) => (player.setLive(s.tracks.map((x) => (x.id === tid ? { ...x, ...patch } : x))), d.updateTrack(tid, patch, patch.name ? `Renamed to “${patch.name}”.` : null))}
                       selectedTrackId={clipTrack?.id ?? null}
                       onSelectTrack={setTrackId}
                       onAddTrack={async (name, family) => {
@@ -247,7 +269,7 @@ export default function AudioStudioPage() {
                     )}
                     <Mixer tracks={s.tracks} clips={s.clips} player={player} busy={d.busy !== null} seconds={seconds} position={pos}
                       mix={s.session.mix} measurement={s.measurement} target={ws.target}
-                      onChange={(tid, p, msg) => d.updateTrack(tid, p, msg ?? null)} onMix={(mix, msg) => d.updateMix(s.scene.id, mix, s.session!.revision, msg)} />
+                      onChange={(tid, p, msg) => (player.setLive(s.tracks.map((x) => (x.id === tid ? { ...x, ...p } : x))), d.updateTrack(tid, p, msg ?? null))} onMix={(mix, msg) => d.updateMix(s.scene.id, mix, s.session!.revision, msg)} />
                   </>
                 ) : (
                   <p className="rounded-xl border border-dashed border-aura-border p-8 text-center text-sm text-white/50">
@@ -273,7 +295,7 @@ export default function AudioStudioPage() {
                       await d.generate(s.scene.id, { clip_id: c.id, kind: "score", description: amb.description, duration_seconds: Math.min(300, seconds) });
                     }} />
                 )}
-                <GeneratorsPanel generators={ws.generators} canGenerate={canGenerate} busy={d.busy !== null} onGenerateCues={s.session ? () => d.generateCues(s.scene.id) : null} />
+                <GeneratorsPanel generators={ws.generators} canGenerate={canGenerate} busy={d.busy !== null} onGenerateCues={s.session ? () => d.generateCues(s.scene.id) : null} onPlace={s.session ? () => d.placeGenerated(s.scene.id) : null} />
               </div>
             </div>
           </>

@@ -108,7 +108,7 @@ export default function CastingCharactersPage() {
         {active.length > 0 && <CastProfilesBar projectId={id} characters={active} busy={c.busy !== null} onApplySuggestions={() => c.applySuggestions()} />}
 
         {active.length > 1 && c.ws.relationship_map && (
-          <RelationshipMap map={c.ws.relationship_map} busy={c.busy !== null} onSelect={setSelectedId} onAdd={(input) => c.setRelationship(input)} />
+          <RelationshipMap map={c.ws.relationship_map} busy={c.busy !== null} onSelect={setSelectedId} onAdd={(input) => c.setRelationship(input)} onAddAll={(inputs) => c.addRelationships(inputs)} />
         )}
 
         {active.length > 0 && <CastLooksBar projectId={id} firstCharacterId={active[0].id} count={active.length} />}

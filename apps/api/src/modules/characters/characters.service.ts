@@ -140,7 +140,19 @@ export async function applySuggestedProfiles(db: SupabaseClient, projectId: stri
     await editCharacter(db, c.id as string, patch);
     updated.push({ id: c.id as string, name: c.name as string, fields: Object.keys(patch) });
   }
-  return { updated, unchanged: active.length - updated.length };
+  // Relationships the dialogue states (owner, 2026-10-02): saved only between characters who have none yet.
+  const relationships_added: { a: string; b: string; relationship: string }[] = [];
+  if (resolved) {
+    const [aliases, saved] = await Promise.all([repo.listAliases(db, projectId), repo.listRelationships(db, projectId)]);
+    const map = relationshipMap(chars, aliases, apps, saved, resolved.version.elements as { type: string; text: string; speaker?: string }[]);
+    const nameOf = new Map(active.map((c) => [c.id as string, c.name as string]));
+    for (const e of map.edges) {
+      if (e.relationship || !e.suggestion) continue;
+      await setRelationship(db, projectId, { character_a: e.a, character_b: e.b, relationship: e.suggestion.relationship.slice(0, 80), description: e.suggestion.evidence.slice(0, 2000) });
+      relationships_added.push({ a: nameOf.get(e.a) ?? "", b: nameOf.get(e.b) ?? "", relationship: e.suggestion.relationship });
+    }
+  }
+  return { updated, unchanged: active.length - updated.length, relationships_added };
 }
 
 /**

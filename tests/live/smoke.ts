@@ -1505,5 +1505,54 @@ await check("aurascript: condense a scene and use it as a new draft version; con
   return `v${o.version.version_number}; continuity ${c.summary.warnings} warnings, ${c.summary.notes} notes`;
 });
 
+// ---- One click per page (owner, 2026-10-02): every batch goes through the same gated per-item writes ----
+await check("one click: Casting's whole-cast fill also reports the relationships the dialogue states (never replacing saved ones)", async () => {
+  const before = (await api("GET", `/api/projects/${projectId}/characters`)).relationships ?? [];
+  const r = await api("POST", `/api/projects/${projectId}/characters/apply-suggestions`, {});
+  assert(Array.isArray(r.relationships_added), "relationships_added missing");
+  const after = (await api("GET", `/api/projects/${projectId}/characters`)).relationships ?? [];
+  for (const b of before) assert(after.some((a: any) => a.id === b.id && a.relationship === b.relationship), "a saved relationship changed");
+  return `${r.relationships_added.length} added; ${after.length} saved in all`;
+});
+await check("one click: reference pictures for every location and prop (free built-in); a second click makes nothing new", async () => {
+  const r = await api("POST", `/api/projects/${projectId}/world/looks/generate-all`, {});
+  assert(typeof r.requested === "number" && Array.isArray(r.items), JSON.stringify(r).slice(0, 200));
+  const again = await api("POST", `/api/projects/${projectId}/world/looks/generate-all`, {});
+  assert(again.requested === 0, `second click requested ${again.requested}`);
+  return `${r.requested} pictures for ${r.items.length} places/props`;
+});
+await check("one click: Visual Generation compiles every prompt, sketches every shot (free) and approves a take for each — the whole film can be assembled before any paid provider", async () => {
+  const c = await api("POST", `/api/projects/${projectId}/visual/compile-all`, {});
+  const sk = await api("POST", `/api/projects/${projectId}/visual/sketch-all`, {});
+  let ws: any;
+  for (let i = 0; i < 45; i++) {
+    ws = await api("GET", `/api/projects/${projectId}/visual`);
+    if (!ws.queue.waiting && !ws.queue.running) break;
+    await Bun.sleep(2000);
+  }
+  const a = await api("POST", `/api/projects/${projectId}/visual/approve-all`, {});
+  const usable = ws.scenes.filter((s: any) => s.plan.usable).flatMap((s: any) => s.shots).length;
+  const ws2 = await api("GET", `/api/projects/${projectId}/visual`);
+  const approvedUsable = ws2.scenes.filter((s: any) => s.plan.usable).flatMap((s: any) => s.shots).filter((x: any) => x.approved_take_id).length;
+  assert(approvedUsable === usable, `${approvedUsable} of ${usable} usable shots approved (${JSON.stringify(a)})`);
+  return `compiled ${c.compiled}, sketched ${sk.requested}, approved ${a.approved}; ${approvedUsable}/${usable} shots in usable plans approved`;
+});
+await check("one click: Audio Studio generates every planned sound in the film, then places each on its marked spot (recordings already placed are kept)", async () => {
+  const before = await api("GET", `/api/projects/${projectId}/audio`);
+  const recs = new Map(before.scenes.flatMap((s: any) => s.clips).filter((c: any) => c.kind === "asset").map((c: any) => [c.id, c.asset_id]));
+  const g = await api("POST", `/api/projects/${projectId}/audio/generate-all`, {});
+  let p: any = null;
+  for (let i = 0; i < 30; i++) {
+    await Bun.sleep(3000);
+    p = await api("POST", `/api/projects/${projectId}/audio/place-generated`, {});
+    if (!p.still_making) break;
+  }
+  const after = await api("GET", `/api/projects/${projectId}/audio`);
+  const clips = after.scenes.flatMap((s: any) => s.clips);
+  for (const [id, asset] of recs) assert(clips.find((c: any) => c.id === id)?.asset_id === asset, "a placed recording was replaced");
+  assert(p && p.still_making === 0, `still making after waiting: ${JSON.stringify(p)}`);
+  return `generated ${g.requested} across ${g.scenes} scene(s); placed ${p.placed}; ${p.not_generated} cue(s) without a generated sound`;
+});
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`SUMMARY ${results.length - failed}/${results.length} passed${failed ? " — FAILURES: " + results.filter((r) => !r.ok).map((r) => r.check).join("; ") : ""}`);

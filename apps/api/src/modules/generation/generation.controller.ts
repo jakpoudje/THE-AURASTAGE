@@ -3,6 +3,7 @@
 // Domain: Visual Generation
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { approveAllShots, compileAllShots, sketchAllShots } from "./generation.batch";
 import { cancelTake, compileShot, getVisualWorkspace, requestTakes, setTakeApproval } from "./generation.service";
 import { GenerationConflictError, GenerationNotFoundError, GenerationNotReadyError, GenerationValidationError } from "./generation.validator";
 import { GenerationForbiddenError } from "./generation.permissions";
@@ -37,6 +38,10 @@ export async function registerGenerationRoutes(app: FastifyInstance) {
     "/api/visual/packages/:id/takes",
     route(({ params, body, db, req }) => requestTakes(db, params.id, body, (req.headers["idempotency-key"] as string | undefined) ?? null))
   );
+  // One click for the whole film (owner, 2026-10-02).
+  app.post("/api/projects/:id/visual/compile-all", route(({ params, db }) => compileAllShots(db, params.id)));
+  app.post("/api/projects/:id/visual/sketch-all", route(({ params, db }) => sketchAllShots(db, params.id)));
+  app.post("/api/projects/:id/visual/approve-all", route(({ params, db }) => approveAllShots(db, params.id)));
   app.post("/api/takes/:id/cancel", route(({ params, db }) => cancelTake(db, params.id)));
   app.post("/api/takes/:id/:action", route(({ params, db }) => setTakeApproval(db, params.id, params.action)));
 }

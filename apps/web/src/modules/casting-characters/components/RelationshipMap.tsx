@@ -6,8 +6,8 @@ import { useState } from "react";
 import type { SetRelationshipInput } from "@aurastage/contracts";
 import type { RelationshipMap as Map_ } from "../types";
 
-export function RelationshipMap({ map, busy, onSelect, onAdd }: {
-  map: Map_; busy: boolean; onSelect: (id: string) => void; onAdd: (input: SetRelationshipInput) => void;
+export function RelationshipMap({ map, busy, onSelect, onAdd, onAddAll }: {
+  map: Map_; busy: boolean; onSelect: (id: string) => void; onAdd: (input: SetRelationshipInput) => void; onAddAll: (inputs: SetRelationshipInput[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const nodes = map.nodes.filter((n) => n.scenes > 0 || map.edges.some((e) => e.a === n.id || e.b === n.id));
@@ -78,6 +78,11 @@ export function RelationshipMap({ map, busy, onSelect, onAdd }: {
             {suggestions.length === 0 ? (
               <p className="text-xs text-white/40">No relationships stated in the dialogue to suggest.</p>
             ) : (
+              <>
+              <button disabled={busy} onClick={() => onAddAll(suggestions.map((e) => ({ character_a: e.a, character_b: e.b, relationship: e.suggestion!.relationship, description: e.suggestion!.evidence.slice(0, 2000) })))}
+                className="w-full rounded-md bg-aura-gold px-3 py-1.5 text-xs font-medium text-black disabled:opacity-40">
+                Add all {suggestions.length} suggested relationship{suggestions.length === 1 ? "" : "s"}
+              </button>
               <ul className="space-y-2" aria-label="Suggested relationships">
                 {suggestions.map((e) => (
                   <li key={`${e.a}-${e.b}`} className="rounded-md border border-aura-border bg-black/30 p-2">
@@ -91,6 +96,7 @@ export function RelationshipMap({ map, busy, onSelect, onAdd }: {
                   </li>
                 ))}
               </ul>
+              </>
             )}
           </div>
         </div>

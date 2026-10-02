@@ -87,6 +87,23 @@ export default function VisualGenerationPage() {
             </span>
           )}
         </p>
+        {ws.summary.shots > 0 && (
+          <div className="rounded-xl border border-aura-gold/30 bg-aura-panel p-3" aria-label="Whole film">
+            <p className="text-xs uppercase tracking-wider text-white/50">Whole film — one click each, in order (every shot can still be done by hand below)</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button onClick={() => d.compileAll()} disabled={d.busy !== null} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+                1 · Compile every shot's prompt
+              </button>
+              <button onClick={() => d.sketchAll()} disabled={d.busy !== null} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+                2 · Sketch every shot (free)
+              </button>
+              <button onClick={() => d.approveAll()} disabled={d.busy !== null} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+                3 · Approve a take for every shot
+              </button>
+              <span className="self-center text-[11px] text-white/40">Sketches let you assemble and watch the whole film in Editorial before any paid image or video service is connected.</span>
+            </div>
+          </div>
+        )}
         {(d.error || d.notice) && (
           <div className={`rounded-md border px-4 py-2 text-sm ${d.error ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300"}`}>{d.error ?? d.notice}</div>
         )}

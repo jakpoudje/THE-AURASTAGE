@@ -141,6 +141,22 @@ async function api(method, path, body) {
     await page.getByText("Approve the shot plan again first.").waitFor();
     await page.getByRole("img", { name: "Take V2" }).waitFor();
   });
+  await step("owner 2026-10-02: whole film in one click each — compile every prompt, sketch every shot (free), approve a take for every shot; reload: every shot approved; manual choices kept", async () => {
+    const sb = await api("GET", `/api/projects/${P}/storyboard`);
+    for (const sc of sb.scenes) if (sc.plan && (sc.plan.status !== "approved" || sc.plan.review_state !== "current")) await api("POST", `/api/projects/${P}/storyboard/scenes/${sc.scene.id}/approve`, {});
+    await reload();
+    await page.getByRole("button", { name: "1 · Compile every shot's prompt" }).click();
+    await page.getByText(/^Compiled \d+ shot prompts?|^Every shot's prompt is already up to date/).waitFor();
+    await page.getByRole("button", { name: "2 · Sketch every shot (free)" }).click();
+    await page.getByText(/^Sketching \d+ shots? with AuraStage Sketch|^No shots need a sketch/).waitFor();
+    for (let i = 0; i < 4; i++) { await reload(); await page.waitForTimeout(300); } // the mock worker finishes takes as the workspace is read
+    await page.getByRole("button", { name: "3 · Approve a take for every shot" }).click();
+    await page.getByText(/^Approved a take for \d+ shots?/).waitFor();
+    await reload();
+    const ws = await api("GET", `/api/projects/${P}/visual`);
+    if (ws.summary.with_approved_take !== ws.summary.shots) throw new Error(`${ws.summary.with_approved_take} of ${ws.summary.shots} approved`);
+    await page.getByText(`${ws.summary.shots} of ${ws.summary.shots} shots have an approved take`).waitFor();
+  });
   await page.screenshot({ path: `${OUT}/visual.png`, fullPage: true });
   console.log("ERRORS:", errors);
   await browser.close();

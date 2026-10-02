@@ -52,11 +52,11 @@ function Strip({ t, player, busy, selected, onSelect, onChange }: { t: AudioTrac
       <label className="w-full text-center text-[9px] text-white/40">
         Pan {pan === 0 ? "C" : pan < 0 ? `L${Math.round(-pan * 100)}` : `R${Math.round(pan * 100)}`}
         <input aria-label={`Pan ${t.name}`} type="range" min={-1} max={1} step={0.05} value={pan} disabled={busy}
-          onChange={(e) => setPan(Number(e.target.value))} onPointerUp={() => pan !== t.pan && onChange({ pan })} onKeyUp={() => pan !== t.pan && onChange({ pan })} className="w-full" />
+          onChange={(e) => { setPan(Number(e.target.value)); player.setTrack(t.id, { pan: Number(e.target.value) }); }} onPointerUp={() => pan !== t.pan && onChange({ pan })} onKeyUp={() => pan !== t.pan && onChange({ pan })} className="w-full" />
       </label>
       <div className="flex items-end gap-2">
         <input aria-label={`Fader ${t.name}`} type="range" min={-60} max={12} step={0.5} value={gain} disabled={busy}
-          onChange={(e) => setGain(Number(e.target.value))} onPointerUp={() => gain !== t.gain_db && onChange({ gain_db: gain })} onKeyUp={() => gain !== t.gain_db && onChange({ gain_db: gain })}
+          onChange={(e) => { setGain(Number(e.target.value)); player.setTrack(t.id, { gain_db: Number(e.target.value) }); }} onPointerUp={() => gain !== t.gain_db && onChange({ gain_db: gain })} onKeyUp={() => gain !== t.gain_db && onChange({ gain_db: gain })}
           className="h-24 w-4 [writing-mode:vertical-lr] [direction:rtl]" />
         <Meter db={an ? meterDb(an) : -Infinity} />
       </div>

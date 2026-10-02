@@ -1,7 +1,7 @@
 // apps/api/src/modules/world/world.controller.ts — HTTP transport only. Domain: Locations & Props.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createWorldItem, generateWorldLook, getWorldLook, getWorldWorkspace, syncWorld, updateWorldItem } from "./world.service";
+import { createWorldItem, generateWorldLook, generateAllWorldLooks, getWorldLook, getWorldWorkspace, syncWorld, updateWorldItem } from "./world.service";
 import { WorldConflictError, WorldForbiddenError, WorldNotFoundError, WorldNotReadyError, WorldValidationError } from "./world.errors";
 
 function handleError(err: unknown, reply: FastifyReply) {
@@ -26,6 +26,7 @@ export async function registerWorldRoutes(app: FastifyInstance) {
       }
     };
   app.get("/api/projects/:id/world", route(({ params, db }) => getWorldWorkspace(db, params.id)));
+  app.post("/api/projects/:id/world/looks/generate-all", route(({ params, body, db }) => generateAllWorldLooks(db, params.id, body)));
   app.post("/api/projects/:id/world/sync", route(({ params, db }) => syncWorld(db, params.id)));
   app.post("/api/projects/:id/world/:kind", route(({ params, body, db }) => createWorldItem(db, params.id, params.kind, body), 201));
   app.patch("/api/world/:kind/:id", route(({ params, body, db }) => updateWorldItem(db, params.kind, params.id, body)));

@@ -487,6 +487,21 @@ http.createServer((req, res) => {
       if (b.archived !== undefined) r.archived_at = b.archived ? now() : null;
       r.revision++; return send(200, r);
     }
+    // One click for every place and prop (mirrors apps/api world.service generateAllWorldLooks).
+    if (u === `/api/projects/${P}/world/looks/generate-all` && req.method === "POST") {
+      if (!wCanEdit()) return wErr(403, "AURA-COL-403", "your role can't edit in Scene DNA. Ask the project's producer for access.");
+      const items = []; let total = 0;
+      for (const kind of ["location", "prop"]) for (const r of W[kind].filter((x) => !x.archived_at)) {
+        const out = eng.worldLookEngine({ kind, style: null, item: { name: r.name, description: r.description || null, category: kind === "prop" ? r.category : null, int_ext: r.int_ext || [], times_of_day: r.times_of_day || [], areas: r.areas || [] } });
+        const todo = out.views.filter((v) => v.in_default_set).filter((v) => { const h = W.refs.filter((x) => x.item_id === r.id && x.view_key === v.key);
+          if (h[0] && (h[0].status === "queued" || h[0].status === "running")) return false; const g = h.find((x) => x.status === "succeeded"); return !g || g.identity_hash !== out.identity_hash; });
+        for (const v of todo) W.refs.unshift({ id: crypto.randomUUID(), kind, item_id: r.id, view_key: v.key, aspect_ratio: v.aspect_ratio, prompt: v.prompt, identity_hash: out.identity_hash,
+          provider: "aurastage-sketch", execution: "native", status: "queued", asset_id: null, error: null, created_at: now(), completed_at: null, _polls: 0,
+          sketch: kind === "location" ? { kind, title: r.name, subtitle: v.label, view: v.view, time: v.time, int_ext: r.int_ext || [], lines: [out.identity] } : { kind, title: r.name, subtitle: v.label, view: v.view, category: r.category, lines: [out.identity] } });
+        items.push({ kind, id: r.id, name: r.name, requested: todo.length }); total += todo.length;
+      }
+      return send(200, { items, requested: total, provider: total ? "aurastage-sketch" : null });
+    }
     if ((m = u.match(/^\/api\/world\/(location|prop)\/([^/]+)\/look(\/generate)?$/))) {
       const kind = m[1], r = W[kind].find((x) => x.id === m[2]); if (!r) return wErr(404, "AURA-WLD-404", "Not found");
       const sk = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/sketch/sketchAdapter.js"));
@@ -816,10 +831,10 @@ http.createServer((req, res) => {
         budget: { monthly_paid_take_limit: ST.settings.generation.monthly_paid_take_limit, used_this_month: 0 }, queue: { waiting: takes.filter((t) => t.status === "queued").length, running: takes.filter((t) => t.status === "running").length },
         scenes: out, summary: { scenes: out.length, shots: all.length, with_approved_take: all.filter((x) => x.approved_take_id).length, takes: takes.length } });
     }
-    if ((m = u.match(/^\/api\/projects\/[^/]+\/visual\/shots\/([^/]+)\/compile$/))) {
-      const plan = plans.find((pl) => { const v = planVersions.find((x) => x.id === pl.approved_version_id); return v && v.shots.some((x) => x.id === m[1]); });
-      if (!plan || plan.status !== "approved" || plan.review_state !== "current") return send(412, { error: { code: "AURA-GEN-412", message: "Approve this scene's shot plan again first — it has changes." } });
-      const version = planVersions.find((x) => x.id === plan.approved_version_id); const shot = version.shots.find((x) => x.id === m[1]);
+    const compileMock = (shotId, aspect) => {
+      const plan = plans.find((pl) => { const v = planVersions.find((x) => x.id === pl.approved_version_id); return v && v.shots.some((x) => x.id === shotId); });
+      if (!plan || plan.status !== "approved" || plan.review_state !== "current") return [412, { error: { code: "AURA-GEN-412", message: "Approve this scene's shot plan again first — it has changes." } }];
+      const version = planVersions.find((x) => x.id === plan.approved_version_id); const shot = version.shots.find((x) => x.id === shotId);
       const scene = scenes.find((x) => x.id === plan.scene_id); const dv = sdnaVersions.find((x) => x.id === version.scene_dna_version_id); const ed = dv.content.editable;
       const look = (cid) => { const l = looks.find((x) => x.id === (ed.wardrobe || {})[cid]); return l ? [l.name, l.description].filter(Boolean).join(": ") : null; };
       const r = eng.promptCompilerEngine({ project: { title: project.title, genre: project.genre ?? null, tone: project.tone ?? null, setting: project.setting ?? null, time_period: project.time_period ?? null },
@@ -828,9 +843,33 @@ http.createServer((req, res) => {
         characters: chars.filter((c) => shot.character_ids.includes(c.id)).map((c) => { const st = (globalThis.__ages || []).find((a) => a.id === (ed.ages || {})[c.id] && a.character_id === c.id);
           return { id: c.id, name: c.name, age: st ? st.age : c.age ?? null, gender: c.gender ?? null, description: c.description ?? null, wardrobe: look(c.id), age_state: st ? { id: st.id, label: st.label, description: st.description ?? null } : null }; }),
         dialogue: dlines.filter((l) => shot.dialogue_line_ids.includes(l.id)).map((l) => ({ id: l.id, speaker: l.speaker_name, text: l.text, emotion: l.emotion })),
-        aspect_ratio: b.aspect_ratio || "16:9", provenance: { shot_plan_version_id: version.id, scene_dna_version_id: dv.id, script_version_id: null } });
+        aspect_ratio: aspect || "16:9", provenance: { shot_plan_version_id: version.id, scene_dna_version_id: dv.id, script_version_id: null } });
       const pkg = { id: crypto.randomUUID(), shot_id: shot.id, shot_plan_version_id: version.id, content: r.package, review_state: "current", review_reason: null, engine_version: r.engine_version, created_at: now() };
-      packages.push(pkg); return send(200, { package_id: pkg.id, checks: r.package.checks, prompt: r.package.prompt });
+      packages.push(pkg); return [200, { package_id: pkg.id, checks: r.package.checks, prompt: r.package.prompt }];
+        };
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/visual\/shots\/([^/]+)\/compile$/))) { const [st, out] = compileMock(m[1], b.aspect_ratio); return send(st, out); }
+    // One click for the whole film (mirrors apps/api generation.batch.ts).
+    const vUsable = () => plans.filter((pl) => pl.status === "approved" && pl.review_state === "current" && pl.approved_version_id).flatMap((pl) => planVersions.find((v) => v.id === pl.approved_version_id).shots.map((shot) => ({ plan: pl, shot })));
+    const vPkg = (x) => { const pkg = [...packages].reverse().find((k) => k.shot_id === x.shot.id); return pkg && pkg.shot_plan_version_id === x.plan.approved_version_id ? pkg : null; };
+    if (u === `/api/projects/${P}/visual/compile-all` && req.method === "POST") {
+      let compiled = 0; for (const x of vUsable()) { if (vPkg(x)) continue; const [st, out] = compileMock(x.shot.id, ST.settings.technical.aspect_ratio); if (st !== 200) return send(st, out); compiled++; }
+      return send(200, { compiled, already: vUsable().length - compiled, waiting_scenes: plans.filter((pl) => !(pl.status === "approved" && pl.review_state === "current")).map((pl) => (scenes.find((sc) => sc.id === pl.scene_id) || {}).number) });
+    }
+    if (u === `/api/projects/${P}/visual/sketch-all` && req.method === "POST") {
+      let requested = 0, already = 0, needs = 0;
+      for (const x of vUsable()) { const pkg = vPkg(x); if (!pkg) { needs++; continue; }
+        if (takes.some((t) => t.shot_id === x.shot.id && ["queued", "running", "succeeded"].includes(t.status))) { already++; continue; }
+        takes.push({ id: crypto.randomUUID(), project_id: P, shot_id: pkg.shot_id, package_id: pkg.id, take_number: takes.filter((t) => t.shot_id === pkg.shot_id).length + 1, provider: "aurastage-sketch", model: "sketch-v1", capability: "image",
+          params: { aspect_ratio: "16:9", duration_seconds: null }, seed: null, status: "queued", approval: "pending", media_type: null, media_url: null, error: null, cost_actual: null, provider_request_id: null, created_at: now(), completed_at: null });
+        requested++; }
+      return send(200, { requested, already, needs_prompt: needs });
+    }
+    if (u === `/api/projects/${P}/visual/approve-all` && req.method === "POST") {
+      let approved = 0, waiting = 0;
+      for (const x of vUsable()) { const st = takes.filter((t) => t.shot_id === x.shot.id); if (st.some((t) => t.approval === "approved")) continue;
+        const t = st.filter((k) => k.status === "succeeded" && k.approval !== "rejected").sort((a, b2) => String(b2.created_at).localeCompare(String(a.created_at)))[0];
+        if (!t) { waiting++; continue; } t.approval = "approved"; approved++; }
+      return send(200, { approved, waiting, total: vUsable().length });
     }
     if ((m = u.match(/^\/api\/visual\/packages\/([^/]+)\/takes$/))) {
       const pkg = packages.find((x) => x.id === m[1]); const a = gw.getAdapter(b.provider);
@@ -924,6 +963,26 @@ http.createServer((req, res) => {
         const r = agenReq(m[1], { clip_id: c.id, kind, description: c.label, duration_seconds: c.duration_seconds }); if (r.err) return aerr(r.err[0], r.err[1]); requested.push(agenWork(r.g));
       }
       return send(200, { requested, skipped });
+    }
+    // One click for the whole film (mirrors apps/api audio.batch.ts).
+    if (u === `/api/projects/${P}/audio/generate-all` && req.method === "POST") {
+      let requested = 0, skipped = 0;
+      for (const s of asessions) for (const c of aclips.filter((x) => x.session_id === s.id && x.kind === "cue")) {
+        const t = atracks.find((x) => x.id === c.track_id); const kind = t && agen.FAMILY_KIND[t.family];
+        if (!kind || (kind === "voice" && !(c.source && c.source.dialogue_line_id))) continue;
+        if (agens.some((g) => g.clip_id === c.id && g.status !== "failed") || !aprov.audioBackendsFor(kind, {}).length) { skipped++; continue; }
+        const r = agenReq(s.scene_id, { clip_id: c.id, kind, description: c.label, duration_seconds: c.duration_seconds }); if (r.err) return aerr(r.err[0], r.err[1]); agenWork(r.g); requested++;
+      }
+      return send(200, { scenes: asessions.length, requested, skipped });
+    }
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/audio(?:\/scenes\/([^/]+))?\/place-generated$/)) && req.method === "POST") {
+      const ss = asessions.filter((x) => !m[1] || x.scene_id === m[1]); let placed = 0, still = 0, none = 0;
+      for (const s of ss) for (const c of aclips.filter((x) => x.session_id === s.id && x.kind === "cue")) {
+        const g = agens.find((x) => x.clip_id === c.id && x.status === "succeeded" && x.asset_id);
+        if (g) { Object.assign(c, { kind: "asset", asset_id: g.asset_id, updated_at: now() }); atouch(s); s.status = "draft"; placed++; }
+        else if (agens.some((x) => x.clip_id === c.id && (x.status === "queued" || x.status === "running"))) still++; else none++;
+      }
+      return send(200, { placed, still_making: still, not_generated: none });
     }
     const amusic = (scene, pv) => {
       const dv = pv && sdnaVersions.find((x) => x.id === pv.scene_dna_version_id); const ed = (dv && dv.content.editable) || {}; const ids = new Set((dv && dv.content.proposal && dv.content.proposal.dialogue && dv.content.proposal.dialogue.line_ids) || []);

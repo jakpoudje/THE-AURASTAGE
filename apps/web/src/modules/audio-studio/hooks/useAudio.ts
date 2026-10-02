@@ -160,6 +160,17 @@ export function useAudio(projectId: string) {
         r.requested.length
           ? `Generating ${r.requested.length} planned sound${r.requested.length === 1 ? "" : "s"} with the built-in generators${r.skipped.length ? ` (${r.skipped.length} already generated or not supported)` : ""}. Nothing is placed until you choose “Use this”.`
           : "Nothing new to generate — every ambience, effect and score cue already has a generated sound or a recording."),
+    spotAll: () =>
+      run("spot", () => audioApi.spotAll(projectId), (r) =>
+        `${r.spotted.length ? `Spotted ${r.spotted.length} scene${r.spotted.length === 1 ? "" : "s"} (${r.spotted.join(", ")}).` : "No new scenes to spot."}${r.already ? ` ${r.already} already spotted — re-spot those one by one if their shot plan changed.` : ""}${r.waiting.length ? ` Scene${r.waiting.length === 1 ? "" : "s"} ${r.waiting.join(", ")} still need an approved shot plan in Storyboard.` : ""}`),
+    generateAll: () =>
+      run("generate", () => audioApi.generateAll(projectId), (r) =>
+        r.requested
+          ? `Generating ${r.requested} planned sound${r.requested === 1 ? "" : "s"} across ${r.scenes} scene${r.scenes === 1 ? "" : "s"} with the built-in generators${r.skipped ? ` (${r.skipped} already generated or not supported)` : ""}. When they're ready, “Place generated sounds” puts each on its marked spot.`
+          : "Nothing new to generate — every planned sound already has a generated sound or a recording."),
+    placeGenerated: (sceneId: string | null) =>
+      run("save", () => audioApi.placeGenerated(projectId, sceneId), (r) =>
+        `Placed ${r.placed} generated sound${r.placed === 1 ? "" : "s"} on ${r.placed === 1 ? "its" : "their"} marked spot${r.placed === 1 ? "" : "s"}${sceneId ? "" : " across the film"}.${r.still_making ? ` ${r.still_making} still being made — press again when they're ready.` : ""}${r.not_generated ? ` ${r.not_generated} planned cue${r.not_generated === 1 ? " has" : "s have"} no generated sound yet (dialogue without a voice, or not generated).` : ""} Recordings already on the timeline were kept; every clip can still be moved, trimmed or replaced.`),
     approve: (sceneId: string) => run("approve", () => audioApi.approve(projectId, sceneId), (r) => `Scene mix approved as version ${r.version_number}.`),
     exportStem: async (s: AudioScene, bus?: Bus) => {
       setBusy("export");

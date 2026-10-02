@@ -214,3 +214,32 @@ export async function generateWorldLook(db: SupabaseClient, kindRaw: string, id:
   }
   return { requested, provider: be.id, identity_hash: out.identity_hash };
 }
+
+/**
+ * One click for every location and prop (owner, 2026-10-02): the standard reference views for each, through the same
+ * gated request as the per-item button. Views already made from the current description, or being made, are left alone
+ * unless `redo`; archived items are skipped. Built in (free) unless a connected paid generator is chosen.
+ */
+export async function generateAllWorldLooks(db: SupabaseClient, projectId: string, body: unknown, env: Env = process.env) {
+  await assertProject(db, projectId);
+  const b = parse(z.object({ provider: z.string().max(60).optional(), redo: z.boolean().default(false) }).strict(), body ?? {});
+  const items: { kind: Kind; r: Row }[] = [];
+  for (const kind of ["location", "prop"] as Kind[]) {
+    const rows = await many(db.from(kind === "location" ? "locations" : "props").select("id, name, archived_at").eq("project_id", projectId).order("created_at", { ascending: true }));
+    for (const r of rows.filter((x) => !x.archived_at)) items.push({ kind, r });
+  }
+  const out: { kind: Kind; id: string; name: string; requested: number }[] = [];
+  let provider: string | null = null;
+  for (const { kind, r } of items) {
+    const look = await getWorldLook(db, kind, r.id, env);
+    const todo = look.views.filter((v) => v.in_default_set).filter((v) => {
+      if (v.latest && (v.latest.status === "queued" || v.latest.status === "running")) return false;
+      return b.redo || !v.image || v.image.stale;
+    }).map((v) => v.key);
+    if (!todo.length) { out.push({ kind, id: r.id, name: r.name, requested: 0 }); continue; }
+    const g = await generateWorldLook(db, kind, r.id, { views: todo, ...(b.provider ? { provider: b.provider } : {}) }, env);
+    provider = g.provider;
+    out.push({ kind, id: r.id, name: r.name, requested: g.requested.length });
+  }
+  return { items: out, requested: out.reduce((a, x) => a + x.requested, 0), provider };
+}

@@ -56,7 +56,9 @@ export function audibleTracks(tracks: AudioTrack[]) {
   return new Set(tracks.filter((t) => !t.mute && (!solo || t.solo)).map((t) => t.id));
 }
 
-interface GraphOpts { from: number; when: number; bus?: Bus; analysers?: Map<string, AnalyserNode>; meters?: GraphMeters }
+/** Per-track nodes live playback can change while it plays: the mute/solo gate, the fader and the pan. */
+export interface LiveTrack { gate: GainNode; fader: GainNode; pan: StereoPannerNode }
+interface GraphOpts { from: number; when: number; bus?: Bus; analysers?: Map<string, AnalyserNode>; meters?: GraphMeters; live?: Map<string, LiveTrack> }
 /** Live readouts from the running graph (compressor gain reduction per track, master level and limiter). */
 export interface GraphMeters { comps: Map<string, DynamicsCompressorNode>; master?: AnalyserNode; limiter?: DynamicsCompressorNode }
 
@@ -140,14 +142,21 @@ function buildGraph(c: BaseAudioContext, dest: AudioNode, tracks: AudioTrack[], 
     return delayIn;
   };
   for (const t of tracks) {
-    if (!play.has(t.id) || (o.bus && FAMILY_BUS[t.family] !== o.bus)) continue;
+    // Live playback keeps muted/unsoloed tracks in the graph behind a closed gate, so Mute/Solo act while it plays.
+    if ((!play.has(t.id) && !o.live) || (o.bus && FAMILY_BUS[t.family] !== o.bus)) continue;
     const fx = t.fx ?? NEUTRAL_TRACK_FX;
-    // Fader + automation.
+    // Automation, then the fader and the mute/solo gate as separate nodes (the fader moves live without disturbing automation).
     const tg = c.createGain();
-    const at0 = (sec: number) => dbToGain(t.gain_db + automationAt(fx.automation, sec));
+    const at0 = (sec: number) => dbToGain(automationAt(fx.automation, sec));
     tg.gain.setValueAtTime(at0(o.from), o.when);
-    for (const p of fx.automation) if (p.t > o.from) tg.gain.linearRampToValueAtTime(dbToGain(t.gain_db + p.db), o.when + (p.t - o.from));
-    let node: AudioNode = tg;
+    for (const p of fx.automation) if (p.t > o.from) tg.gain.linearRampToValueAtTime(dbToGain(p.db), o.when + (p.t - o.from));
+    const fader = c.createGain();
+    fader.gain.value = dbToGain(t.gain_db);
+    const gate = c.createGain();
+    gate.gain.value = play.has(t.id) ? 1 : 0;
+    tg.connect(fader);
+    fader.connect(gate);
+    let node: AudioNode = gate;
     const chain = (n: AudioNode) => { node.connect(n); node = n; };
     if (fx.hpf_hz > 0) { const f = c.createBiquadFilter(); f.type = "highpass"; f.frequency.value = fx.hpf_hz; f.Q.value = 0.707; chain(f); }
     if (fx.lpf_hz > 0) { const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = fx.lpf_hz; f.Q.value = 0.707; chain(f); }
@@ -165,6 +174,7 @@ function buildGraph(c: BaseAudioContext, dest: AudioNode, tracks: AudioTrack[], 
     const pan = c.createStereoPanner();
     pan.pan.value = t.pan;
     chain(pan);
+    o.live?.set(t.id, { gate, fader, pan });
     if (o.analysers) {
       const an = c.createAnalyser();
       an.fftSize = 1024;
@@ -242,6 +252,7 @@ export class Player {
   private from = 0;
   analysers = new Map<string, AnalyserNode>();
   meters: GraphMeters = { comps: new Map() };
+  private live = new Map<string, LiveTrack>();
   playing = false;
   async play(from: number, tracks: AudioTrack[], clips: AudioClip[], buffers: Map<string, AudioBuffer>, mix?: SessionMix) {
     this.stop();
@@ -251,8 +262,33 @@ export class Player {
     this.meters = { comps: new Map() };
     this.from = from;
     this.startedAt = c.currentTime + 0.05;
-    this.sources = buildGraph(c, c.destination, tracks, clips, buffers, { from, when: this.startedAt, analysers: this.analysers, meters: this.meters }, mix);
+    this.live = new Map();
+    this.sources = buildGraph(c, c.destination, tracks, clips, buffers, { from, when: this.startedAt, analysers: this.analysers, meters: this.meters, live: this.live }, mix);
     this.playing = true;
+  }
+  /**
+   * Apply fader, pan, mute and solo to what is playing now (owner, 2026-10-02: the controls must act while you listen).
+   * Short ramps avoid clicks. Changes to EQ, compressor or sends still take effect on the next play.
+   */
+  setLive(tracks: Pick<AudioTrack, "id" | "gain_db" | "pan" | "mute" | "solo">[]) {
+    if (!this.playing) return;
+    const now = liveContext().currentTime;
+    const on = audibleTracks(tracks as AudioTrack[]);
+    for (const t of tracks) {
+      const n = this.live.get(t.id);
+      if (!n) continue;
+      n.fader.gain.setTargetAtTime(dbToGain(t.gain_db), now, 0.02);
+      n.pan.pan.setTargetAtTime(t.pan, now, 0.02);
+      n.gate.gain.setTargetAtTime(on.has(t.id) ? 1 : 0, now, 0.01);
+    }
+  }
+  /** Move one track's fader or pan live while it is being dragged (before it is saved). */
+  setTrack(id: string, v: { gain_db?: number; pan?: number }) {
+    const n = this.live.get(id);
+    if (!this.playing || !n) return;
+    const now = liveContext().currentTime;
+    if (v.gain_db !== undefined) n.fader.gain.setTargetAtTime(dbToGain(v.gain_db), now, 0.02);
+    if (v.pan !== undefined) n.pan.pan.setTargetAtTime(v.pan, now, 0.02);
   }
   position() {
     return this.playing ? this.from + Math.max(0, liveContext().currentTime - this.startedAt) : this.from;

@@ -156,6 +156,18 @@ async function api(method, path, body) {
     if (empty.length) throw new Error("still empty: " + empty.map((x) => x.name).join(", "));
     if (written && w1.locations.find((l) => l.id === written.id).description !== written.description) throw new Error("a written description was replaced");
   });
+  await step("owner 2026-10-02: reference pictures for every place and prop in one click (free); a second click makes nothing new; reload: pictures there", async () => {
+    await page.getByRole("button", { name: "Make reference pictures for every place and prop (free)" }).click();
+    await page.getByText(/^Making \d+ reference pictures? for \d+ places?/).waitFor();
+    await page.getByRole("button", { name: "Make reference pictures for every place and prop (free)" }).click();
+    await page.getByText("Every place and prop already has its reference pictures from the current description.").waitFor();
+    const w = await api("GET", `/api/projects/${P}/world`);
+    const first = w.locations.find((l) => !l.archived);
+    await api("GET", `/api/world/location/${first.id}/look`); // the mock "worker" draws on the second read
+    const look = await api("GET", `/api/world/location/${first.id}/look`);
+    if (!look.views.filter((v) => v.in_default_set).every((v) => v.image)) throw new Error("views not made for " + first.name);
+    await reload();
+  });
   await step("item 12: set dressing and prop continuity (free) — the notebook torn in scene 1 is flagged in scene 3; each scene's props with their state; reload: kept", async () => {
     await reload();
     const panel = page.getByRole("region", { name: "Set dressing and continuity" });

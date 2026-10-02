@@ -126,3 +126,6 @@ when the whole cast is complete the page points to the next stage (Locations & P
 - The look panel names the performer on an actor photo; the whole-cast generate never overwrites one (even with `redo`);
   readiness evidence for generated reference views ignores uploads.
 - All writes are `gate_write(project, 'casting', 'edit')` and audited (PerformerConsentRecorded / ActorPhotoAdded / PerformerConsentWithdrawn).
+- Whole-cast fill (`apply-suggestions`, 2026-10-02) also fills **physicality** from the script's action lines and saves
+  the relationships the dialogue states between characters who have none yet (`relationships_added`); the relationship
+  map has **Add all suggested relationships**. Saved relationships are never replaced.

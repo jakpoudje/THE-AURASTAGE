@@ -23,6 +23,7 @@ function fakeDb(rows: Record<string, Row[]>) {
   const rpc = async (fn: string, args: Row) => {
     calls.push({ fn, args });
     if (fn === "request_audio_generation") return { data: { id: `g${calls.length}`, scene_id: args.p_scene, clip_id: args.p_clip, kind: args.p_kind, description: args.p_description, duration_seconds: args.p_duration, provider: args.p_provider, model: args.p_model, execution: args.p_execution, seed: args.p_seed, status: "queued" }, error: null };
+    if (fn === "save_audio_clip") return { data: { ...(rows.audio_clips ?? []).find((c) => c.id === args.p_clip_id), start_seconds: 0, offset_seconds: 0, gain_db: 0, fade_in_seconds: 0, fade_out_seconds: 0, source: {}, updated_at: "2026-10-02T00:00:00Z", ...args.p_patch, kind: "asset" }, error: null };
     return { data: null, error: null };
   };
   return { calls, db: { from, rpc } };
@@ -85,5 +86,28 @@ describe("Audio Studio — generate sound", () => {
     expect(bad.statusCode).toBe(400);
     const paid = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/generate`, payload: { kind: "fx", description: "x", duration_seconds: 3, provider: "elevenlabs" } });
     expect(paid.statusCode).toBe(400);
+  });
+
+  it("one click: places each finished generated sound on its planned cue (newest take), never over a recording; counts sounds still being made", async () => {
+    const r0 = rows();
+    r0.audio_generations = [
+      { id: "g-old", project_id: P, scene_id: S1, clip_id: C.bg, status: "succeeded", asset_id: "88888888-8888-4888-8888-888888888881", created_at: "2026-10-01T10:00:00Z" },
+      { id: "g-new", project_id: P, scene_id: S1, clip_id: C.bg, status: "succeeded", asset_id: "88888888-8888-4888-8888-888888888882", created_at: "2026-10-01T11:00:00Z" },
+      { id: "g-run", project_id: P, scene_id: S1, clip_id: C.fx, status: "running", asset_id: null, created_at: "2026-10-01T11:00:00Z" },
+      { id: "g-rec", project_id: P, scene_id: S1, clip_id: C.rec, status: "succeeded", asset_id: "88888888-8888-4888-8888-888888888883", created_at: "2026-10-01T11:00:00Z" },
+    ];
+    const fake = fakeDb(r0);
+    const res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/place-generated` });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toEqual({ placed: 1, still_making: 1, not_generated: 2 });
+    const saves = fake.calls.filter((c) => c.fn === "save_audio_clip");
+    expect(saves).toEqual([{ fn: "save_audio_clip", args: { p_session_id: SES, p_clip_id: C.bg, p_patch: { asset_id: "88888888-8888-4888-8888-888888888882", label: "Exterior lagos harbour ambience — rain, dawn" } } }]);
+  });
+  it("one click: generates the planned sounds of every spotted scene", async () => {
+    const fake = fakeDb(rows());
+    const r = (await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/generate-all` })).json();
+    expect(r.scenes).toBe(1);
+    expect(r.requested).toBe(fake.calls.filter((c) => c.fn === "request_audio_generation").length);
+    expect(r.requested).toBeGreaterThan(0);
   });
 });

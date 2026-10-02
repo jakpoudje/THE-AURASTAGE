@@ -28,3 +28,7 @@ scene. Read-only; nothing is stored.
 ## Downstream consumers
 Assets Library (links, usage), AI & Generation readiness, and the prompt compiler (reference images per shot, and each prop's
 state in the scene — promptCompilerEngine 1.5.0).
+
+## One click (owner, 2026-10-02)
+`POST /api/projects/:id/world/looks/generate-all` — the standard reference views for every location and prop that has
+none or only outdated ones (built-in sketch unless a connected provider is chosen), through `generateWorldLook`.

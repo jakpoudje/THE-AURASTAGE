@@ -81,6 +81,12 @@ export function useVisual(projectId: string) {
     compile: (shotId: string, aspect: string) => run("compile", () => visualApi.compile(projectId, shotId, aspect), () => "Prompt compiled from the approved shot plan."),
     generate: (packageId: string, input: Partial<RequestTakeInput>) =>
       run("generate", () => visualApi.requestTakes(packageId, input), (r) => `Queued ${r.takes.length} ${r.takes.length === 1 ? "take" : "takes"}. They appear here when ready.`),
+    compileAll: () => run("compile", () => visualApi.compileAll(projectId), (r) =>
+      `${r.compiled ? `Compiled ${r.compiled} shot prompt${r.compiled === 1 ? "" : "s"}` : "Every shot's prompt is already up to date"}${r.compiled && r.already ? ` (${r.already} already up to date)` : ""}.${r.waiting_scenes.length ? ` Scene${r.waiting_scenes.length === 1 ? "" : "s"} ${r.waiting_scenes.join(", ")} need their shot plan approved again in Storyboard.` : ""}`),
+    sketchAll: () => run("generate", () => visualApi.sketchAll(projectId), (r) =>
+      `${r.requested ? `Sketching ${r.requested} shot${r.requested === 1 ? "" : "s"} with AuraStage Sketch (free) in the background.` : "No shots need a sketch."}${r.already ? ` ${r.already} already have a take.` : ""}${r.needs_prompt ? ` ${r.needs_prompt} need their prompt compiled first.` : ""}`),
+    approveAll: () => run("take", () => visualApi.approveAll(projectId), (r) =>
+      `Approved a take for ${r.approved} shot${r.approved === 1 ? "" : "s"} (the newest finished one; rejected takes are never chosen).${r.waiting ? ` ${r.waiting} shot${r.waiting === 1 ? " has" : "s have"} no finished take yet.` : ""} Change any of them on its shot.`),
     approve: (id: string) => run("take", () => visualApi.approve(id), (t) => `Take V${t.take_number} approved for this shot.`),
     reject: (id: string) => run("take", () => visualApi.reject(id), (t) => `Take V${t.take_number} rejected.`),
     reopen: (id: string) => run("take", () => visualApi.reopen(id), (t) => `Take V${t.take_number} reopened.`),

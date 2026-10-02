@@ -407,14 +407,16 @@ async function api(method, path, body) {
     const ws = await api("GET", `/api/projects/${P}/characters`);
     if (!ws.characters.some((c) => c.name === first && c.occupation === "Harbour pilot")) throw new Error("Save & next didn't save " + first);
   });
-  await step("item 12: the relationship map shows who shares scenes and suggests what the dialogue says (free); Add saves it; reload keeps it", async () => {
+  await step("item 12: the relationship map shows who shares scenes and suggests what the dialogue says (free); Add all saves them; reload keeps it", async () => {
     await page.goto(`${BASE}/projects/${P}/casting`);
     const map = page.getByRole("region", { name: "Relationship map" });
     await map.getByRole("button", { name: /Relationship map/ }).click();
     await map.getByRole("img", { name: "Characters and how they are connected" }).waitFor();
     await map.getByText(/Scene 2: Amara Bello to Tunde Okafor/).waitFor();
-    await map.getByRole("button", { name: /^Add Siblings: / }).click();
-    await page.getByText("Relationship saved.").waitFor();
+    await map.getByRole("button", { name: /^Add Siblings: / }).waitFor();
+    // Owner 2026-10-02: one click adds every suggestion (each can still be added one by one).
+    await map.getByRole("button", { name: "Add all 1 suggested relationship" }).click();
+    await page.getByText("Saved 1 suggested relationship. Edit or remove any of them on each character.").waitFor();
     await page.reload();
     const map2 = page.getByRole("region", { name: "Relationship map" });
     await map2.getByText(/1 saved · 0 suggested/).waitFor();

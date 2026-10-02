@@ -78,3 +78,10 @@ Each prop in the scene carries its continuity state from Locations & Props (`pro
 When the locked Scene DNA gives a character another age in this scene, the prompt describes them at that age ("Amara
 Bello (aged 10, Flashback, 1995: braided hair)") and only reference views made at that age are chosen — a flashback never
 borrows today's face. An "Age for this scene" check says when no views exist at that age yet.
+
+## One click for the whole film (owner, 2026-10-02) — `generation.batch.ts`
+`POST /api/projects/:id/visual/compile-all` (shots of usable plans whose prompt is missing or needs review),
+`…/visual/sketch-all` (one free AuraStage Sketch per shot with a current prompt and no take made or being made) and
+`…/visual/approve-all` (the newest finished, not-rejected take of each shot without an approved one). Each uses the
+per-shot function (same permission gates), so the whole film can be assembled in Editorial from sketches before any paid
+provider has credit; nothing a person approved or rejected changes.

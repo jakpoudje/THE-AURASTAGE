@@ -86,8 +86,10 @@ export function useCasting(projectId: string) {
     applySuggestions: () =>
       run("save", async () => {
         const r = await castingApi.applySuggestions(projectId);
-        return r.updated.length
-          ? `Filled empty fields for ${r.updated.length} character${r.updated.length === 1 ? "" : "s"} (${r.updated.map((u) => u.name).join(", ")}). Nothing you'd written was changed.`
+        const rels = r.relationships_added ?? [];
+        const relNote = rels.length ? ` Saved ${rels.length} relationship${rels.length === 1 ? "" : "s"} the dialogue states (${rels.slice(0, 3).map((x) => `${x.a} & ${x.b}: ${x.relationship}`).join("; ")}${rels.length > 3 ? "…" : ""}).` : "";
+        return r.updated.length || rels.length
+          ? `${r.updated.length ? `Filled empty fields for ${r.updated.length} character${r.updated.length === 1 ? "" : "s"} (${r.updated.map((u) => u.name).join(", ")}).` : "No empty fields to fill."}${relNote} Nothing you'd written was changed.`
           : "Nothing to fill — the script and story have no more suggestions for empty fields. Try “Develop the rest with AI”.";
       }),
     markDistinct: (a: string, b: string, names: string) => run("merge", async () => (await castingApi.markDistinct(projectId, a, b), `Kept ${names} as different people. AuraStage won't suggest merging them again.`)),
@@ -102,6 +104,11 @@ export function useCasting(projectId: string) {
     },
     setRelationship: (input: SetRelationshipInput) =>
       run("relationship", async () => (await castingApi.setRelationship(projectId, input), "Relationship saved.")),
+    addRelationships: (inputs: SetRelationshipInput[]) =>
+      run("relationship", async () => {
+        for (const i of inputs) await castingApi.setRelationship(projectId, i);
+        return `Saved ${inputs.length} suggested relationship${inputs.length === 1 ? "" : "s"}. Edit or remove any of them on each character.`;
+      }),
     deleteRelationship: (id: string) => run("relationship", async () => (await castingApi.deleteRelationship(id), "Relationship removed.")),
     saveLook: (characterId: string, input: SaveWardrobeLookInput) =>
       run("look", async () => (await castingApi.saveLook(characterId, input), `Look "${input.name}" saved.`)),

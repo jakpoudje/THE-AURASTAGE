@@ -89,8 +89,8 @@ const STATE: Record<string, { dot: string; text: string }> = {
   not_configured: { dot: "text-white/30", text: "add a key to connect" },
   not_connected: { dot: "text-white/30", text: "not built yet" },
 };
-export function GeneratorsPanel({ generators, canGenerate, busy, onGenerateCues }: {
-  generators: AudioWorkspace["generators"]; canGenerate: boolean; busy: boolean; onGenerateCues: (() => void) | null;
+export function GeneratorsPanel({ generators, canGenerate, busy, onGenerateCues, onPlace }: {
+  generators: AudioWorkspace["generators"]; canGenerate: boolean; busy: boolean; onGenerateCues: (() => void) | null; onPlace: (() => void) | null;
 }) {
   return (
     <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
@@ -107,7 +107,12 @@ export function GeneratorsPanel({ generators, canGenerate, busy, onGenerateCues 
       {onGenerateCues && (
         <button onClick={onGenerateCues} disabled={busy || !canGenerate} title={canGenerate ? undefined : "Your role can't generate audio"}
           className="mt-3 w-full rounded-md border border-aura-gold/60 px-3 py-1.5 text-xs text-aura-gold disabled:opacity-40">
-          Generate all planned sounds for this scene
+          1 · Generate all planned sounds for this scene
+        </button>
+      )}
+      {onPlace && (
+        <button onClick={onPlace} disabled={busy} className="mt-2 w-full rounded-md border border-aura-gold/60 px-3 py-1.5 text-xs text-aura-gold disabled:opacity-40">
+          2 · Place generated sounds on their marked spots (this scene)
         </button>
       )}
       <p className="mt-2 text-[11px] text-white/35">Dialogue, ambience, effects, Foley and score cues come from the script and Scene DNA. Generated sounds go to the Assets Library; you choose where to use them.</p>

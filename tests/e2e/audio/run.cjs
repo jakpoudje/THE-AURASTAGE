@@ -109,6 +109,24 @@ async function api(method, p, body) {
     await page.getByRole("button", { name: /^Mixer mute Score/ }).click();
     await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => /^Mixer mute Score/.test(b.getAttribute("aria-label") || "") && b.getAttribute("aria-pressed") === "false"));
   });
+  await step("owner 2026-10-02: mute and the fader act on what is playing — the channel meter goes silent at once, then comes back", async () => {
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    // The channel carrying the uploaded line shows signal.
+    const handle = await page.waitForFunction(() => {
+      for (const ch of document.querySelectorAll('[aria-label^="Channel "]')) {
+        const m = ch.querySelector('[aria-label="Level meter"]');
+        if (m && m.getAttribute("title") !== "no signal") return ch.getAttribute("aria-label").slice(8);
+      }
+      return null;
+    }, null, { timeout: 15000 });
+    const name = await handle.jsonValue();
+    await page.getByRole("button", { name: `Mixer mute ${name}`, exact: true }).click();
+    await page.waitForFunction((n) => document.querySelector(`[aria-label="Channel ${n}"] [aria-label="Level meter"]`)?.getAttribute("title") === "no signal", name, { timeout: 5000 });
+    if (!(await page.getByRole("button", { name: "Stop", exact: true }).isVisible())) throw new Error("playback stopped instead of muting live");
+    await page.getByRole("button", { name: `Mixer mute ${name}`, exact: true }).click();
+    await page.waitForFunction((n) => document.querySelector(`[aria-label="Channel ${n}"] [aria-label="Level meter"]`)?.getAttribute("title") !== "no signal", name, { timeout: 5000 });
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+  });
   await step("approve is blocked until the rendered mix is measured", async () => {
     if (!(await page.getByRole("button", { name: "Approve scene mix" }).isDisabled())) throw new Error("approve should be disabled");
     await page.getByRole("list", { name: "Audio checks" }).getByText("Not measured yet").waitFor();
@@ -160,7 +178,7 @@ async function api(method, p, body) {
   });
 
   await step("generate the scene's planned sounds with the built-in synthesiser; listen; use one on its cue; reload: kept, and it's in the Assets Library", async () => {
-    await page.getByRole("button", { name: "Generate all planned sounds for this scene" }).click();
+    await page.getByRole("button", { name: "1 · Generate all planned sounds for this scene" }).click();
     await page.getByText(/Generating \d+ planned sounds? with the built-in generators/).waitFor();
     await page.getByRole("button", { name: /Clip Score/ }).click();
     const gen = page.getByRole("region", { name: "Generate this sound" });
@@ -176,7 +194,7 @@ async function api(method, p, body) {
     await page.getByRole("region", { name: "Generate this sound" }).getByText("In use").waitFor();
     const lib = await api("GET", `/api/projects/${P}/library`);
     if (!lib.assets.some((a) => /^Score — /.test(a.name))) throw new Error("generated score not in the Assets Library");
-    await page.getByRole("button", { name: "Generate all planned sounds for this scene" }).click();
+    await page.getByRole("button", { name: "1 · Generate all planned sounds for this scene" }).click();
     await page.getByText(/Nothing new to generate|already generated/).waitFor();
   });
   await step("speak a dialogue line in the character's Voice DNA with the built-in voice; listen; it's in the Assets Library; reload: kept", async () => {
@@ -353,6 +371,27 @@ async function api(method, p, body) {
     await page.getByRole("button", { name: "Clip Ambient bed" }).waitFor();
     await reload();
     await page.getByRole("button", { name: "Clip Ambient bed" }).waitFor();
+  });
+  await step("owner 2026-10-02: whole film in one click each — generate every planned sound, then place each on its marked spot; reload: placed; clips still editable", async () => {
+    const planned = () => page.getByText("planned", { exact: true }).count();
+    const before = await planned();
+    await page.getByRole("button", { name: "2 · Generate all planned sounds" }).click();
+    await page.getByText(/Generating \d+ planned sounds? across \d+ scenes?|Nothing new to generate/).waitFor();
+    // Generated sounds finish in the background; place until none are still being made.
+    let note = "";
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(800);
+      await reload();
+      await page.getByRole("button", { name: "3 · Place all generated sounds on their marked spots" }).click();
+      note = await page.getByText(/^Placed \d+ generated sound/).innerText();
+      if (!/still being made/.test(note)) break;
+    }
+    if (!/^Placed [1-9]/.test(note) && !/^Placed 0/.test(note)) throw new Error(note);
+    await reload();
+    const after = await planned();
+    if (!(after < before)) throw new Error(`planned cues ${before} → ${after}; ${note}`);
+    // Still editable by hand: select a placed clip and its inspector opens.
+    await page.locator('[aria-label="Whole film"]').waitFor();
   });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();

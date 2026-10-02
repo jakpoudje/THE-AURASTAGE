@@ -110,3 +110,10 @@ Project members read (RLS); editors write (checked inside every function).
 
 ## Known operational error codes
 AURA-AUD-002 invalid input · 429 too many generations in a minute · 403 no access · 404 not found · 409 mix changed while measuring · 412 not ready (plan not approved, readiness failing) · 500.
+
+## One click for the whole film (owner, 2026-10-02) — `audio.batch.ts`
+`POST /api/projects/:id/audio/spot-all` (scenes with a usable approved plan and no session), `…/audio/generate-all`
+(every spotted scene's planned cues, as `generate-cues`), `…/audio/place-generated` and
+`…/audio/scenes/:sceneId/place-generated` (each planned cue gets its newest finished generated sound through the same
+gated `save_audio_clip` as "Use this"; clips that already hold a recording are never touched; cues still being made are
+counted, not waited for). The web mixer's fader, pan, mute and solo act on what is playing (`Player.setLive/setTrack`).
