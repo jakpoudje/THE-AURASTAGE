@@ -25,6 +25,13 @@ export function useAudio(projectId: string) {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Undo for clip edits (2026-10-02): newest last, kept for this visit to the page (up to 30 steps). A clip restored by
+  // Undo gets a new id; `ids` maps old ids to new so earlier steps still find it.
+  const undoRef = useRef<{ what: string; fn: () => Promise<void> }[]>([]);
+  const [undo, setUndo] = useState<{ what: string; fn: () => Promise<void> }[]>([]);
+  const ids = useRef(new Map<string, string>());
+  const resolve = (id: string) => { let x = id; for (let i = 0; i < 30 && ids.current.has(x); i++) x = ids.current.get(x)!; return x; };
+  const pushUndo = (what: string, fn: () => Promise<void>) => { undoRef.current = [...undoRef.current, { what, fn }].slice(-30); setUndo(undoRef.current); };
   const [buffers, setBuffers] = useState<Map<string, AudioBuffer>>(new Map());
   const alive = useRef(true);
 
@@ -116,18 +123,61 @@ export function useAudio(projectId: string) {
     updateClip: (id: string, patch: SaveAudioClipInput, msg: string | null = "Clip saved.") => run("save", () => audioApi.updateClip(id, patch), () => msg),
     deleteClip: (id: string) => run("save", () => audioApi.deleteClip(id), () => "Clip removed."),
     /** Splits a clip in two at `at` (scene seconds): the second half keeps playing the same recording from where the
-     *  first stops. The new half is created first, so a failure never loses the end of the clip. */
+     *  first stops. The new half is created first, so a failure never loses the end of the clip. Undo joins them again. */
     splitClip: (sessionId: string, c: AudioClip, at: number) =>
       run("save", async () => {
         const first = Math.round((at - c.start_seconds) * 100) / 100;
         if (first <= 0.05 || first >= c.duration_seconds - 0.05) throw new Error("Put the playhead inside the clip to split it.");
-        await audioApi.createClip(sessionId, {
+        const second = await audioApi.createClip(sessionId, {
           track_id: c.track_id, label: `${c.label} (2)`.slice(0, 200), asset_id: c.asset_id, start_seconds: Math.round(at * 100) / 100,
           duration_seconds: Math.round((c.duration_seconds - first) * 100) / 100, offset_seconds: Math.round((c.offset_seconds + first) * 100) / 100,
-          gain_db: c.gain_db, fade_in_seconds: 0, fade_out_seconds: c.fade_out_seconds,
+          gain_db: c.gain_db, fade_in_seconds: 0, fade_out_seconds: c.fade_out_seconds, muted: c.muted,
         });
         await audioApi.updateClip(c.id, { duration_seconds: first, fade_out_seconds: 0 });
-      }, () => `Split “${c.label}” at ${at.toFixed(2)}s.`),
+        pushUndo(`split of “${c.label}”`, async () => {
+          await audioApi.deleteClip(resolve(second.id));
+          await audioApi.updateClip(resolve(c.id), { duration_seconds: c.duration_seconds, fade_out_seconds: c.fade_out_seconds });
+        });
+      }, () => `Split “${c.label}” at ${at.toFixed(2)}s. Undo joins it again.`),
+    /** Any clip change (trim, fade, gain, mute, move…) with Undo: the previous values of exactly the changed fields. */
+    editClip: (c: AudioClip, patch: SaveAudioClipInput, what: string) =>
+      run("save", async () => {
+        const prev = Object.fromEntries(Object.keys(patch).map((k) => [k, (c as unknown as Record<string, unknown>)[k]])) as SaveAudioClipInput;
+        await audioApi.updateClip(c.id, patch);
+        pushUndo(what, async () => { await audioApi.updateClip(resolve(c.id), prev); });
+      }, () => `${what[0].toUpperCase()}${what.slice(1)}. Undo (Ctrl+Z) puts it back.`),
+    /** Deletes a clip; Undo restores the same clip (its recording, timing, fades, mute and the line it belongs to). */
+    removeClip: (sessionId: string, c: AudioClip) =>
+      run("save", async () => {
+        await audioApi.deleteClip(c.id);
+        pushUndo(`delete of “${c.label}”`, async () => {
+          const back = await audioApi.createClip(sessionId, {
+            track_id: c.track_id, label: c.label, asset_id: c.asset_id, start_seconds: c.start_seconds, duration_seconds: c.duration_seconds,
+            offset_seconds: c.offset_seconds, gain_db: c.gain_db, fade_in_seconds: c.fade_in_seconds, fade_out_seconds: c.fade_out_seconds,
+            muted: c.muted, source: c.source,
+          });
+          ids.current.set(c.id, back.id);
+        });
+      }, () => `Removed “${c.label}”. Undo (Ctrl+Z) brings it back.`),
+    /** A copy right after the clip on the same track. */
+    duplicateClip: (sessionId: string, c: AudioClip) =>
+      run("save", async () => {
+        const copy = await audioApi.createClip(sessionId, {
+          track_id: c.track_id, label: `${c.label} (copy)`.slice(0, 200), asset_id: c.asset_id, start_seconds: Math.round((c.start_seconds + c.duration_seconds) * 100) / 100,
+          duration_seconds: c.duration_seconds, offset_seconds: c.offset_seconds, gain_db: c.gain_db, fade_in_seconds: c.fade_in_seconds, fade_out_seconds: c.fade_out_seconds, muted: c.muted,
+        });
+        pushUndo(`duplicate of “${c.label}”`, async () => { await audioApi.deleteClip(resolve(copy.id)); });
+        return copy;
+      }, () => `Duplicated “${c.label}” right after it.`),
+    undoLabel: undo.length ? undo[undo.length - 1].what : null,
+    undo: () =>
+      run("save", async () => {
+        const last = undoRef.current.pop();
+        setUndo([...undoRef.current]);
+        if (!last) throw new Error("Nothing to undo.");
+        await last.fn();
+        return last.what;
+      }, (what) => `Undid the ${what}.`),
     /** Uploads a recording (after decoding it locally to prove it's playable) and optionally places it on a clip. */
     upload: (file: File, placeOn?: { clipId: string }) =>
       run(

@@ -184,7 +184,7 @@ function buildGraph(c: BaseAudioContext, dest: AudioNode, tracks: AudioTrack[], 
     pan.connect(buses.get(FAMILY_BUS[t.family])!);
     if (fx.reverb_send_db > -60) { const sg = c.createGain(); sg.gain.value = dbToGain(fx.reverb_send_db); pan.connect(sg); sg.connect(reverb()); }
     if (fx.delay_send_db > -60) { const sg = c.createGain(); sg.gain.value = dbToGain(fx.delay_send_db); pan.connect(sg); sg.connect(delay()); }
-    for (const cl of clips.filter((x) => x.track_id === t.id && x.kind === "asset" && x.asset_id)) {
+    for (const cl of clips.filter((x) => x.track_id === t.id && x.kind === "asset" && x.asset_id && !x.muted)) {
       const buf = buffers.get(cl.asset_id!);
       if (!buf) continue;
       const end = cl.start_seconds + cl.duration_seconds;

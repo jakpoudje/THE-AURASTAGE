@@ -37,6 +37,14 @@ describe("renderManifestEngine", () => {
     expect(manifest!.sources).toEqual({ take_ids: [U(20), U(21)], audio_session_version_ids: [U(30)], asset_ids: [U(40)], dialogue_line_ids: ["l1"], automation_revision: null });
     expect(manifest!.options).toEqual({ watermark: null, burn_timecode: false }); // streaming masters never carry review marks
   });
+  it("2026-10-02: a muted clip stays out of the film's sound (and its line out of the captions)", () => {
+    const base = input();
+    const m = (base.mixes as Record<string, { clips: Record<string, unknown>[] }>)[U(30)];
+    m.clips[0] = { ...m.clips[0], muted: true };
+    const { manifest } = renderManifestEngine(base);
+    expect(manifest!.mixes[U(30)].clips).toHaveLength(0);
+    expect(manifest!.subtitles?.cues ?? []).toEqual([]);
+  });
   it("review copies keep the watermark and timecode options", () => {
     expect(renderManifestEngine(input("review_copy")).manifest!.options).toEqual({ watermark: "REVIEW", burn_timecode: true });
   });
@@ -102,7 +110,7 @@ describe("renderManifestEngine 1.5.0: on-screen text from Scene DNA", () => {
     // The scene's first stretch is 48 frames (2 s), shorter than 4 s, so the text stays for the whole stretch.
     expect(manifest!.overlays).toEqual([{ record_in: 0, duration: 48, text: "LAGOS — 1995", position: "lower_third", scene_id: U(90) }]);
     expect(manifest!.sources.scene_captions).toEqual([U(90)]);
-    expect(manifest!.engine_versions.manifest).toBe("1.8.0");
+    expect(manifest!.engine_versions.manifest).toBe("1.9.0");
   });
   it("moves with the opening title card; caps at 4 s on a long stretch; only video deliverables; no captions = no overlays", () => {
     const titles = { opening: { frames: 120, svg: "<svg>T</svg>" }, end_credits: null, engine_version: "1.0.0" };

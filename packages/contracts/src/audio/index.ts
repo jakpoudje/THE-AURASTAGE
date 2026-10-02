@@ -109,6 +109,8 @@ export const AudioClipSchema = z.object({
   fade_in_seconds: z.number(),
   fade_out_seconds: z.number(),
   source: z.record(z.unknown()),
+  /** Muted (2026-10-02): kept on the timeline but silent everywhere — playback, measurement, export, final film. */
+  muted: z.boolean().default(false),
   updated_at: z.string(),
 });
 export type AudioClip = z.infer<typeof AudioClipSchema>;
@@ -124,6 +126,9 @@ export const SaveAudioClipInputSchema = z
     gain_db: z.number().min(-60).max(12),
     fade_in_seconds: z.number().min(0).max(60),
     fade_out_seconds: z.number().min(0).max(60),
+    muted: z.boolean(),
+    /** Only when restoring a deleted clip (Undo): its original source, e.g. the dialogue line it belongs to. */
+    source: z.record(z.unknown()),
   })
   .partial()
   .strict();

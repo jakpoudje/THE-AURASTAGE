@@ -85,7 +85,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
       tracks: m.tracks.map((tr) => ({ id: tr.id, family: AudioFamilySchema.parse(tr.family), gain_db: Number(tr.gain_db), pan: Number(tr.pan), mute: tr.mute, solo: tr.solo,
         fx: TrackFxSchema.parse((tr as { fx?: unknown }).fx ?? {}) })),
       clips: m.clips
-        .filter((cl) => cl.kind === "asset" && cl.asset_id)
+        .filter((cl) => cl.kind === "asset" && cl.asset_id && !(cl as { muted?: boolean }).muted)
         .map((cl) => ({
           track_id: cl.track_id, asset_id: cl.asset_id!, start_seconds: Number(cl.start_seconds), duration_seconds: Number(cl.duration_seconds), offset_seconds: Number(cl.offset_seconds),
           gain_db: Number(cl.gain_db), fade_in_seconds: Number(cl.fade_in_seconds), fade_out_seconds: Number(cl.fade_out_seconds),
@@ -144,7 +144,7 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
   for (const [id, m] of Object.entries(i.mixes))
     dialogue[id] = {
       dialogue: m.clips
-        .filter((cl) => typeof cl.source?.dialogue_line_id === "string" && Number(cl.duration_seconds) > 0)
+        .filter((cl) => typeof cl.source?.dialogue_line_id === "string" && Number(cl.duration_seconds) > 0 && !(cl as { muted?: boolean }).muted)
         .map((cl) => ({ line_id: String(cl.source!.dialogue_line_id), start_seconds: Number(cl.start_seconds), duration_seconds: Number(cl.duration_seconds) })),
     };
   const subtitles = subtitleTimelineEngine({ fps: i.fps, audio: audio.map(({ label, ...a }) => a), mixes: dialogue, lines: i.lines });

@@ -1079,18 +1079,20 @@ http.createServer((req, res) => {
     }
     const saveClip = (s, c) => {
       if (b.asset_id) { c.asset_id = b.asset_id; c.kind = "asset"; } else if ("asset_id" in b) { c.asset_id = null; c.kind = "cue"; }
-      for (const k of ["track_id", "label", "start_seconds", "duration_seconds", "offset_seconds", "gain_db", "fade_in_seconds", "fade_out_seconds"]) if (k in b) c[k] = b[k];
+      const pc = cc0.SaveAudioClipInputSchema.safeParse(b); if (!pc.success) return null;
+      for (const k of ["track_id", "label", "start_seconds", "duration_seconds", "offset_seconds", "gain_db", "fade_in_seconds", "fade_out_seconds", "muted"]) if (k in b) c[k] = b[k];
       c.updated_at = now(); atouch(s); s.status = "draft"; return c;
     };
     if ((m = u.match(/^\/api\/audio-sessions\/([^/]+)\/clips$/))) {
       const s = asessions.find((x) => x.id === m[1]);
-      const c = { id: crypto.randomUUID(), session_id: s.id, track_id: b.track_id, label: "New clip", kind: "cue", asset_id: null, start_seconds: 0, duration_seconds: 1, offset_seconds: 0, gain_db: 0, fade_in_seconds: 0, fade_out_seconds: 0, source: { added_by_hand: true } };
-      aclips.push(c); return send(200, saveClip(s, c));
+      const c = { id: crypto.randomUUID(), session_id: s.id, track_id: b.track_id, label: "New clip", kind: "cue", asset_id: null, start_seconds: 0, duration_seconds: 1, offset_seconds: 0, gain_db: 0, fade_in_seconds: 0, fade_out_seconds: 0, muted: false,
+        source: b.source && typeof b.source === "object" ? b.source : { added_by_hand: true } };
+      const saved = saveClip(s, c); if (!saved) return aerr(400, "Invalid clip"); aclips.push(c); return send(200, saved);
     }
     if ((m = u.match(/^\/api\/audio-clips\/([^/]+)$/))) {
       const i = aclips.findIndex((x) => x.id === m[1]); const c = aclips[i]; const s = asessions.find((x) => x.id === c.session_id);
       if (req.method === "DELETE") { aclips.splice(i, 1); atouch(s); s.status = "draft"; return send(200, { deleted: true }); }
-      return send(200, saveClip(s, c));
+      const saved = saveClip(s, c); if (!saved) return aerr(400, "Invalid clip"); return send(200, saved);
     }
     if ((m = u.match(/^\/api\/audio-sessions\/([^/]+)\/measurements$/))) {
       const s = asessions.find((x) => x.id === m[1]);

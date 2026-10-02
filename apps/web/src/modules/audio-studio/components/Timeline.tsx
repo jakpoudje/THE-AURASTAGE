@@ -76,17 +76,21 @@ function Wave({ buf, clip, width }: { buf: AudioBuffer; clip: AudioClip; width: 
 }
 
 export function Timeline({
-  seconds, tracks, clips, buffers, pps, position, selectedClipId, busy, onSelectClip, onMoveClip, onSeek, onTrackChange,
+  seconds, tracks, clips, buffers, pps, position, selectedClipId, busy, onSelectClip, onMoveClip, onSeek, onTrimClip, onTrackChange,
   selectedTrackId, onSelectTrack, onAddTrack, onMoveTrack, onRemoveTrack,
 }: {
   seconds: number; tracks: AudioTrack[]; clips: AudioClip[]; buffers: Map<string, AudioBuffer>; pps: number; position: number;
   selectedClipId: string | null; busy: boolean;
   onSelectClip: (id: string | null) => void; onMoveClip: (id: string, start: number) => void; onSeek: (t: number) => void;
+  /** Trim by dragging a clip's edge: the new start/offset/length (2026-10-02). */
+  onTrimClip?: (id: string, patch: { start_seconds?: number; offset_seconds?: number; duration_seconds: number }) => void;
   onTrackChange: (id: string, patch: { mute?: boolean; solo?: boolean; name?: string }) => void;
   selectedTrackId: string | null; onSelectTrack: (id: string) => void;
   onAddTrack: (name: string, family: string) => Promise<unknown>; onMoveTrack: (id: string, direction: -1 | 1) => void; onRemoveTrack: (id: string) => void;
 }) {
   const [drag, setDrag] = useState<{ id: string; x0: number; start0: number; start: number } | null>(null);
+  // Edge trims: which edge, where the pointer started, and the clip as it was.
+  const [trim, setTrim] = useState<{ id: string; edge: "in" | "out"; x0: number; c: AudioClip; max: number; start: number; offset: number; duration: number } | null>(null);
   const moved = useRef(false);
   const width = Math.max(600, Math.ceil(seconds * pps));
   const ticks = Array.from({ length: Math.floor(seconds) + 1 }, (_, i) => i).filter((i) => pps >= 40 || i % 5 === 0);
@@ -141,8 +145,44 @@ export function Timeline({
               {clips
                 .filter((c) => c.track_id === t.id)
                 .map((c) => {
-                  const start = drag?.id === c.id ? drag.start : c.start_seconds;
-                  const w = Math.max(6, c.duration_seconds * pps);
+                  const tr = trim?.id === c.id ? trim : null;
+                  const start = drag?.id === c.id ? drag.start : tr ? tr.start : c.start_seconds;
+                  const w = Math.max(6, (tr ? tr.duration : c.duration_seconds) * pps);
+                  const edge = (which: "in" | "out") => (
+                    <span
+                      aria-label={`Trim ${which === "in" ? "start" : "end"} of ${c.label}`}
+                      className={`absolute top-0 z-10 h-full w-1.5 cursor-ew-resize bg-white/0 hover:bg-aura-gold/70 ${which === "in" ? "left-0" : "right-0"}`}
+                      onPointerDown={(e) => {
+                        if (busy || !onTrimClip) return;
+                        e.stopPropagation();
+                        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+                        const b = c.asset_id ? buffers.get(c.asset_id) : undefined;
+                        setTrim({ id: c.id, edge: which, x0: e.clientX, c, max: b ? b.duration : Infinity, start: c.start_seconds, offset: c.offset_seconds, duration: c.duration_seconds });
+                      }}
+                      onPointerMove={(e) => {
+                        if (!trim || trim.id !== c.id || trim.edge !== which) return;
+                        const d = Math.round(((e.clientX - trim.x0) / pps) * 100) / 100;
+                        const o = trim.c;
+                        if (which === "in") {
+                          // Moving the start in or out: the recording slides with it (offset), the end stays put.
+                          const dd = Math.max(-Math.min(o.start_seconds, o.offset_seconds), Math.min(d, o.duration_seconds - 0.1));
+                          setTrim({ ...trim, start: o.start_seconds + dd, offset: o.offset_seconds + dd, duration: Math.round((o.duration_seconds - dd) * 100) / 100 });
+                        } else {
+                          const room = o.kind === "asset" ? trim.max - o.offset_seconds : 3600;
+                          setTrim({ ...trim, duration: Math.max(0.1, Math.min(room, Math.round((o.duration_seconds + d) * 100) / 100)) });
+                        }
+                      }}
+                      onPointerUp={(e) => {
+                        e.stopPropagation();
+                        const t2 = trim;
+                        setTrim(null);
+                        if (!t2 || t2.id !== c.id) return;
+                        if (t2.edge === "in" && t2.start !== c.start_seconds) onTrimClip?.(c.id, { start_seconds: Math.round(t2.start * 100) / 100, offset_seconds: Math.round(t2.offset * 100) / 100, duration_seconds: t2.duration });
+                        if (t2.edge === "out" && t2.duration !== c.duration_seconds) onTrimClip?.(c.id, { duration_seconds: t2.duration });
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  );
                   const buf = c.asset_id ? buffers.get(c.asset_id) : undefined;
                   return (
                     <div
@@ -151,7 +191,8 @@ export function Timeline({
                       aria-label={`Clip ${c.label}`}
                       title={`${c.label} · ${c.kind === "cue" ? "planned — no audio yet" : "recording"} · ${start.toFixed(2)}s`}
                       style={{ left: start * pps, width: w }}
-                      className={`absolute top-1.5 h-11 cursor-grab overflow-hidden rounded border text-[10px] ${FAMILY_COLOR[t.family] ?? ""} ${c.kind === "cue" ? "border-dashed bg-transparent" : ""} ${selectedClipId === c.id ? "ring-2 ring-aura-gold" : ""}`}
+                      data-muted={c.muted ? "true" : undefined}
+                      className={`absolute top-1.5 h-11 cursor-grab overflow-hidden rounded border text-[10px] ${FAMILY_COLOR[t.family] ?? ""} ${c.kind === "cue" ? "border-dashed bg-transparent" : ""} ${c.muted ? "opacity-35 [background-image:repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,0.08)_4px,rgba(255,255,255,0.08)_8px)]" : ""} ${selectedClipId === c.id ? "ring-2 ring-aura-gold" : ""}`}
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -176,7 +217,10 @@ export function Timeline({
                       }}
                     >
                       {buf && <Wave buf={buf} clip={c} width={w} />}
-                      <span className="relative block truncate px-1 pt-0.5 text-white/90">{c.label}</span>
+                      {edge("in")}
+                      {edge("out")}
+                      <span className={`relative block truncate px-1 pt-0.5 text-white/90 ${c.muted ? "line-through" : ""}`}>{c.label}</span>
+                      {c.muted && <span className="relative block px-1 text-[9px] uppercase text-red-300">muted</span>}
                       {c.kind === "cue" && <span className="relative block px-1 text-[9px] uppercase text-white/40">planned</span>}
                     </div>
                   );

@@ -216,19 +216,59 @@ export default function AudioStudioPage() {
                       >
                         + Add clip on {clipTrack?.name ?? "a track"} at playhead
                       </button>
-                      <button
-                        onClick={() => clip && d.splitClip(s.session!.id, clip, pos)}
-                        disabled={d.busy !== null || !clip || pos <= clip.start_seconds + 0.05 || pos >= clip.start_seconds + clip.duration_seconds - 0.05}
-                        title={clip ? "Put the playhead inside the selected clip" : "Select a clip first"}
-                        className="rounded border border-aura-border px-3 py-1.5 text-xs disabled:opacity-40"
-                      >
-                        ✂ Split selected clip at playhead
+                      <button onClick={() => d.undo()} disabled={d.busy !== null || !d.undoLabel} title={d.undoLabel ? `Undo the ${d.undoLabel} (Ctrl+Z)` : "Nothing to undo"}
+                        className="rounded border border-aura-border px-3 py-1.5 text-xs disabled:opacity-40">
+                        ↶ Undo{d.undoLabel ? ` ${d.undoLabel}` : ""}
                       </button>
                     </>
                   )}
                   {!s.plan?.usable && <span className="text-xs text-aura-gold">Approve this scene's shot plan again in Storyboard to (re-)spot.</span>}
                 </div>
 
+                {s.session && d.busy === null && (
+                  <ClipKeys on={{
+                    " ": () => void togglePlay(),
+                    undo: d.undoLabel ? () => void d.undo() : null,
+                    s: clip && pos > clip.start_seconds + 0.05 && pos < clip.start_seconds + clip.duration_seconds - 0.05 ? () => void d.splitClip(s.session!.id, clip, pos) : null,
+                    m: clip ? () => void d.editClip(clip, { muted: !clip.muted }, clip.muted ? `unmute of “${clip.label}”` : `mute of “${clip.label}”`) : null,
+                    delete: clip ? () => void d.removeClip(s.session!.id, clip).then((r) => r !== null && setClipId(null)) : null,
+                    d: clip ? () => void d.duplicateClip(s.session!.id, clip).then((c2) => c2 && setClipId(c2.id)) : null,
+                    "[": clip && pos > clip.start_seconds + 0.05 && pos < clip.start_seconds + clip.duration_seconds - 0.05
+                      ? () => { const dd = Math.round((pos - clip.start_seconds) * 100) / 100; void d.editClip(clip, { start_seconds: Math.round(pos * 100) / 100, offset_seconds: Math.round((clip.offset_seconds + dd) * 100) / 100, duration_seconds: Math.round((clip.duration_seconds - dd) * 100) / 100 }, `trim of the start of “${clip.label}”`); } : null,
+                    "]": clip && pos > clip.start_seconds + 0.05 && pos < clip.start_seconds + clip.duration_seconds - 0.05
+                      ? () => void d.editClip(clip, { duration_seconds: Math.round((pos - clip.start_seconds) * 100) / 100 }, `trim of the end of “${clip.label}”`) : null,
+                  }} />
+                )}
+                {s.session && (
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-aura-border bg-black/20 px-3 py-2 text-xs" aria-label="Clip tools">
+                    <span className="mr-1 text-white/50">{clip ? <>Selected: <span className="text-white/80">{clip.label}</span></> : "Select a clip on the timeline to edit it"}</span>
+                    {(() => {
+                      const off = d.busy !== null || !clip;
+                      const inside = !!clip && pos > clip.start_seconds + 0.05 && pos < clip.start_seconds + clip.duration_seconds - 0.05;
+                      const b = "rounded border border-aura-border px-2 py-1 disabled:opacity-40";
+                      return (
+                        <>
+                          <button className={b} disabled={off || !inside} title="Split at the playhead (S)" onClick={() => clip && d.splitClip(s.session!.id, clip, pos)}>✂ Split</button>
+                          <button className={b} disabled={off} title="Mute or bring back this clip without deleting it (M)" aria-pressed={!!clip?.muted}
+                            onClick={() => clip && d.editClip(clip, { muted: !clip.muted }, clip.muted ? `unmute of “${clip.label}”` : `mute of “${clip.label}”`)}>
+                            {clip?.muted ? "🔈 Unmute clip" : "🔇 Mute clip"}
+                          </button>
+                          <button className={b} disabled={off || !inside} title="Remove everything before the playhead ([)"
+                            onClick={() => { if (!clip) return; const dd = Math.round((pos - clip.start_seconds) * 100) / 100; d.editClip(clip, { start_seconds: Math.round(pos * 100) / 100, offset_seconds: Math.round((clip.offset_seconds + dd) * 100) / 100, duration_seconds: Math.round((clip.duration_seconds - dd) * 100) / 100 }, `trim of the start of “${clip.label}”`); }}>⇤ Trim start to playhead</button>
+                          <button className={b} disabled={off || !inside} title="Remove everything after the playhead (])"
+                            onClick={() => clip && d.editClip(clip, { duration_seconds: Math.round((pos - clip.start_seconds) * 100) / 100 }, `trim of the end of “${clip.label}”`)}>Trim end to playhead ⇥</button>
+                          <button className={b} disabled={off} title="Fade in over 0.5 s" onClick={() => clip && d.editClip(clip, { fade_in_seconds: Math.min(clip.duration_seconds / 2, 0.5) }, `fade-in on “${clip.label}”`)}>◢ Fade in</button>
+                          <button className={b} disabled={off} title="Fade out over 0.5 s" onClick={() => clip && d.editClip(clip, { fade_out_seconds: Math.min(clip.duration_seconds / 2, 0.5) }, `fade-out on “${clip.label}”`)}>Fade out ◣</button>
+                          <button className={b} disabled={off || (clip?.gain_db ?? 0) <= -57} title="3 dB quieter" onClick={() => clip && d.editClip(clip, { gain_db: Math.max(-60, clip.gain_db - 3) }, `volume of “${clip.label}” (−3 dB)`)}>−3 dB</button>
+                          <button className={b} disabled={off || (clip?.gain_db ?? 0) >= 9} title="3 dB louder" onClick={() => clip && d.editClip(clip, { gain_db: Math.min(12, clip.gain_db + 3) }, `volume of “${clip.label}” (+3 dB)`)}>+3 dB</button>
+                          <button className={b} disabled={off} title="Copy right after this clip (D)" onClick={async () => { if (!clip) return; const c2 = await d.duplicateClip(s.session!.id, clip); if (c2) setClipId(c2.id); }}>⧉ Duplicate</button>
+                          <button className={`${b} text-red-300`} disabled={off} title="Delete — Undo brings it back (Delete)" onClick={async () => { if (clip && (await d.removeClip(s.session!.id, clip)) !== null) setClipId(null); }}>🗑 Delete</button>
+                          <span className="ml-auto text-[10px] text-white/35">Drag a clip&apos;s edges to trim · Space play · S split · M mute · [ ] trim · D duplicate · Del delete · Ctrl+Z undo</span>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
                 {s.session ? (
                   <>
                     <Timeline
@@ -241,7 +281,8 @@ export default function AudioStudioPage() {
                       selectedClipId={clip?.id ?? null}
                       busy={d.busy !== null}
                       onSelectClip={setClipId}
-                      onMoveClip={(cid, start) => d.updateClip(cid, { start_seconds: start }, `Moved to ${start.toFixed(2)}s.`)}
+                      onMoveClip={(cid, start) => { const c0 = s.clips.find((x) => x.id === cid); if (c0) d.editClip(c0, { start_seconds: start }, `move of “${c0.label}” to ${start.toFixed(2)}s`); }}
+                      onTrimClip={(cid, patch) => { const c0 = s.clips.find((x) => x.id === cid); if (c0) d.editClip(c0, patch, `trim of “${c0.label}”`); }}
                       onSeek={(t) => (player.stop(), setPlaying(false), setPos(t))}
                       onTrackChange={(tid, patch) => (player.setLive(s.tracks.map((x) => (x.id === tid ? { ...x, ...patch } : x))), d.updateTrack(tid, patch, patch.name ? `Renamed to “${patch.name}”.` : null))}
                       selectedTrackId={clipTrack?.id ?? null}
@@ -261,8 +302,8 @@ export default function AudioStudioPage() {
                         tracks={s.tracks}
                         assets={ws.assets}
                         busy={d.busy !== null}
-                        onSave={(p) => d.updateClip(clip.id, p)}
-                        onDelete={async () => (await d.deleteClip(clip.id)) && setClipId(null)}
+                        onSave={(p) => d.editClip(clip, p, `change to “${clip.label}”`)}
+                        onDelete={async () => { if ((await d.removeClip(s.session!.id, clip)) !== null) setClipId(null); }}
                         onUpload={(file) => d.upload(file, { clipId: clip.id })}
                         generations={s.generations.filter((g) => g.clip_id === clip.id)}
                         canGenerate={canGenerate}
@@ -307,4 +348,24 @@ export default function AudioStudioPage() {
       </div>
     </AppShell>
   );
+}
+
+/** Keyboard editing on the timeline (2026-10-02). Ignored while typing in a field. */
+function ClipKeys({ on }: { on: Record<string, (() => void) | null> }) {
+  // The latest handlers without re-binding the listener on every frame of playback.
+  const ref = useRef(on);
+  ref.current = on;
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      const key = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" ? "undo" : e.ctrlKey || e.metaKey || e.altKey ? null
+        : e.key === "Delete" || e.key === "Backspace" ? "delete" : e.key.toLowerCase();
+      const fn = key ? ref.current[key] : null;
+      if (fn) { e.preventDefault(); fn(); }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+  return null;
 }

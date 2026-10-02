@@ -189,7 +189,7 @@ async function api(method, p, body) {
     await gen.getByRole("button", { name: "▶ Listen" }).click();
     await gen.getByLabel("Generated sound").waitFor();
     await gen.getByRole("button", { name: "Use this" }).click();
-    await page.getByText("Clip saved.").waitFor();
+    await page.getByText(/^Change to “.*”\. Undo \(Ctrl\+Z\) puts it back\./).waitFor();
     await gen.getByText("In use").waitFor();
     await reload();
     await page.getByRole("button", { name: /Clip Score/ }).click();
@@ -313,7 +313,7 @@ async function api(method, p, body) {
     await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip", exact: true }).waitFor();
     // Owner request 2026-10-01: split a clip at the playhead (the second half continues the same recording).
     await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip", exact: true }).click();
-    const split = page.getByRole("button", { name: "✂ Split selected clip at playhead" });
+    const split = page.getByRole("button", { name: "✂ Split", exact: true });
     if (!(await split.isDisabled())) throw new Error("split must need the playhead inside the clip");
     const pps = Number(await page.getByLabel("Zoom").inputValue());
     const startX = await tl.getByRole("group", { name: "Track Radio news" }).getByRole("button", { name: "Clip New clip", exact: true }).evaluate((el) => el.offsetLeft);
@@ -401,6 +401,47 @@ async function api(method, p, body) {
     const ws = await api("GET", `/api/projects/${P}/audio`);
     const ok = ws.scenes.filter((x) => x.session && x.session.status === "approved").length;
     if (/^Measured and approved [1-9]/.test(note4) && !ok) throw new Error("said approved but none is: " + note4);
+  });
+  await step("owner 2026-10-02: edit clips on the timeline — mute and bring back, delete and Undo, trim to the playhead with the keyboard and Undo; reload: kept", async () => {
+    await reload();
+    const clipBtn = () => page.getByRole("button", { name: "Clip tunde-line", exact: true });
+    const muted = async () => (await clipBtn().getAttribute("data-muted")) === "true";
+    await clipBtn().click();
+    await page.getByText("Selected:").waitFor();
+    await page.getByRole("button", { name: "🔇 Mute clip" }).click();
+    await page.getByText(/^Mute of “tunde-line”/).waitFor();
+    if (!(await muted())) throw new Error("clip not shown muted");
+    await reload();
+    if (!(await muted())) throw new Error("mute not kept after reload");
+    await clipBtn().click();
+    await page.getByRole("button", { name: "🔈 Unmute clip" }).click();
+    await page.getByText(/^Unmute of “tunde-line”/).waitFor();
+    if (await muted()) throw new Error("still muted");
+    // Delete, then Undo brings back the same clip (its recording and the line it belongs to).
+    const before = (await api("GET", `/api/projects/${P}/audio`)).scenes.flatMap((x) => x.clips).find((c) => c.label === "tunde-line");
+    await clipBtn().click();
+    await page.getByRole("button", { name: "🗑 Delete" }).click();
+    await page.getByText(/^Removed “tunde-line”/).waitFor();
+    if (await clipBtn().count()) throw new Error("clip not removed");
+    await page.getByRole("button", { name: /^↶ Undo delete of “tunde-line”/ }).click();
+    await page.getByText(/^Undid the delete of “tunde-line”/).waitFor();
+    await clipBtn().waitFor();
+    const back = (await api("GET", `/api/projects/${P}/audio`)).scenes.flatMap((x) => x.clips).find((c) => c.label === "tunde-line");
+    if (!back || back.asset_id !== before.asset_id || back.start_seconds !== before.start_seconds || JSON.stringify(back.source) !== JSON.stringify(before.source)) throw new Error("restored clip differs: " + JSON.stringify(back));
+    // Keyboard: put the playhead inside the clip, "]" trims the end there, Ctrl+Z puts it back.
+    const pps = Number(await page.getByLabel("Zoom").inputValue());
+    const mid = back.start_seconds + back.duration_seconds / 2;
+    await page.getByLabel("Ruler").click({ position: { x: Math.round(mid * pps), y: 10 } });
+    await clipBtn().click();
+    await page.keyboard.press("]");
+    await page.getByText(/^Trim of the end of “tunde-line”/).waitFor();
+    const trimmed = (await api("GET", `/api/projects/${P}/audio`)).scenes.flatMap((x) => x.clips).find((c) => c.label === "tunde-line");
+    if (!(trimmed.duration_seconds < back.duration_seconds)) throw new Error("not trimmed");
+    await page.keyboard.press("Control+z");
+    await page.getByText(/^Undid the trim of the end of “tunde-line”/).waitFor();
+    await reload();
+    const final = (await api("GET", `/api/projects/${P}/audio`)).scenes.flatMap((x) => x.clips).find((c) => c.label === "tunde-line");
+    if (final.duration_seconds !== back.duration_seconds) throw new Error("undo of trim not kept after reload");
   });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();
