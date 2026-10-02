@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { assetEdit, recordedSound } from "@aurastage/engines";
 import { audioBackendsFor, recordedSoundAdapter } from "..";
 // @ts-expect-error — plain .mjs build script (runs before the source is copied into the image)
-import { freeLicence, unsuitableTitle } from "../../../../scripts/sfx-install.mjs";
+import { freeLicence, relevantTitle, unsuitableTitle } from "../../../../scripts/sfx-install.mjs";
 
 function library() {
   const d = mkdtempSync(join(tmpdir(), "sfx-test-"));
@@ -56,10 +56,19 @@ describe("recorded sound library (owner request 2026-10-02: real life prop sound
     expect(freeLicence({ LicenseShortName: { value: "CC BY-SA 4.0" }, AttributionRequired: { value: "true" } })).toBeNull();
     expect(freeLicence({ LicenseShortName: { value: "CC BY 3.0" } })).toBeNull();
     for (const t of ["File:En-us-door.ogg", "File:LL-Q1860 (eng)-Rain.wav", "File:De-Tür.ogg", "File:Rain song.ogg", "File:Spoken article rain.ogg"]) expect(unsuitableTitle(t)).toBe(true);
+    // Live build 2026-10-02: what the first Commons searches wrongly kept, refused now.
+    const cat = (id: string) => json.find((c: any) => c.id === id);
+    const json = JSON.parse(readFileSync(join(__dirname, "../../../../scripts/sfx-categories.json"), "utf8"));
+    const wrong: [string, string][] = [["traffic", "File:Korean Air Flight 801 crash, Guam air traffic control recording (August 1997).oga"], ["traffic", "File:18- 82449 - Officer Involved Shooting 7500 Block of 29th St - Radio Traffic (dispatch audio).oga"],
+      ["market", "File:Noise reduction in Audacity (0, 5, 12, 30 dB) (150Hz) (0.15 sec).ogg"], ["crowd", "File:Group discussion 1.ogg"], ["fire", "File:Friendly Fire Iraq (audio).ogg"], ["fire", "File:Silvester fireworks from the street 02 cool stuff.ogg"],
+      ["footsteps", "File:British Grenadiers & Here's to the Maiden.ogg"], ["footsteps", "File:Shampooing hair.ogg"], ["gunshot", "File:Wilhelm Scream.ogg"], ["dog", "File:Cynomys ludovicianus barking-audio.ogg"], ["phone", "File:Tone dialling phone germany.ogg"], ["phone", "File:Bachîn ringing Sark Folk Festival 2011.ogg"]];
+    for (const [c, t] of wrong) expect(!unsuitableTitle(t) && relevantTitle(t, cat(c)), `${c}: ${t}`).toBe(false);
+    const right: [string, string][] = [["rain", "File:Rain against the window.ogg"], ["wind", "File:Howling wind.ogg"], ["knock", "File:Knock on door.wav"], ["gunshot", "File:Gunshots 8.ogg"], ["birds", "File:Dawnchorus-uk.ogg"], ["insects", "File:Cicada orni.ogg"], ["siren", "File:American police siren i.ogg"], ["door", "File:Springlocked cellar door.ogg"]];
+    for (const [c, t] of right) expect(!unsuitableTitle(t) && relevantTitle(t, cat(c)), `${c}: ${t}`).toBe(true);
     for (const t of ["File:Car horn.ogg", "File:Rain on a tin roof.ogg", "File:Door slam.wav", "File:Yellowstone dawn chorus.ogg"]) expect(unsuitableTitle(t)).toBe(false);
   });
   it("the build's category list is the engine's (sfx-categories.json is generated from categories.ts)", () => {
     const json = JSON.parse(readFileSync(join(__dirname, "../../../../scripts/sfx-categories.json"), "utf8"));
-    expect(json).toEqual(recordedSound.SOUND_CATEGORIES.map(({ id, label, search, bed, max_seconds }) => ({ id, label, search, bed, max_seconds })));
+    expect(json).toEqual(recordedSound.SOUND_CATEGORIES.map(({ id, label, search, bed, max_seconds, title, not }) => ({ id, label, search, bed, max_seconds, title: title.source, ...(not ? { not: not.source } : {}) })));
   });
 });

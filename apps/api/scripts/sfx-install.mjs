@@ -25,7 +25,12 @@ export function freeLicence(meta) {
 }
 /** Titles that are not field recordings of the thing: pronunciations, speech, music, spoken articles. */
 export function unsuitableTitle(title) {
-  return /^File:(LL-Q\d|[A-Z][a-z]-[a-z]{2}-|[A-Z][a-z]-[A-ZÄÖÜ])|pronunc|lingua ?libre|spoken|speech|interview|lecture|reading|recitation|song\b|music|anthem|sings?\b|choir|orchestra|piano|guitar|symphony|concert|\bmidi\b|ringtone remix|podcast|news ?cast|wikipedia/i.test(title);
+  return /^File:(LL-Q\d|[A-Z][a-z]-[a-z]{2}-|[A-Z][a-z]-[A-ZÄÖÜ])|pronunc|lingua ?libre|spoken|speech|interview|lecture|lectio|reading|recitation|song\b|music|anthem|sings?\b|choir|orchestra|piano|guitar|symphony|concert|\bmidi\b|ringtone remix|podcast|news ?cast|wikipedia|audacity|noise reduction|tutorial|\bdemo\b|test tone|radio|dispatch|\batc\b|cockpit|\bcall\b|wilhelm|scream|festival|\bfolk\b|march\b|national anthem|sermon|poem|audiobook|librivox|episode/i.test(title);
+}
+/** The title has to name this category's sound (and not one of its known look-alikes). */
+export function relevantTitle(title, cat) {
+  const t = String(title).replace(/^File:/, "");
+  return new RegExp(cat.title, "i").test(t) && !(cat.not && new RegExp(cat.not, "i").test(t));
 }
 const clean = (html) => String(html ?? "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
 
@@ -40,7 +45,7 @@ async function api(params) {
 }
 
 async function candidates(query) {
-  const j = await api({ action: "query", generator: "search", gsrnamespace: "6", gsrsearch: `${query} filetype:audio`, gsrlimit: "30", prop: "imageinfo", iiprop: "url|extmetadata|mime|size|mediatype" });
+  const j = await api({ action: "query", generator: "search", gsrnamespace: "6", gsrsearch: `${query} filetype:audio`, gsrlimit: "50", prop: "imageinfo", iiprop: "url|extmetadata|mime|size|mediatype" });
   return (j.query?.pages ?? []).map((p) => ({ title: p.title, info: p.imageinfo?.[0] })).filter((p) => p.info?.url);
 }
 
@@ -67,7 +72,7 @@ async function main() {
       try { list = await candidates(q); } catch (e) { console.log(`sfx ${cat.id}: search "${q}" failed (${e.message})`); continue; }
       for (const c of list) {
         if (kept >= want) break;
-        if (seen.has(c.title) || unsuitableTitle(c.title)) continue;
+        if (seen.has(c.title) || unsuitableTitle(c.title) || !relevantTitle(c.title, cat)) continue;
         const licence = freeLicence(c.info.extmetadata);
         if (!licence) continue;
         if ((c.info.size ?? 0) > 60e6) continue;

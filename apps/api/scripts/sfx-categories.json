@@ -3,316 +3,398 @@
   "id": "rain",
   "label": "rain",
   "search": [
-   "rain sound",
-   "rain recording",
+   "intitle:rain",
    "rainfall",
    "heavy rain"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "\\brain"
  },
  {
   "id": "thunder",
   "label": "thunder",
   "search": [
-   "thunder",
+   "intitle:thunder",
    "thunderstorm"
   ],
   "bed": false,
-  "max_seconds": 12
+  "max_seconds": 12,
+  "title": "thunder"
  },
  {
   "id": "wind",
   "label": "wind",
   "search": [
-   "wind sound",
-   "wind blowing",
-   "wind recording"
+   "intitle:wind",
+   "intitle:breeze",
+   "howling wind"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "\\bwind\\b|breeze|gale|gust",
+  "not": "instrument|wind band|woodwind"
  },
  {
   "id": "sea",
   "label": "sea / waves",
   "search": [
-   "ocean waves",
-   "sea waves",
-   "waves beach",
-   "surf"
+   "intitle:waves sea",
+   "intitle:surf",
+   "intitle:ocean",
+   "intitle:beach",
+   "sea shore sound",
+   "waves crashing"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "wave|surf|\\bsea\\b|ocean|beach|shore|coast",
+  "not": "radio|brain|microwave|wavelet|sine|square wave"
  },
  {
   "id": "river",
   "label": "stream / river",
   "search": [
-   "stream water",
-   "river sound",
-   "creek"
+   "intitle:stream water",
+   "intitle:river",
+   "intitle:creek",
+   "waterfall"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "stream|river|creek|brook|waterfall|riverbed",
+  "not": "live stream|streaming"
  },
  {
   "id": "traffic",
   "label": "traffic / city",
   "search": [
-   "traffic",
-   "street ambience",
-   "city ambience",
-   "city street"
+   "intitle:street ambience",
+   "intitle:traffic noise",
+   "intitle:city ambience",
+   "intitle:road traffic",
+   "street sounds"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "traffic|street|\\broad\\b|city|cars? passing|urban|junction|intersection|highway",
+  "not": "air traffic|atc|tower|dispatch|radio|crash|police|scanner|cockpit|flight"
  },
  {
   "id": "market",
   "label": "market",
   "search": [
-   "market ambience",
-   "marketplace sound"
+   "intitle:market",
+   "intitle:bazaar",
+   "marketplace ambience"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "market|bazaar|souk|fair\\b",
+  "not": "stock market|noise reduction"
  },
  {
   "id": "crowd",
   "label": "crowd / walla",
   "search": [
-   "crowd",
-   "crowd ambience",
-   "people talking crowd",
-   "restaurant ambience"
+   "intitle:crowd",
+   "intitle:restaurant ambience",
+   "intitle:shopping mall",
+   "intitle:train station",
+   "crowd murmur"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "crowd|walla|murmur|babble|chatter|restaurant|cafe|café|mall|station|hall|canteen|pub\\b|audience",
+  "not": "discussion|conversation|interview|speech|chant|protest"
  },
  {
   "id": "birds",
   "label": "birds",
   "search": [
-   "birdsong",
-   "dawn chorus",
-   "birds singing",
-   "bird song"
+   "intitle:dawn chorus",
+   "intitle:birdsong",
+   "intitle:birds singing",
+   "forest birds"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "bird|dawn chorus|dawnchorus|oiseaux|birdsong|songbird|forest ambience",
+  "not": "parrot talking"
  },
  {
   "id": "insects",
   "label": "night insects",
   "search": [
-   "crickets",
-   "cicadas",
+   "intitle:crickets",
+   "intitle:cicada",
    "night insects"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "cricket|cicada|zikade|insect|katydid|night ambience"
  },
  {
   "id": "fire",
   "label": "fire",
   "search": [
+   "intitle:campfire",
+   "intitle:fireplace",
    "fire crackling",
-   "campfire",
-   "fireplace"
+   "burning wood"
   ],
   "bed": true,
-  "max_seconds": 30
+  "max_seconds": 30,
+  "title": "fireplace|campfire|bonfire|crackl|burning|flames|log fire|wood fire",
+  "not": "firework|friendly fire|gunfire|alarm|bones|ice"
  },
  {
   "id": "footsteps",
   "label": "footsteps",
   "search": [
-   "footsteps",
-   "walking footsteps",
-   "footsteps gravel"
+   "intitle:footsteps",
+   "intitle:walking on",
+   "footsteps gravel",
+   "steps on snow"
   ],
   "bed": false,
-  "max_seconds": 10
+  "max_seconds": 10,
+  "title": "footstep|walking|steps|walk on|running on",
+  "not": "march|grenadier|song"
  },
  {
   "id": "knock",
   "label": "door knock",
   "search": [
-   "knocking on door",
-   "door knock"
+   "intitle:knocking",
+   "intitle:knock door"
   ],
   "bed": false,
-  "max_seconds": 6
+  "max_seconds": 6,
+  "title": "knock"
  },
  {
   "id": "door",
   "label": "door",
   "search": [
-   "door closing",
-   "door slam",
-   "door opening",
-   "creaking door"
+   "intitle:door closing",
+   "intitle:door slam",
+   "intitle:door opening",
+   "intitle:creaking door",
+   "intitle:door"
   ],
   "bed": false,
-  "max_seconds": 6
+  "max_seconds": 6,
+  "title": "\\bdoors?\\b",
+  "not": "tram|bus|train|chime|band|the doors"
  },
  {
   "id": "gunshot",
   "label": "gunshot",
   "search": [
-   "gunshot",
-   "gun shot",
-   "rifle shot",
-   "pistol shot"
+   "intitle:gunshot",
+   "intitle:gunshots",
+   "intitle:rifle shot",
+   "intitle:pistol"
   ],
   "bed": false,
-  "max_seconds": 5
+  "max_seconds": 5,
+  "title": "gun|shot|rifle|pistol|revolver|musket|firearm",
+  "not": "scream|photo|screenshot"
  },
  {
   "id": "glass",
   "label": "glass breaking",
   "search": [
-   "glass breaking",
+   "intitle:glass breaking",
+   "intitle:breaking glass",
+   "intitle:bottle breaking",
    "glass shatter"
   ],
   "bed": false,
-  "max_seconds": 5
+  "max_seconds": 5,
+  "title": "glass|bottle|shatter|smash",
+  "not": "harmonica|armonica|music"
  },
  {
   "id": "phone",
   "label": "phone ringing",
   "search": [
-   "telephone ringing",
-   "phone ring"
+   "intitle:telephone ringing",
+   "intitle:phone ringing",
+   "intitle:telephone ring",
+   "intitle:telephone bell"
   ],
   "bed": false,
-  "max_seconds": 8
+  "max_seconds": 8,
+  "title": "phone",
+  "not": "dial|tone dialling|dtmf|modem|ringtone remix"
  },
  {
   "id": "car",
   "label": "car / engine",
   "search": [
-   "car engine",
-   "car passing",
-   "engine start",
-   "motorcycle"
+   "intitle:car passing",
+   "intitle:car engine",
+   "intitle:car horn",
+   "intitle:vehicle passing",
+   "intitle:motorcycle",
+   "intitle:engine start"
   ],
   "bed": false,
-  "max_seconds": 10
+  "max_seconds": 10,
+  "title": "\\bcars?\\b|engine|vehicle|motor|truck|lorry|horn|automobile|motorcycle|scooter",
+  "not": "jet engine|search engine|airplane|aircraft"
  },
  {
   "id": "typing",
   "label": "typing",
   "search": [
-   "typing keyboard",
-   "typewriter",
-   "computer keyboard typing"
+   "intitle:typing",
+   "intitle:typewriter",
+   "intitle:keyboard typing"
   ],
   "bed": false,
-  "max_seconds": 8
+  "max_seconds": 8,
+  "title": "typing|keyboard|typewriter|keystroke",
+  "not": "piano|synth|midi"
  },
  {
   "id": "paper",
   "label": "paper",
   "search": [
+   "intitle:paper",
+   "intitle:page turn",
+   "intitle:turning pages",
    "paper rustling",
-   "page turning",
    "crumpling paper"
   ],
   "bed": false,
-  "max_seconds": 6
+  "max_seconds": 6,
+  "title": "paper|page|newspaper|book|rustl",
+  "not": "white paper|reading"
  },
  {
   "id": "impact",
   "label": "punch / impact",
   "search": [
-   "punch sound",
-   "impact thud",
-   "crash sound"
+   "intitle:thud",
+   "intitle:punch",
+   "intitle:impact",
+   "intitle:slap",
+   "intitle:bang"
   ],
   "bed": false,
-  "max_seconds": 4
+  "max_seconds": 4,
+  "title": "thud|punch|hit|slap|impact|thump|bang|crash",
+  "not": "song|hit parade|car crash|plane|flight|atc"
  },
  {
   "id": "explosion",
   "label": "explosion",
   "search": [
-   "explosion",
-   "explosion sound"
+   "intitle:explosion",
+   "intitle:detonation",
+   "intitle:blast"
   ],
   "bed": false,
-  "max_seconds": 8
+  "max_seconds": 8,
+  "title": "explosion|explode|blast|detonation|bomb",
+  "not": "speech|atomic test footage"
  },
  {
   "id": "dog",
   "label": "dog barking",
   "search": [
-   "dog barking",
-   "dog bark"
+   "intitle:dog barking",
+   "intitle:dog bark",
+   "intitle:barking dog",
+   "intitle:dog"
   ],
   "bed": false,
-  "max_seconds": 6
+  "max_seconds": 6,
+  "title": "\\bdogs?\\b|canis|puppy|bark",
+  "not": "prairie|cynomys|seal|sea lion|fox|bird"
  },
  {
   "id": "siren",
   "label": "siren",
   "search": [
-   "siren",
+   "intitle:siren",
    "police siren",
    "ambulance siren"
   ],
   "bed": false,
-  "max_seconds": 10
+  "max_seconds": 10,
+  "title": "siren",
+  "not": "song|music|mythology"
  },
  {
   "id": "bell",
   "label": "bell",
   "search": [
-   "church bell",
-   "bell ringing"
+   "intitle:church bells",
+   "intitle:church bell",
+   "intitle:bells ringing",
+   "intitle:bell"
   ],
   "bed": false,
-  "max_seconds": 10
+  "max_seconds": 10,
+  "title": "bell|chime|carillon|toll",
+  "not": "telephone|doorbell song|bell pepper|campbell"
  },
  {
   "id": "clock",
   "label": "clock ticking",
   "search": [
-   "clock ticking",
-   "ticking clock"
+   "intitle:clock ticking",
+   "intitle:ticking clock",
+   "intitle:clock",
+   "intitle:tick tock"
   ],
   "bed": false,
-  "max_seconds": 8
+  "max_seconds": 8,
+  "title": "clock|tick",
+  "not": "tick-borne|lyme"
  },
  {
   "id": "water",
   "label": "water pouring",
   "search": [
-   "water pouring",
-   "pouring water",
-   "splash"
+   "intitle:pouring water",
+   "intitle:water pouring",
+   "intitle:splash",
+   "intitle:dripping",
+   "intitle:faucet",
+   "intitle:tap water"
   ],
   "bed": false,
-  "max_seconds": 6
+  "max_seconds": 6,
+  "title": "water|pour|faucet|\\btap\\b|splash|drip|sink",
+  "not": "waterfall|river|stream|rain|sea"
  },
  {
   "id": "applause",
   "label": "applause",
   "search": [
-   "applause",
-   "clapping"
+   "intitle:applause",
+   "intitle:clapping"
   ],
   "bed": false,
-  "max_seconds": 10
+  "max_seconds": 10,
+  "title": "applause|clapping|claps|cheer"
  },
  {
   "id": "keys",
   "label": "keys",
   "search": [
-   "keys jingling",
-   "keys"
+   "intitle:keys",
+   "intitle:jingling keys",
+   "keys jingle"
   ],
   "bed": false,
-  "max_seconds": 5
+  "max_seconds": 5,
+  "title": "\\bkeys\\b|keychain|key ring|jingl",
+  "not": "piano|keyboard|music"
  }
 ]
