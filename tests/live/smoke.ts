@@ -880,9 +880,12 @@ await check("persistence: everything still there on re-read", async () => {
 
 // ---- Completion pass 12c: Dashboard overview from each stage's own records ----
 await check("overview: every stage reports real counts and its checks; flagged stages are listed for attention", async () => {
+  const t0 = Date.now();
   const o = await api("GET", `/api/projects/${projectId}/overview`);
+  const overviewMs = Date.now() - t0;
   const by = Object.fromEntries(o.stages.map((s: any) => [s.id, s]));
   assert(o.stages.length === 9 && o.engine_version === "1.0.0", "shape");
+  console.log(JSON.stringify({ level: "info", timing: "overview", ms: overviewMs }));
   assert(by.scriptwriter.state === "complete" && by.scriptwriter.checks.every((c: any) => c.ok), `script ${by.scriptwriter.state}`);
   assert(by.visual.done >= 1 && by.visual.total >= by.visual.done, `visual ${by.visual.done}/${by.visual.total}`);
   // The Casting change earlier flagged Scene DNA downstream: the overview must say so, not hide it.

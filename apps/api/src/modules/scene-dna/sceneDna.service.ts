@@ -6,6 +6,7 @@
 //    them with the refs frozen in the approved version (production graph);
 //    persist review_required / stale evidence. Nothing is ever deleted.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { once } from "../../infrastructure/requestMemo";
 import { ScreenplayElementSchema } from "@aurastage/contracts";
 import type { SceneDnaDrift, SceneDnaEditable } from "@aurastage/contracts";
 import { dialogueExtraction, sceneDnaAssembly, sceneDnaAssemblyEngine, storyTimeCueEngine } from "@aurastage/engines";
@@ -236,7 +237,10 @@ async function persistDrift(db: SupabaseClient, e: ReturnType<typeof sceneEntry>
  * change is flagged even if nobody has opened Scene DNA since (production graph
  * propagation; regression: Casting change not reaching Storyboard).
  */
-export async function refreshSceneDnaReview(db: SupabaseClient, projectId: string) {
+export function refreshSceneDnaReview(db: SupabaseClient, projectId: string) {
+  return once(db, `refreshSceneDnaReview:${projectId}`, () => refreshSceneDnaReviewNow(db, projectId));
+}
+async function refreshSceneDnaReviewNow(db: SupabaseClient, projectId: string) {
   const u = await loadUpstream(db, projectId);
   if (!u.version) return;
   for (const scene of u.scenes) {

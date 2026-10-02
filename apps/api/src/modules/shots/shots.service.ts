@@ -4,6 +4,7 @@
 // records that version id (rule 10). When Scene DNA is locked again or needs
 // review, the plan is marked stale / review_required with a reason (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { once } from "../../infrastructure/requestMemo";
 import type { CoverageStyle } from "@aurastage/contracts";
 import { coverageMath, coverageMathEngine, planStoryTime, shotPlanning, shotPlanningEngine } from "@aurastage/engines";
 // Scene DNA owns its review state; we ask it to refresh (never write its tables).
@@ -110,7 +111,10 @@ function coverageFor(dna: NonNullable<ReturnType<typeof lockedDna>>, shots: Row[
  * itself refreshed first). Downstream domains (Visual Generation) call this
  * before reading plan state; Storyboard still owns all its own writes.
  */
-export async function refreshShotPlanReview(db: SupabaseClient, projectId: string) {
+export function refreshShotPlanReview(db: SupabaseClient, projectId: string) {
+  return once(db, `refreshShotPlanReview:${projectId}`, () => refreshShotPlanReviewNow(db, projectId));
+}
+async function refreshShotPlanReviewNow(db: SupabaseClient, projectId: string) {
   const u = await load(db, projectId);
   for (const scene of u.scenes) {
     const plan = u.plans.get(scene.id);

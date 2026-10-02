@@ -7,6 +7,7 @@
 // approve. Upstream changes mark sessions stale / review_required; recordings
 // are never removed (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { once } from "../../infrastructure/requestMemo";
 import { AddAudioTrackInputSchema, loudnessTarget, MoveAudioTrackInputSchema, SessionMixSchema, UpdateAudioMixInputSchema } from "@aurastage/contracts";
 import { audioSpotting, audioSpottingEngine, musicSuggestionEngine } from "@aurastage/engines";
 // Storyboard owns plan review state; ask it to refresh (it refreshes Scene DNA first).
@@ -50,7 +51,10 @@ function replacedSince(session: Row, clips: Row[], versions: Row[], assets: Row[
  * refreshes Scene DNA). Exported so downstream domains (Editorial) can ask the
  * Audio Studio to refresh its own state before reading it — they never write it.
  */
-export async function refreshAudioReview(db: SupabaseClient, projectId: string) {
+export function refreshAudioReview(db: SupabaseClient, projectId: string) {
+  return once(db, `refreshAudioReview:${projectId}`, () => refreshAudioReviewNow(db, projectId));
+}
+async function refreshAudioReviewNow(db: SupabaseClient, projectId: string) {
   await refreshShotPlanReview(db, projectId);
   const [plans, versions, sessions, clips, mixVersions, assets] = await Promise.all([
     repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId), repo.listSessions(db, projectId),

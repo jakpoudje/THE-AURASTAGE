@@ -14,6 +14,7 @@ import { getAudioWorkspace } from "../audio/audio.service";
 import { getEditorialWorkspace } from "../editorial/editorial.service";
 import { getDeliveryWorkspace } from "../rendering/rendering.service";
 import { ForbiddenError } from "./projects.permissions";
+import { enableRequestMemo } from "../../infrastructure/requestMemo";
 
 type Row = Record<string, any>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,17 +25,20 @@ export async function getProjectOverview(db: SupabaseClient, projectId: string) 
   if (error) throw error;
   if (!project) throw new ForbiddenError("Project not found");
 
-  // In pipeline order: each read refreshes its own review state from the one before it.
-  const script = (await getScript(db, projectId)) as Row;
-  const casting = (await getCastingWorkspace(db, projectId)) as Row;
+  // In pipeline order: each read refreshes its own review state from the one before it. Each stage's review refresh
+  // runs once for this request (enableRequestMemo), and stages that don't depend on each other are read side by side
+  // (2026-10-02: the overview took ~5 s; it is shown on every page).
+  enableRequestMemo(db);
+  const [script, casting] = (await Promise.all([getScript(db, projectId), getCastingWorkspace(db, projectId)])) as Row[];
   const dialogue = (await getDialogueWorkspace(db, projectId)) as Row;
   const dna = (await getSceneDnaWorkspace(db, projectId)) as Row;
   const board = (await getStoryboard(db, projectId)) as Row;
-  const visual = (await getVisualWorkspace(db, projectId)) as Row;
-  const audio = (await getAudioWorkspace(db, projectId)) as Row;
+  const [visual, audio] = (await Promise.all([getVisualWorkspace(db, projectId, process.env, { sign: false }), getAudioWorkspace(db, projectId)])) as Row[];
   const edit = (await getEditorialWorkspace(db, projectId)) as Row;
-  const delivery = (await getDeliveryWorkspace(db, projectId)) as Row;
-  const { count: assetCount } = await db.from("assets").select("id", { count: "exact", head: true }).eq("project_id", projectId).is("archived_at", null);
+  const [delivery, { count: assetCount }] = await Promise.all([
+    getDeliveryWorkspace(db, projectId) as Promise<Row>,
+    db.from("assets").select("id", { count: "exact", head: true }).eq("project_id", projectId).is("archived_at", null),
+  ]);
 
   const activeScenes = (script.scenes as Row[]).filter((s) => s.status === "active");
   const chars = (casting.characters as Row[]).filter((c) => !c.merged_into);

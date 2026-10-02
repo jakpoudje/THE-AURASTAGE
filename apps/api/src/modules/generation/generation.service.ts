@@ -60,7 +60,7 @@ export function packageReview(pkg: Row, plan: Row, versionNumber: number | null,
   return { state: "current", reason: null };
 }
 
-export async function getVisualWorkspace(db: SupabaseClient, projectId: string, env: Env = process.env) {
+export async function getVisualWorkspace(db: SupabaseClient, projectId: string, env: Env = process.env, opts: { sign?: boolean } = {}) {
   await assertProjectAccess(db, projectId);
   await refreshShotPlanReview(db, projectId);
   const [current, paidUsed] = await Promise.all([readProjectSettings(db, projectId), repo.paidTakesThisMonth(db, projectId)]);
@@ -93,7 +93,8 @@ export async function getVisualWorkspace(db: SupabaseClient, projectId: string, 
         const r = packageReview(pkg, plan, version.version_number, look, world);
         if (pkg.review_state !== r.state || (pkg.review_reason ?? null) !== r.reason) pkg = await repo.setPackageReview(db, pkg.id, r.state, r.reason);
       }
-      const shotTakes = await Promise.all(takes.filter((t) => t.shot_id === shot.id).map((t) => takeDTO(t, env)));
+      // Counts-only callers (the Dashboard overview) skip signing a media link for every take.
+      const shotTakes = await Promise.all(takes.filter((t) => t.shot_id === shot.id).map((t) => (opts.sign === false ? toTakeDTO(t, null) : takeDTO(t, env))));
       shots.push({
         shot: {
           id: shot.id, ordinal: shot.ordinal, purpose: shot.purpose, size: shot.size, angle: shot.angle, movement: shot.movement,
