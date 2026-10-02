@@ -258,6 +258,22 @@ async function api(method, path, body) {
     const lib = await (await fetch(`${API}/api/projects/${P}/library`)).json();
     if (lib.assets.filter((a) => /Tunde Okafor — .* reference$/.test(a.name)).length !== 8) throw new Error("references not in the Assets Library");
   });
+  await step("AuraSketch 3 (owner request 2026-10-02): See them speak — a line drawn speaking in the film's genre style, timed from the words, looping", async () => {
+    await fetch(`${API}/api/projects/${P}/dialogue/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    await page.reload();
+    await page.getByRole("button", { name: "Look & References" }).click();
+    const sp = page.getByRole("region", { name: "See them speak" });
+    await sp.getByText(/Thriller — hard shadows/).waitFor();
+    await sp.getByRole("button", { name: "▶ See it spoken" }).click();
+    await sp.getByTestId("speaking-sketch").waitFor();
+    await sp.getByText(/No voice for this line yet — timed from the words/).waitFor();
+    await sp.getByText(/mouth shapes, with natural blinks/).waitFor();
+    await sp.getByLabel("Speaking view").selectOption("three_quarter");
+    await sp.getByRole("button", { name: "▶ See it spoken" }).click();
+    await sp.getByTestId("speaking-sketch").waitFor();
+    await sp.screenshot({ path: `${OUT}/see-them-speak.png` });
+  });
+
   await step("Ages: add a flashback age (duplicates refused); reload keeps it; views for that age are made and kept apart from today's", async () => {
     await page.getByRole("button", { name: "Ages", exact: true }).click();
     const sec = page.getByRole("region", { name: "Ages" });

@@ -11,6 +11,8 @@ import { ENGINE_VERSION } from "./version";
 const txt = (n: number) => z.string().max(n).nullable().optional();
 export const CharacterAppearanceInputSchema = z.object({
   name: z.string().max(120).default(""),
+  /** What makes this person's face their own when the text doesn't describe it (default: the name). Same seed → same face. */
+  identity_seed: z.string().max(200).nullable().optional(),
   age: txt(40),
   gender: txt(60),
   description: txt(4000),
@@ -31,6 +33,24 @@ export type Headwear = "none" | "cap" | "hat" | "beanie" | "headscarf" | "hijab"
 export type Top = "tshirt" | "shirt" | "blouse" | "sweater" | "hoodie" | "jacket" | "suit" | "coat" | "dress" | "robe" | "uniform" | "kaftan";
 export type Bottom = "trousers" | "jeans" | "skirt" | "shorts" | "none";
 
+/** The face AuraSketch 3 draws. Described words win; the rest is varied from the identity seed so no two characters share a face. */
+export interface Face {
+  shape: "oval" | "round" | "square" | "heart" | "long" | "diamond";
+  eyes: { size: number; spacing: number; tilt: number; shape: "almond" | "round" | "hooded" | "narrow" | "deep_set"; colour: string };
+  brows: { thickness: number; arch: number; tilt: number };
+  nose: { length: number; width: number; bridge: "straight" | "curved" | "flat" | "upturned" };
+  lips: { fullness: number; width: number; upper: number };
+  cheekbones: number;
+  jaw: number;
+  chin: "round" | "pointed" | "square" | "cleft";
+  ears: number;
+  freckles: boolean;
+  dimples: boolean;
+  /** 0 smooth … 1 deeply lined (age and "weathered"). */
+  lines: number;
+  mole: { x: number; y: number } | null;
+}
+
 export interface Appearance {
   presentation: Presentation;
   age_years: number | null;
@@ -47,6 +67,12 @@ export interface Appearance {
   headwear: Headwear;
   scar: "left" | "right" | null;
   earrings: boolean;
+  /** AuraSketch 3 (appearance ≥ 1.1.0); older stored appearances have none and are drawn from a neutral face. */
+  face?: Face;
+  /** The seed the face was varied from (never a statement about who the person is). */
+  identity_seed?: string;
+  /** Face features the text doesn't describe, varied from the seed so no two characters look alike (describe them to set them). */
+  varied?: string[];
   clothing: {
     top: Top; bottom: Bottom; colours: string[]; open_jacket: boolean; tie: boolean;
     /** Colours tied to the garment they describe ("navy hijab, cream robe"): these win over the plain list. */
@@ -93,7 +119,7 @@ function ageYears(s: string): number | null {
 export function characterAppearanceEngine(raw: CharacterAppearanceInput): Appearance {
   const i = CharacterAppearanceInputSchema.parse(raw);
   const ap = i.appearance ?? {};
-  const desc = [clean(i.age_state?.description), clean(ap.hair), clean(ap.facial_hair), clean(ap.build), clean(ap.height), clean(ap.skin_tone), clean(ap.distinguishing), clean(i.description)].filter(Boolean).join(". ");
+  const desc = [clean(i.age_state?.description), clean(ap.hair), clean(ap.facial_hair), clean(ap.build), clean(ap.height), clean(ap.skin_tone), ap.eyes ? `${clean(ap.eyes)} eyes` : "", clean(ap.distinguishing), clean(i.description)].filter(Boolean).join(". ");
   const wear = clean(i.wardrobe);
   const evidence: Appearance["evidence"] = [];
   const unspecified: string[] = [];
@@ -217,9 +243,123 @@ export function characterAppearanceEngine(raw: CharacterAppearanceInput): Appear
   const open_jacket = (top === "suit" || top === "jacket" || top === "coat") && !/\b(buttoned|zipped)\b/i.test(all);
   const tie = !!all.match(/\b(tie|necktie|bow tie)\b/i);
 
+  const { face, varied } = readFace(desc, i.identity_seed || i.name || desc || "neutral", life_stage, note);
+
   return {
+    face, identity_seed: i.identity_seed || i.name || undefined, varied,
     presentation, age_years, life_stage, height: Math.round(height * 100) / 100, width: Math.round(width * 100) / 100, muscular, skin,
     hair: { style, colour: hairColour, grey }, facial_hair, glasses, headwear, scar, earrings,
     clothing: { top, bottom, colours, open_jacket, tie, named }, evidence, unspecified, engine_version: ENGINE_VERSION,
+  };
+}
+
+// ---- Faces (AuraSketch 3) ----
+/** Small deterministic PRNG: the same seed always gives the same face. */
+function rng(seed: string) {
+  let h = 2166136261;
+  for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return () => {
+    h += 0x6d2b79f5;
+    let t = h;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const EYE_COLOURS: [RegExp, string, string][] = [
+  [/\b(hazel)\b/i, "#7a5a2e", "hazel"], [/\b(green)\b/i, "#4f7a4a", "green"], [/\b(blue|steel[- ]blue)\b/i, "#4a6f9a", "blue"],
+  [/\b(grey|gray)\b/i, "#6f7a82", "grey"], [/\b(amber)\b/i, "#a8742a", "amber"], [/\b(dark brown|black|dark)\b/i, "#2e1f16", "dark brown"], [/\b(brown)\b/i, "#5a3a22", "brown"],
+];
+
+function readFace(desc: string, seed: string, stage: LifeStage, note: (fact: string, from: string | null) => void): { face: Face; varied: string[] } {
+  const r = rng(`face:${seed.toLowerCase().trim()}`);
+  const between = (lo: number, hi: number) => Math.round((lo + (hi - lo) * r()) * 100) / 100;
+  const pick = <T,>(xs: readonly T[]) => xs[Math.floor(r() * xs.length) % xs.length];
+  const find = (re: RegExp) => desc.match(re)?.[0] ?? null;
+  const varied: string[] = [];
+  let w: string | null;
+
+  // Every random draw happens in the same order whatever is described, so describing one feature never reshuffles the rest.
+  const v = {
+    shape: pick(["oval", "oval", "round", "square", "heart", "long", "diamond"] as const),
+    eyeSize: between(0.88, 1.14), eyeSpacing: between(0.9, 1.1), eyeTilt: between(-0.6, 0.6), eyeShape: pick(["almond", "almond", "round", "hooded", "narrow", "deep_set"] as const),
+    browThick: between(0.8, 1.3), browArch: between(0.15, 0.85), browTilt: between(-0.5, 0.5),
+    noseLen: between(0.9, 1.12), noseWidth: between(0.88, 1.2), bridge: pick(["straight", "straight", "curved", "flat", "upturned"] as const),
+    lipFull: between(0.82, 1.3), lipWidth: between(0.9, 1.12), lipUpper: between(0.7, 1.05),
+    cheek: between(0.2, 0.8), jaw: between(0.9, 1.1), chin: pick(["round", "round", "pointed", "square", "cleft"] as const), ears: between(0.9, 1.1),
+    mole: r() < 0.18 ? { x: between(-0.18, 0.18), y: between(0.6, 0.85) } : null,
+  };
+
+  let shape: Face["shape"] = v.shape;
+  if ((w = find(/\b(round|chubby|full)[- ]faced?\b|\bround face\b|\bchubby cheeks\b/i))) shape = "round";
+  else if ((w = find(/\b(square[- ]jawed|square face|square jaw|chiseled|chiselled|strong jaw)\b/i))) shape = "square";
+  else if ((w = find(/\bheart[- ]shaped\b/i))) shape = "heart";
+  else if ((w = find(/\b(long face|narrow face|long[- ]faced|angular face|gaunt)\b/i))) shape = "long";
+  else if ((w = find(/\b(diamond[- ]shaped face)\b/i))) shape = "diamond";
+  else if ((w = find(/\boval face\b/i))) shape = "oval";
+  if (w) note(`face: ${shape}`, w); else varied.push("face shape");
+
+  let eyeShape: Face["eyes"]["shape"] = v.eyeShape, eyeSize = v.eyeSize, eyeSpacing = v.eyeSpacing;
+  let ew: string | null = null;
+  if ((ew = find(/\balmond[- ]shaped eyes\b|\balmond eyes\b/i))) eyeShape = "almond";
+  else if ((ew = find(/\bhooded (eyes|lids)\b/i))) eyeShape = "hooded";
+  else if ((ew = find(/\b(narrow|squinting) eyes\b/i))) eyeShape = "narrow";
+  else if ((ew = find(/\bdeep[- ]set eyes\b/i))) eyeShape = "deep_set";
+  else if ((ew = find(/\bround eyes\b/i))) eyeShape = "round";
+  if ((w = find(/\b(big|large|wide) eyes\b/i))) { eyeSize = 1.18; ew ??= w; } else if ((w = find(/\bsmall eyes\b/i))) { eyeSize = 0.84; ew ??= w; }
+  if ((w = find(/\bwide[- ]set eyes\b/i))) { eyeSpacing = 1.14; ew ??= w; } else if ((w = find(/\bclose[- ]set eyes\b/i))) { eyeSpacing = 0.86; ew ??= w; }
+  if (ew) note(`eyes: ${eyeShape}`, ew); else varied.push("eyes");
+  let eyeColour = "#3a2618";
+  for (const [re, hex, name] of EYE_COLOURS) {
+    const m = desc.match(new RegExp(`${re.source}[^.,;]{0,12}\\beyes?\\b`, "i"));
+    if (m) { eyeColour = hex; note(`eye colour: ${name}`, m[0]); break; }
+  }
+
+  let browThick = v.browThick, browArch = v.browArch;
+  if ((w = find(/\b(thick|bushy|heavy|strong) (eye)?brows?\b/i))) { browThick = 1.5; note("thick brows", w); }
+  else if ((w = find(/\b(thin|fine|sparse) (eye)?brows?\b/i))) { browThick = 0.7; note("thin brows", w); }
+  if ((w = find(/\barched (eye)?brows?\b/i))) { browArch = 0.95; note("arched brows", w); }
+
+  let noseLen = v.noseLen, noseWidth = v.noseWidth, bridge: Face["nose"]["bridge"] = v.bridge;
+  let nw: string | null = null;
+  if ((nw = find(/\b(broad|wide) nose\b/i))) noseWidth = 1.32;
+  else if ((nw = find(/\b(narrow|thin|slender) nose\b/i))) noseWidth = 0.82;
+  if ((w = find(/\b(aquiline|hooked|roman|beaked) nose\b/i))) { bridge = "curved"; noseLen = 1.15; nw ??= w; }
+  else if ((w = find(/\bflat nose\b/i))) { bridge = "flat"; nw ??= w; }
+  else if ((w = find(/\b(button|upturned|snub) nose\b/i))) { bridge = "upturned"; noseLen = 0.88; nw ??= w; }
+  else if ((w = find(/\blong nose\b/i))) { noseLen = 1.2; nw ??= w; }
+  else if ((w = find(/\bsmall nose\b/i))) { noseLen = 0.88; noseWidth = Math.min(noseWidth, 0.92); nw ??= w; }
+  if (nw) note("nose", nw); else varied.push("nose");
+
+  let lipFull = v.lipFull, lipWidth = v.lipWidth;
+  let lw: string | null = null;
+  if ((lw = find(/\b(full|thick|plump|generous) lips\b/i))) lipFull = 1.45;
+  else if ((lw = find(/\b(thin) lips\b/i))) lipFull = 0.72;
+  if ((w = find(/\b(wide|broad) (mouth|smile)\b/i))) { lipWidth = 1.18; lw ??= w; } else if ((w = find(/\bsmall mouth\b/i))) { lipWidth = 0.86; lw ??= w; }
+  if (lw) note("lips", lw); else varied.push("lips");
+
+  let cheek = v.cheek, jaw = v.jaw, chin: Face["chin"] = v.chin;
+  if ((w = find(/\bhigh cheekbones\b/i))) { cheek = 1; note("high cheekbones", w); }
+  if ((w = find(/\b(strong|square|heavy|chiseled|chiselled) jaw/i))) { jaw = 1.16; note("strong jaw", w); }
+  else if ((w = find(/\b(soft|delicate|weak) (jaw|chin)\b/i))) { jaw = 0.88; note("soft jaw", w); }
+  if ((w = find(/\bcleft chin\b/i))) { chin = "cleft"; note("cleft chin", w); }
+  else if ((w = find(/\bpointed chin\b/i))) { chin = "pointed"; note("pointed chin", w); }
+
+  const freckles = !!(w = find(/\bfreckle[sd]?\b/i)); note("freckles", freckles ? w : null);
+  const dimples = !!(w = find(/\bdimples?\b/i)); note("dimples", dimples ? w : null);
+  let lines = stage === "elder" ? 0.85 : stage === "middle" ? 0.45 : 0;
+  if ((w = find(/\b(weathered|wrinkled|lined|craggy|weather[- ]beaten)\b/i))) { lines = Math.max(lines, 0.8); note("lined face", w); }
+  let mole = v.mole;
+  if ((w = find(/\b(mole|beauty mark|beauty spot)\b/i))) { mole ??= { x: 0.14, y: 0.74 }; note("mole", w); } else if (mole) varied.push("a mole");
+  // A child's face: bigger eyes, smaller nose, softer jaw.
+  if (stage === "child") { eyeSize *= 1.12; noseLen *= 0.85; noseWidth *= 0.9; jaw *= 0.9; }
+
+  return {
+    face: {
+      shape, eyes: { size: eyeSize, spacing: eyeSpacing, tilt: v.eyeTilt, shape: eyeShape, colour: eyeColour },
+      brows: { thickness: browThick, arch: browArch, tilt: v.browTilt }, nose: { length: noseLen, width: noseWidth, bridge },
+      lips: { fullness: lipFull, width: lipWidth, upper: v.lipUpper }, cheekbones: cheek, jaw, chin, ears: v.ears, freckles, dimples, lines, mole,
+    },
+    varied,
   };
 }

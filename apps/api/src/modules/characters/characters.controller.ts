@@ -4,6 +4,7 @@
 
 import { addActorPhoto, listPerformerConsents, recordPerformerConsent, revokePerformerConsent } from "./characters.consent";
 import { generateAllCharacterLooks, generateCharacterLook, getCharacterLook } from "./characters.look";
+import { getCharacterSpeech } from "./characters.speak";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   addCharacterAlias,
@@ -67,6 +68,7 @@ export async function registerCharactersRoutes(app: FastifyInstance) {
   app.post("/api/projects/:id/characters", route(({ params, body, db }) => createCharacter(db, params.id, body), 201));
   app.post("/api/projects/:id/relationships", route(({ params, body, db }) => setRelationship(db, params.id, body)));
   app.delete("/api/relationships/:id", route(({ params, db }) => deleteRelationship(db, params.id)));
+  app.get("/api/characters/:id/speak", route(({ params, db, query }) => getCharacterSpeech(db, params.id, query)));
   app.get("/api/characters/:id/look", route(({ params, db, query }) => getCharacterLook(db, params.id, query.look_id || null, process.env, query.age_state_id || null)));
   app.post("/api/projects/:id/characters/looks/generate", route(({ params, body, db }) => generateAllCharacterLooks(db, params.id, body)));
   app.post("/api/characters/:id/look/generate", route(({ params, body, db }) => generateCharacterLook(db, params.id, body)));

@@ -9,6 +9,7 @@ import { ApiError } from "@/lib/apiClient";
 import { CostNote } from "@/components/CostNote";
 import { lookApi, type CharacterLookView, type LookView } from "../api/lookApi";
 import { ActorPhotos } from "./ActorPhotos";
+import { SeeThemSpeak } from "./SeeThemSpeak";
 
 const ANGLES = [["front", "Front"], ["three_quarter", "¾ view"], ["profile", "Profile"], ["back", "Back"]] as const;
 const SIZES = [["CU", "Close-up"], ["MCU", "Medium close-up"], ["MS", "Medium"], ["FULL", "Full length"]] as const;
@@ -104,6 +105,9 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
           <div className="mt-2 text-xs" data-testid="sketch-reads">
             <span className="text-white/50">AuraSketch draws: </span>
             <span className="text-white/80">{data.sketch_reads.evidence.map((e) => e.fact).join(" · ") || "a neutral figure"}</span>
+            {(data.sketch_reads.varied?.length ?? 0) > 0 && (
+              <p className="mt-1 text-white/45">Their {data.sketch_reads.varied!.join(", ")} aren't described, so AuraSketch gives them features of their own (the same in every view). Describe them in the Profile tab to set them.</p>
+            )}
             {data.sketch_reads.unspecified.length > 0 && (
               <p className="mt-1 text-amber-300/90">Not described yet (drawn neutrally): {data.sketch_reads.unspecified.join(", ")}. Add them to the description in the Profile tab.</p>
             )}
@@ -112,6 +116,8 @@ export function LookPanel({ characterId, canEdit, onPortrait }: { characterId: s
         {data.age_states.length === 0 && <p className="mt-2 text-[11px] text-white/40">Flashback or time jump? Add the character's other ages in the Ages tab, then make views for each age here.</p>}
         <p className="mt-2 text-[11px] text-white/40">Built from this character's profile, wardrobe look and the project look in Project Settings. When any of them changes, existing views are marked “Profile changed” — nothing is replaced automatically.</p>
       </div>
+
+      <SeeThemSpeak characterId={data.character.id} />
 
       <div className="flex flex-wrap items-end gap-3 text-xs">
         <label className="text-white/60">Wardrobe

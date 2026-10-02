@@ -12,7 +12,7 @@ export interface CharacterLookView {
   looks: { id: string; name: string }[]; look_id: string | null;
   age_states: { id: string; label: string; age: string }[]; age_state_id: string | null;
   /** What AuraSketch read from the profile, wardrobe and age (and what it couldn't find). */
-  sketch_reads?: { evidence: { fact: string; from: string }[]; unspecified: string[] };
+  sketch_reads?: { evidence: { fact: string; from: string }[]; unspecified: string[]; varied?: string[] };
   identity: string; wardrobe: string | null; identity_hash: string; missing: string[]; negative: string[]; engine_version: string;
   views: LookView[];
   backends: { id: string; name: string; model: string; execution: "native" | "external"; note: string }[];
@@ -25,7 +25,22 @@ export interface PerformerConsent {
   photos: { id: string; asset_id: string | null; view: string; in_use: boolean; status: string; created_at: string }[];
 }
 
+/** "See them speak" (characters.speak.ts): the character's lines, and one line drawn speaking (animated SVG). */
+export interface CharacterSpeech {
+  character: { id: string; name: string };
+  style: { id: string; label: string };
+  lines: { id: string; scene_number: number; text: string; has_voice: boolean }[];
+  line?: { id: string; scene_number: number; text: string; emotion: string | null };
+  svg?: string; seconds?: number; timed_by?: "voice" | "estimate"; voice_asset_id?: string | null; mouth_shapes?: number;
+}
+
 export const lookApi = {
+  speech: (characterId: string, lineId?: string, angle?: string) => {
+    const q = new URLSearchParams();
+    if (lineId) q.set("line_id", lineId);
+    if (angle) q.set("angle", angle);
+    return apiGet<CharacterSpeech>(`/api/characters/${characterId}/speak${q.toString() ? `?${q}` : ""}`);
+  },
   get: (characterId: string, lookId: string | null, ageStateId: string | null = null) => {
     const q = new URLSearchParams();
     if (lookId) q.set("look_id", lookId);

@@ -8,6 +8,8 @@
 // medium close-up, medium and full length. Deterministic SVG in "head units" (crown y=0, chin y=1). Not AI.
 import type { Appearance } from "../../character/characterAppearanceEngine/engine";
 import { ENGINE_VERSION } from "./version";
+import { drawFace, drawProfileFace, faceOf, type MouthMode } from "./face";
+import { SKETCH_STYLES, styleFilter, type SketchStyle } from "./style";
 
 export type SketchAngle = "front" | "three_quarter" | "profile" | "back";
 export type SketchSize = "CU" | "MCU" | "MS" | "FULL" | "WIDE";
@@ -50,8 +52,26 @@ function geometry(a: Appearance, angle: SketchAngle): Geo {
   };
 }
 
+export interface FigureOptions {
+  /** The film's look (sketchStyleFor(genre)); natural drama light by default. */
+  style?: SketchStyle;
+  /** A mouth that speaks a line (visemesFor) with blinking, or a still mouth. */
+  mouth?: MouthMode;
+}
+/** A short id for this figure's gradients and clips (same person + angle + style → same id, so repeats are harmless). */
+function figureUid(a: Appearance, angle: SketchAngle, st: SketchStyle, talking: boolean) {
+  let h = 5381;
+  for (const ch of `${a.identity_seed ?? ""}|${a.skin}|${a.hair.colour}|${angle}|${st.id}|${talking}`) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;
+  return h.toString(36);
+}
+
 /** The whole figure, in head units, facing the viewer (front) or turned. */
-export function auraSketchFigureShapes(a: Appearance, angle: SketchAngle): string {
+export function auraSketchFigureShapes(a: Appearance, angle: SketchAngle, opts: FigureOptions = {}): string {
+  const st = opts.style ?? SKETCH_STYLES.drama;
+  const mode: MouthMode = opts.mouth ?? { kind: "still" };
+  const uid = figureUid(a, angle, st, mode.kind === "talking");
+  const lw = st.line;
+  const INK = st.ink;
   const g = geometry(a, angle);
   const { sy, bs } = g;
   const X = (x: number) => x * bs;
@@ -69,9 +89,9 @@ export function auraSketchFigureShapes(a: Appearance, angle: SketchAngle): strin
   const hwc = nm.headwear ?? (nm.top ? free[0] : free[1]) ?? "#c9a24a";
   const hair = a.hair.colour;
   const out: string[] = [];
-  const S = `stroke="${INK}" stroke-width="0.022" stroke-linejoin="round" stroke-linecap="round"`;
+  const S = `stroke="${INK}" stroke-width="${f(0.022 * lw)}" stroke-linejoin="round" stroke-linecap="round"`;
   const path = (d: string, fill: string, extra = "") => out.push(`<path d="${d}" fill="${fill}" ${S} ${extra}/>`);
-  const line = (d: string, w = 0.018, op = 1) => out.push(`<path d="${d}" fill="none" stroke="${INK}" stroke-width="${w}" stroke-linecap="round" opacity="${op}"/>`);
+  const line = (d: string, w = 0.018, op = 1) => out.push(`<path d="${d}" fill="none" stroke="${INK}" stroke-width="${f(w * lw)}" stroke-linecap="round" opacity="${op}"/>`);
 
   // ---- behind the body: long hair, afro, hoodie hood ----
   const long = ["long", "braids", "locs"].includes(a.hair.style) && !["hijab", "gele", "headscarf", "turban"].includes(a.headwear);
@@ -153,7 +173,7 @@ export function auraSketchFigureShapes(a: Appearance, angle: SketchAngle): strin
   if (top === "kaftan" && angle !== "back") line(`M ${pts(X(-0.18), sy(1.25))} Q ${pts(0, sy(1.9), X(0.18), sy(1.25))} M ${pts(X(-0.12), sy(1.5))} Q ${pts(0, sy(2.1), X(0.12), sy(1.5))}`, 0.016, 0.8);
   if (top === "hoodie" && angle !== "back") line(`M ${pts(X(-0.08), sy(1.3))} L ${pts(X(-0.09), sy(1.9))} M ${pts(X(0.08), sy(1.3))} L ${pts(X(0.09), sy(1.9))} M ${pts(X(-0.35), sy(2.9))} L ${pts(X(0.35), sy(2.9))} L ${pts(X(0.3), sy(3.3))} L ${pts(X(-0.3), sy(3.3))} Z`, 0.014, 0.7);
   // Pencil hatching on the shadow side.
-  for (let i = 0; i < 7; i++) { const y = sy(1.7 + i * 0.28); if (y < hem - 0.1) line(`M ${pts(X(g.sw * 0.55), y)} L ${pts(X(g.sw * 0.75), y - 0.16)}`, 0.012, 0.28); }
+  for (let i = 0; i < 7; i++) { const y = sy(1.7 + i * 0.28); if (y < hem - 0.1) line(`M ${pts(X(g.sw * 0.55), y)} L ${pts(X(g.sw * 0.75), y - 0.16)}`, 0.012, Math.min(0.6, 0.28 * st.shadow)); }
 
   // ---- a hijab frames the face from behind ----
   const hcx = angle === "profile" ? -0.02 : g.fx;
@@ -167,28 +187,17 @@ export function auraSketchFigureShapes(a: Appearance, angle: SketchAngle): strin
     out.push(`<ellipse cx="${f(hx)}" cy="0.5" rx="${f(rx)}" ry="0.5" fill="${bald ? skin : a.headwear === "hijab" ? hwc : hair}" ${S}/>`);
     for (const s of [-1, 1]) out.push(`<ellipse cx="${f(s * (rx + 0.01))}" cy="0.56" rx="0.05" ry="0.1" fill="${skin}" ${S}/>`);
   } else if (angle === "profile") {
-    out.push(`<ellipse cx="-0.04" cy="0.56" rx="0.06" ry="0.11" fill="${skin}" ${S}/>`);
-    path(`M ${pts(-0.33, 0.5)} C ${pts(-0.35, 0.02, 0.3, -0.03, 0.32, 0.42)} L ${pts(0.39, 0.61)} L ${pts(0.32, 0.64)} Q ${pts(0.35, 0.72, 0.31, 0.76)} Q ${pts(0.34, 0.81, 0.3, 0.85)} Q ${pts(0.27, 0.97, 0.12, 1.0)} Q ${pts(-0.04, 1.0, -0.1, 0.9)} L ${pts(-0.19, 0.93)} C ${pts(-0.31, 0.84, -0.33, 0.7, -0.33, 0.5)} Z`, skin);
-    out.push(`<ellipse cx="0.21" cy="0.52" rx="0.04" ry="0.025" fill="#fff" ${S}/><circle cx="0.23" cy="0.52" r="0.018" fill="${INK}"/>`);
-    line(`M 0.14 0.44 Q 0.21 0.41 0.28 0.44`, 0.03);
-    line(`M 0.3 0.82 L 0.22 0.82`, 0.016);
+    out.push(`<ellipse cx="-0.04" cy="0.56" rx="${f(0.06 * faceOf(a).ears)}" ry="${f(0.11 * faceOf(a).ears)}" fill="${skin}" ${S}/>`);
+    out.push(drawProfileFace(a, skin, st, uid, mode, lw));
   } else {
     const side = angle === "three_quarter";
-    out.push(`<ellipse cx="${f(hx - rx - 0.01)}" cy="0.56" rx="0.05" ry="0.1" fill="${skin}" ${S}/>`);
-    if (!side) out.push(`<ellipse cx="${f(hx + rx + 0.01)}" cy="0.56" rx="0.05" ry="0.1" fill="${skin}" ${S}/>`);
-    const r2 = side ? rx * 0.86 : rx;
-    path(`M ${pts(hx - rx, 0.48)} C ${pts(hx - rx, 0.02, hx + r2, 0.02, hx + r2, 0.48)} C ${pts(hx + r2, 0.78, hx + g.jw + 0.06 + (side ? 0.02 : 0), 0.98, hx + (side ? 0.05 : 0), 1.0)} C ${pts(hx - g.jw - 0.06, 0.98, hx - rx, 0.78, hx - rx, 0.48)} Z`, skin);
-    const ex = side ? [[-0.07, 1], [0.19, 0.72]] : [[-0.13, 1], [0.13, 1]];
-    for (const [x, s] of ex) {
-      out.push(`<ellipse cx="${f(hx + x)}" cy="0.53" rx="${f(0.06 * s)}" ry="0.03" fill="#fff" ${S}/><circle cx="${f(hx + x + (side ? 0.01 : 0))}" cy="0.53" r="${f(0.024 * s)}" fill="${INK}"/>`);
-      line(`M ${pts(hx + x - 0.07 * s, 0.445)} Q ${pts(hx + x, 0.41, hx + x + 0.07 * s, 0.445)}`, a.presentation === "masculine" ? 0.032 : 0.022);
-    }
-    if (side) path(`M ${pts(hx + 0.07, 0.52)} L ${pts(hx + 0.13, 0.7)} L ${pts(hx + 0.06, 0.73)}`, "none");
-    else line(`M ${pts(hx, 0.56)} Q ${pts(hx + 0.045, 0.68, hx + 0.01, 0.72)} M ${pts(hx - 0.045, 0.72)} Q ${pts(hx, 0.76, hx + 0.045, 0.72)}`, 0.016);
-    const mx = hx + (side ? 0.05 : 0);
-    if (a.presentation === "feminine") out.push(`<path d="M ${pts(mx - 0.075, 0.83)} Q ${pts(mx, 0.8, mx + 0.075, 0.83)} Q ${pts(mx, 0.88, mx - 0.075, 0.83)} Z" fill="${shade(skin, 0.7)}" ${S}/>`);
-    else line(`M ${pts(mx - 0.08, 0.83)} Q ${pts(mx, 0.86, mx + 0.08, 0.83)}`, 0.02);
-    if (a.life_stage === "elder") line(`M ${pts(hx - 0.14, 0.3)} Q ${pts(hx, 0.27, hx + 0.14, 0.3)} M ${pts(hx - 0.12, 0.35)} Q ${pts(hx, 0.32, hx + 0.12, 0.35)} M ${pts(hx - 0.12, 0.72)} Q ${pts(hx - 0.15, 0.8, hx - 0.1, 0.88)} M ${pts(hx + 0.12, 0.72)} Q ${pts(hx + 0.15, 0.8, hx + 0.1, 0.88)}`, 0.012, 0.6);
+    const ek = faceOf(a).ears;
+    out.push(`<ellipse cx="${f(hx - rx - 0.01)}" cy="0.56" rx="${f(0.05 * ek)}" ry="${f(0.1 * ek)}" fill="${skin}" ${S}/>`);
+    if (!side) out.push(`<ellipse cx="${f(hx + rx + 0.01)}" cy="0.56" rx="${f(0.05 * ek)}" ry="${f(0.1 * ek)}" fill="${skin}" ${S}/>`);
+    const fd = drawFace(a, hx, rx, g.jw, side, skin, st, uid, mode, lw);
+    out.push(fd.svg);
+    const r2 = fd.geo.r2, mx = fd.geo.mx;
+    const ex = fd.geo.eyes.map((e) => [e.x - hx, e.s] as const);
     if (a.scar) { const s = a.scar === "left" ? 1 : -1; line(`M ${pts(hx + s * 0.1, 0.38)} L ${pts(hx + s * 0.16, 0.5)}`, 0.016, 0.9); }
     if (a.earrings) for (const s of side ? [-1] : [-1, 1]) out.push(`<circle cx="${f(hx + s * (rx + 0.01))}" cy="0.69" r="0.03" fill="none" stroke="#c9a24a" stroke-width="0.018"/>`);
     // Facial hair.
@@ -215,6 +224,15 @@ export function auraSketchFigureShapes(a: Appearance, angle: SketchAngle): strin
     const cx = angle === "profile" ? -0.02 : hx;
     if (st !== "bald" && st !== "afro") {
       path(`M ${pts(cx - r3, 0.52)} C ${pts(cx - r3 - 0.02, top0, cx + r3 + 0.02, top0, cx + r3, angle === "profile" ? 0.3 : 0.52)} C ${pts(cx + r3 - 0.08, line0, cx - r3 + 0.08, line0, cx - r3, 0.52)} Z`, hair, st === "shaved" ? `opacity="0.4"` : "");
+      if (st !== "shaved") {
+        // Strands and a sheen where the light catches (AuraSketch 3), following the curve of the head.
+        for (let k = 0; k < 7; k++) {
+          // The cap's crown sits at about 0.13 + 0.75·top0; strands run from there down to the hairline, inside the hair.
+          const t = (k + 0.5) / 7, x0 = cx + (2 * t - 1) * r3 * 0.78, crown = 0.13 + 0.75 * top0 + 0.03;
+          line(`M ${pts(cx + (x0 - cx) * 0.3, crown)} Q ${pts(x0, crown + 0.04, x0 + (x0 - cx) * 0.08, line0 - 0.01)}`, 0.008, 0.3);
+        }
+        out.push(`<path d="M ${pts(cx - r3 * 0.65, 0.2)} Q ${pts(cx - r3 * 0.25, 0.1, cx + r3 * 0.2, 0.11)}" fill="none" stroke="#ffffff" stroke-width="${f(0.03 * lw)}" stroke-linecap="round" opacity="0.18"/>`);
+      }
       if (st === "medium") for (const s of angle === "profile" ? [-1] : [-1, 1]) path(`M ${pts(cx + s * r3, 0.4)} Q ${pts(cx + s * (r3 + 0.06), 0.8, cx + s * (r3 - 0.02), 1.02)} L ${pts(cx + s * (r3 - 0.1), 0.95)} Q ${pts(cx + s * (r3 - 0.04), 0.7, cx + s * (r3 - 0.06), 0.45)} Z`, hair);
       if (st === "curly") for (let i = 0; i < 13; i++) { const t = Math.PI * (0.92 + (1.16 * i) / 12); out.push(`<circle cx="${f(cx + (r3 + 0.01) * Math.cos(t))}" cy="${f(0.5 + 0.56 * Math.sin(t))}" r="0.1" fill="${hair}" stroke="${INK}" stroke-width="0.016"/>`); }
       if (st === "bun") out.push(`<circle cx="${f(cx)}" cy="-0.1" r="0.17" fill="${hair}" ${S}/>`);
@@ -284,10 +302,15 @@ export function figureCrop(a: Appearance, size: SketchSize): { top: number; bott
 }
 
 /** A complete nested <svg> drawing the character into a box, framed for the shot size. */
-export function auraSketchFigure(a: Appearance, angle: SketchAngle, size: SketchSize, box: FigureBox): { svg: string; engine_version: string } {
+export function auraSketchFigure(a: Appearance, angle: SketchAngle, size: SketchSize, box: FigureBox, opts: FigureOptions = {}): { svg: string; engine_version: string } {
   const { top, bottom } = figureCrop(a, size);
   const h = bottom - top, w = h * (box.width / box.height);
   const shift = angle === "three_quarter" ? 0.05 : angle === "profile" ? 0.08 : 0;
-  const svg = `<svg x="${f(box.x)}" y="${f(box.y)}" width="${f(box.width)}" height="${f(box.height)}" viewBox="${pts(-w / 2 + shift, top, w, h)}" preserveAspectRatio="xMidYMid meet" overflow="hidden">${auraSketchFigureShapes(a, angle)}</svg>`;
+  const st = opts.style ?? SKETCH_STYLES.drama;
+  // The genre's colour treatment is applied to the whole figure; natural drama needs none.
+  const fid = `fx${st.id}`;
+  const body = auraSketchFigureShapes(a, angle, opts);
+  const inner = st.id === "drama" ? body : `<defs>${styleFilter(st, fid)}</defs><g filter="url(#${fid})">${body}</g>`;
+  const svg = `<svg x="${f(box.x)}" y="${f(box.y)}" width="${f(box.width)}" height="${f(box.height)}" viewBox="${pts(-w / 2 + shift, top, w, h)}" preserveAspectRatio="xMidYMid meet" overflow="hidden">${inner}</svg>`;
   return { svg, engine_version: ENGINE_VERSION };
 }

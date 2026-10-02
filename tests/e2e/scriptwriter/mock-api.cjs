@@ -396,6 +396,23 @@ http.createServer((req, res) => {
         refs.unshift(r); return send(201, r);
       }
     }
+    // See them speak (mirrors characters.speak.ts using the real engines): the character's lines, one drawn speaking.
+    if ((m = u.match(/^\/api\/characters\/([^/]+)\/speak$/))) {
+      const c = chars.find((x) => x.id === m[1]); if (!c) return send(404, { error: { code: "AURA-CHR-404", message: "Character not found" } });
+      const q = new URL(req.url, "http://x").searchParams;
+      const mine = dlines.filter((l) => l.character_id === c.id && l.status !== "removed");
+      const voiced = (l) => aclips.find((x) => x.kind === "asset" && x.asset_id && x.source && x.source.dialogue_line_id === l.id);
+      const style = eng.sketchStyleFor(project.genre);
+      const base = { character: { id: c.id, name: c.name }, style: { id: style.id, label: style.label }, lines: mine.map((l) => ({ id: l.id, scene_number: l.scene_number, text: l.text, has_voice: !!voiced(l) })) };
+      const lid = q.get("line_id"); if (!lid) return send(200, base);
+      const line = mine.find((l) => l.id === lid); if (!line) return send(400, { error: { code: "AURA-CHR-400", message: "That line isn't spoken by this character." } });
+      const v = voiced(line); const seconds = (v && v.duration_seconds) || eng.estimateLineSeconds(line.text);
+      const a = eng.characterAppearanceEngine({ name: c.name, age: c.age, gender: c.gender, description: c.description });
+      const track = eng.visemesFor(line.text, seconds);
+      const fig = eng.drawAuraSketchFigure(a, q.get("angle") || "front", "CU", { x: 0, y: 0, width: 640, height: 640 }, { style, mouth: { kind: "talking", track, seconds, blinks: eng.blinksFor(seconds + 1.2) } });
+      return send(200, { ...base, line: { id: line.id, scene_number: line.scene_number, text: line.text, emotion: line.emotion }, svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640"><rect width="640" height="640" fill="${style.paper}"/>${fig.svg}</svg>`,
+        seconds, timed_by: v ? "voice" : "estimate", voice_asset_id: v ? v.asset_id : null, mouth_shapes: track.length });
+    }
     if ((m = u.match(/^\/api\/characters\/([^/]+)\/look(\/generate)?$/))) {
       const LK = eng.characterLook, sk = require(require("path").resolve(__dirname, "../../../apps/api/dist/providers/sketch/sketchAdapter.js"));
       const refs = globalThis.__refs || (globalThis.__refs = []);

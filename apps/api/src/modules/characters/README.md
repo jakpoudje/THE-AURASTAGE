@@ -129,3 +129,11 @@ when the whole cast is complete the page points to the next stage (Locations & P
 - Whole-cast fill (`apply-suggestions`, 2026-10-02) also fills **physicality** from the script's action lines and saves
   the relationships the dialogue states between characters who have none yet (`relationships_added`); the relationship
   map has **Add all suggested relationships**. Saved relationships are never replaced.
+
+## See them speak (AuraSketch 3, owner request 2026-10-02)
+`GET /api/characters/:id/speak` lists the character's dialogue lines (`has_voice` when Audio Studio has a placed voice
+for the line) and the project's sketch style; `?line_id=&angle=front|three_quarter|profile` returns an animated SVG of
+the character speaking that line (mouth shapes from `visemesFor`, blinks) timed to the voice clip's length, or to an
+estimate from the words, plus `voice_asset_id` so the page plays the voice in step. Reads dialogue lines, audio clips and
+the project genre read-only. Look sheets now carry `genre` in their sketch request so AuraSketch draws in the film's
+style; `sketch_reads.varied` lists face features varied from the identity seed (not described).

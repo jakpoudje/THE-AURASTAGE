@@ -5,7 +5,7 @@
 // run with no external account, and gives every shot a readable frame.
 import type { GenerateRequest, GenerateResult, ProviderAdapter, StillRequest } from "../types";
 import { ProviderError } from "../types";
-import { characterAppearanceEngine, drawAuraSketchFigure } from "@aurastage/engines";
+import { characterAppearanceEngine, drawAuraSketchFigure, sketchStyleFor } from "@aurastage/engines";
 import type { SketchAngle, SketchSize } from "@aurastage/engines";
 
 const RATIO: Record<string, [number, number]> = { "16:9": [1280, 720], "9:16": [720, 1280], "1:1": [1024, 1024], "2.39:1": [1434, 600], "4:3": [1024, 768] };
@@ -37,7 +37,10 @@ export function renderSketch(req: GenerateRequest): string {
   const tilt = angle === "dutch" ? 12 : 0;
   const night = /night|dusk|evening/i.test(p.scene.time_of_day ?? "");
   const seed = req.seed ?? 0;
-  const bg = night ? "#0d1220" : "#1d1c22";
+  // AuraSketch 3: the film's genre sets the look of every figure and the frame.
+  const style = sketchStyleFor(p.project.genre, p.project.tone);
+  const fo = { style };
+  const bg = night ? "#0d1220" : style.frame;
   const figures: string[] = [];
   // AuraSketch 2: the characters in frame, drawn from their Casting description, wardrobe for the scene and age.
   const cast = p.characters.map((c) => characterAppearanceEngine({
@@ -60,15 +63,15 @@ export function renderSketch(req: GenerateRequest): string {
     const fh = H * fr.h, bottom = H * fr.floor;
     if (size === "OTS") {
       // Over the shoulder: the other person seen from behind in the foreground, the subject facing us.
-      figures.push(drawAuraSketchFigure(personAt(0), "three_quarter", "MCU", { x: W * 0.42, y: bottom - fh, width: W * 0.45, height: fh }).svg);
-      figures.push(drawAuraSketchFigure(personAt(1), "back", "MCU", { x: -W * 0.08, y: H * 0.2, width: W * 0.5, height: H * 1.05 }).svg);
+      figures.push(drawAuraSketchFigure(personAt(0), "three_quarter", "MCU", { x: W * 0.42, y: bottom - fh, width: W * 0.45, height: fh }, fo).svg);
+      figures.push(drawAuraSketchFigure(personAt(1), "back", "MCU", { x: -W * 0.08, y: H * 0.2, width: W * 0.5, height: H * 1.05 }, fo).svg);
     } else {
       const n = people;
       const bw = Math.min(W / n, fh * (fr.crop === "FULL" ? 0.55 : fr.crop === "MS" ? 0.75 : 1.1));
       for (let i = 0; i < n; i++) {
         const cx = W * ((i + 1) / (n + 1)) + ((seed * 37 + i * 11) % 21) - 10;
         const angle: SketchAngle = n === 1 ? "front" : "three_quarter";
-        const fig = drawAuraSketchFigure(personAt(i), angle, fr.crop, { x: -bw / 2, y: 0, width: bw, height: fh }).svg;
+        const fig = drawAuraSketchFigure(personAt(i), angle, fr.crop, { x: -bw / 2, y: 0, width: bw, height: fh }, fo).svg;
         // In two- and three-shots the people turn towards each other (the right-hand side is mirrored).
         const mirror = n > 1 && cx > W / 2;
         figures.push(`<g transform="translate(${cx} ${bottom - fh})${mirror ? " scale(-1 1)" : ""}">${fig}</g>`);
@@ -103,9 +106,10 @@ export function renderCharacterSketch(req: StillRequest): string {
   const fs = Math.round(Math.min(W, H) / 30);
   const lines = k.lines.flatMap((l) => wrap(l, Math.round(W / (fs * 0.55)), 2)).slice(0, 3);
   const headH = fs * 3.9, footH = fs * (lines.length * 1.3 + 1.2);
-  const fig = drawAuraSketchFigure(appearance, k.angle, k.size, { x: W * 0.04, y: headH, width: W * 0.92, height: H - headH - footH }).svg;
+  const style = sketchStyleFor("genre" in k ? k.genre : null);
+  const fig = drawAuraSketchFigure(appearance, k.angle, k.size, { x: W * 0.04, y: headH, width: W * 0.92, height: H - headH - footH }, { style }).svg;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
-<rect width="${W}" height="${H}" fill="#f3efe6"/>
+<rect width="${W}" height="${H}" fill="${style.paper}"/>
 <rect x="${fs * 0.5}" y="${fs * 0.5}" width="${W - fs}" height="${H - fs}" fill="none" stroke="#d9d2c3" stroke-width="2"/>
 ${fig}
 <rect x="0" y="${H - footH}" width="${W}" height="${footH}" fill="#2b2622" opacity="0.88"/>

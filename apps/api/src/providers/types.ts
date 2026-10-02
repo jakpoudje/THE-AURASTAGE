@@ -71,7 +71,9 @@ export interface StillRequest {
   sketch?:
     | { kind?: "character"; title: string; subtitle: string; angle: "front" | "three_quarter" | "profile" | "back"; size: "CU" | "MCU" | "MS" | "FULL"; lines: string[];
         /** What AuraSketch draws (characterAppearanceEngine); older requests without it are read from `lines`. */
-        appearance?: Appearance }
+        appearance?: Appearance;
+        /** The film's genre: AuraSketch 3 draws in its style (sketchStyleFor). */
+        genre?: string | null }
     | { kind: "location"; title: string; subtitle: string; view: string; time: string | null; int_ext: string[]; lines: string[] }
     | { kind: "prop"; title: string; subtitle: string; view: string; category: "prop" | "vehicle"; lines: string[] };
 }
