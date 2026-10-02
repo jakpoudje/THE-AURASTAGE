@@ -4,7 +4,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { proceduralAudio, sayNames, voiceCasting } from "@aurastage/engines";
-import { audioBackendsFor, audioStatuses, getAudioAdapter, type AudioKind } from "../../providers";
+import { audioBackendsFor, audioStatuses, defaultVoiceBackend, getAudioAdapter, type AudioKind } from "../../providers";
 import { assertProjectAccess, assertSceneInProject } from "./audio.permissions";
 import * as repo from "./audio.repository";
 import { AudioBusyError, AudioNotReadyError, AudioValidationError } from "./audio.validator";
@@ -69,7 +69,7 @@ export async function generateSound(db: SupabaseClient, projectId: string, scene
   }
   const p = GenerateInput.safeParse(body);
   if (!p.success) throw new AudioValidationError(p.error.issues, p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
-  const a = pickBackend(p.data.kind, p.data.provider, env);
+  let a = pickBackend(p.data.kind, p.data.provider, env);
   let description = p.data.description, params: Record<string, unknown> = {}, engineVersion = a.execution === "native" ? proceduralAudio.ENGINE_VERSION : "provider";
   if (p.data.kind === "voice") {
     // Voice DNA: the speaker's Casting profile + this line's emotion (Dialogue Intelligence). The words are the script's.
@@ -85,6 +85,8 @@ export async function generateSound(db: SupabaseClient, projectId: string, scene
     const names = (await repo.listCharacters(db, projectId)).map((c) => ({ name: String(c.name), pronunciation: (c.pronunciation as string | null) ?? null }));
     description = sayNames(String(ls.line.text), names).slice(0, 500);
     const accent = [(who as { accent?: string | null }).accent, (who as { nationality?: string | null }).nationality].find((x) => typeof x === "string" && x.trim()) ?? null;
+    // No voice chosen by the person: the natural voice, or the Piper voice for an accent only Piper speaks.
+    if (!p.data.provider) a = defaultVoiceBackend(accent, env) ?? a;
     params = { voice, voice_base, character_name: who.name, accent, emotion: ls.line.emotion ?? null, intensity: ls.line.intensity ?? null, line_id: lineId, character_id: ls.line.character_id ?? null, ...(description !== String(ls.line.text).slice(0, 500) ? { script_text: String(ls.line.text).slice(0, 500) } : {}) };
     engineVersion = voice.engine_version;
   } else if (!description) throw new AudioValidationError([], "Describe the sound");

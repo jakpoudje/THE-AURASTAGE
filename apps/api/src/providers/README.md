@@ -61,7 +61,9 @@ adapters — added with their phases (Audio Studio etc.).
   minutes); every English voice is measured at image build time (`kokoro-install.sh` → `/opt/kokoro/voices.json`) and
   cast by gender, age band, accent (American/British) and register (`audio/kokoro/cast.ts`). No child voices and no
   African/Caribbean/Asian accents in the free model — said in the reason, never pretended. If the install fails the
-  build carries on without it and Piper is the default.
+  build carries on without it and Piper is the default. `defaultVoiceBackend(accent, env)`: a character whose Casting
+  accent only the Piper corpora speak (Scottish, Northern English, Canadian, Indian) keeps Piper's measured voice for it.
+  The Santa novelty voice and F-graded voices are never cast.
   `aurastage-neural-voice` (the next voice) runs Piper with multi-speaker VCTK and LibriTTS-R models; each speaker's
   register is measured at image build time (`apps/api/scripts/piper-install.sh`, `piper-measure.mjs`) and matched to the
   character's Voice DNA (`audio/neural/voices.ts`). `audioBackendsFor(kind, env)` only returns backends that can make

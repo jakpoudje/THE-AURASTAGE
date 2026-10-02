@@ -419,7 +419,7 @@ await check("audio: spot the approved scene into tracks and cues (unplanned scen
   const typing = fx.find((c: any) => c.label === "Keyboard typing"), said = sc.clips.find((c: any) => c.source.dialogue_line_id);
   assert(typing && typing.start_seconds >= said.start_seconds + said.duration_seconds - 0.01, `typing should follow the line it comes after (${typing?.start_seconds} vs ${said.start_seconds}+${said.duration_seconds})`);
   // Honest generators: the built-in synthesiser is ready; nothing unbuilt claims to be connected.
-  assert(ws.generators.every((g: any) => ["aurastage-synth", "aurastage-voice", "aurastage-neural-voice"].includes(g.id) ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
+  assert(ws.generators.every((g: any) => ["aurastage-synth", "aurastage-voice", "aurastage-neural-voice", "aurastage-kokoro-voice"].includes(g.id) ? g.state === "configured" : g.state !== "configured"), "generators must be honest");
   // Item 5: the scene's music suggestion (built-in library, free); the Score cue, when there is one, is that style.
   const mu = sc.music_suggestion;
   assert(mu && mu.key && mu.tempo_bpm > 0 && mu.why.length > 0 && /^\d+\.\d+\.\d+$/.test(mu.engine_version), "music suggestion missing");
@@ -587,6 +587,20 @@ await check("editorial: first assembly from approved takes (offline slugs for th
   const v1 = ws.clips.filter((c: any) => c.track === "V1"), a1 = ws.clips.filter((c: any) => c.track === "A1");
   assert(v1.some((c: any) => c.kind === "take") && a1.length === 1 && a1[0].record_in === 0, "assembly shape");
   assert(ws.qc.checks.find((c: any) => c.id === "audio_sync").ok, "sound out of sync after assembly");
+  return r.summary;
+});
+await check("editorial (owner 2026-10-02: Audio Studio voices never reached the timeline): an approved scene mix missing from the cut is offered and Conform lays it back in sync", async () => {
+  let ws = await edWs();
+  const a1 = ws.clips.find((c: any) => c.track === "A1");
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "lift", clip_id: a1.id } });
+  ws = await edWs();
+  assert(!ws.clips.some((c: any) => c.track === "A1") && ws.sound_to_add === 1 && ws.conformable >= 1, `after lift: sound_to_add ${ws.sound_to_add}`);
+  const r = await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "conform" } });
+  ws = await edWs();
+  const back = ws.clips.filter((c: any) => c.track === "A1");
+  assert(back.length === 1 && back[0].audio_session_version_id === a1.audio_session_version_id && back[0].record_in === a1.record_in && ws.sound_to_add === 0, JSON.stringify(back).slice(0, 300));
+  assert(ws.qc.checks.find((c: any) => c.id === "audio_sync").ok, "sound out of sync after conform");
+  edRev = ws.timeline.revision;
   return r.summary;
 });
 await check("editorial: edits apply against the current revision (stale refused 409, impossible refused 409)", async () => {
@@ -1040,14 +1054,16 @@ await check("locations & props: found in the approved script (names are never pr
 // ---- Built-in sound: generate the scene's planned ambience/effects/score in the worker, real WAV in the Assets Library ----
 await check("audio: built-in generation makes real WAVs for the planned cues and speaks a line in the character's Voice DNA; use one on its cue", async () => {
   const ws0 = await api("GET", `/api/projects/${projectId}/audio`);
-  assert(ws0.generators.some((g: any) => g.id === "aurastage-synth" && g.state === "configured") && ws0.generators.some((g: any) => g.id === "aurastage-neural-voice" && g.state === "configured"), "the neural voice isn't installed on the API");
+  assert(ws0.generators.some((g: any) => g.id === "aurastage-synth" && g.state === "configured") && ws0.generators.some((g: any) => g.id === "aurastage-neural-voice" && g.state === "configured")
+    && ws0.generators.some((g: any) => g.id === "aurastage-kokoro-voice" && g.state === "configured"), "the natural and neural voices aren't both installed on the API");
   const r = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate-cues`, {});
-  assert(r.requested.length >= 1 && r.requested.every((g: any) => ["aurastage-synth", "aurastage-neural-voice"].includes(g.provider) && g.execution === "native"), JSON.stringify(r).slice(0, 300));
+  assert(r.requested.length >= 1 && r.requested.every((g: any) => ["aurastage-synth", "aurastage-kokoro-voice", "aurastage-neural-voice"].includes(g.provider) && g.execution === "native"), JSON.stringify(r).slice(0, 300));
   // Voice: the dialogue cue's line, spoken in the speaker's Voice DNA (Casting profile + the line's emotion).
   const dx = ws0.scenes.find((x: any) => x.scene.id === s1).clips.find((c: any) => c.source?.dialogue_line_id);
   await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { kind: "voice", duration_seconds: 2 }, [400]);
   const v = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { clip_id: dx.id, kind: "voice", duration_seconds: 2 });
-  assert(v.provider === "aurastage-neural-voice" && v.description.length > 0, JSON.stringify(v).slice(0, 300));
+  // Owner 2026-10-02 ("voices still sound robotic"): the natural Kokoro voice speaks by default (no accent Piper alone has).
+  assert(["aurastage-kokoro-voice", "aurastage-neural-voice"].includes(v.provider) && v.description.length > 0, JSON.stringify(v).slice(0, 300));
   r.requested.push(v);
   let sc: any;
   for (let i = 0; i < 40; i++) {
@@ -1070,6 +1086,11 @@ await check("audio: built-in generation makes real WAVs for the planned cues and
   const spoken = done.find((x: any) => x.id === v.id);
   const vb = new Uint8Array(await (await fetch(`${API}/api/assets/${spoken.asset_id}/content`, { headers: { Authorization: `Bearer ${token}` } })).arrayBuffer());
   assert(new TextDecoder().decode(vb.slice(0, 4)) === "RIFF" && vb.length > 44 + 8000, `voice not a real WAV (${vb.length} bytes)`);
+  if (v.provider === "aurastage-kokoro-voice") {
+    // A natural voice cast from the character, measured, at Kokoro's 24 kHz.
+    assert(/(American|British) (male|female) voice “.+”, measured at \d+ Hz/.test(spoken.layers[0]?.because ?? ""), "kokoro reason: " + spoken.layers[0]?.because);
+    assert(new DataView(vb.buffer).getUint32(24, true) === 24000, "kokoro sample rate");
+  }
   return `${done.length} sound(s): ${done.map((x: any) => `${x.kind} [${x.layers.map((l: any) => l.name).join(", ")}]`).join("; ")} · voice: ${spoken.layers[0]?.because ?? ""}`;
 });
 await check("voices: a Scottish accent in Casting is spoken by the free Scottish voice (CMU ARCTIC awb), or says plainly why not", async () => {

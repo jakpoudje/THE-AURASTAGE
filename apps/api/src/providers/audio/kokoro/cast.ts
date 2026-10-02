@@ -15,12 +15,15 @@ const hash = (s: string) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; 
 const GRADE: Record<string, number> = { A: 0, "A-": 1, "B+": 2, B: 3, "B-": 4, "C+": 5, C: 6, "C-": 7, "D+": 8, D: 9, "D-": 10, "F+": 11, F: 12 };
 const gradeRank = (g: string | null) => GRADE[g ?? ""] ?? 9;
 
-const BRITISH = /brit|english|england|wales|welsh|scot|irish|ireland|london|\buk\b|united kingdom|yorkshire|manchester|liverpool|geordie|cockney|received pronunciation|\brp\b/i;
-const AMERICAN = /americ|\busa?\b|united states|new york|texas|california|chicago|canad|boston|southern us/i;
+// Kokoro's British voices are southern/standard English: regional British Isles accents are NOT claimed as matched.
+const REGIONAL = /scot|glasgow|edinburgh|irish|ireland|welsh|wales|northern|yorkshire|manchester|mancunian|liverpool|scouse|geordie|newcastle|lancashire|canad|india|hindi|punjab/i;
+const BRITISH = /brit|english|england|london|\buk\b|united kingdom|cockney|received pronunciation|\brp\b/i;
+const AMERICAN = /americ|\busa?\b|united states|new york|texas|california|chicago|boston|southern us/i;
 
 /** Which of the model's two accents a character should use, and whether that matches what Casting asked for. */
 export function accentOf(language: string, accentText: string | null): { accent: "american" | "british"; asked: string | null; matched: boolean } {
   const t = (accentText ?? "").trim();
+  if (t && REGIONAL.test(t)) return { accent: language === "en-us" ? "american" : "british", asked: t, matched: false };
   if (t && BRITISH.test(t)) return { accent: "british", asked: t, matched: true };
   if (t && AMERICAN.test(t)) return { accent: "american", asked: t, matched: true };
   return { accent: language === "en-us" ? "american" : "british", asked: t || null, matched: !t };
@@ -37,7 +40,9 @@ export function pickKokoroVoice(cat: KokoroCatalogue, dna: BaseDna, name: string
   const gender = dna.gender === "unspecified" ? (h % 2 ? "female" : "male") : dna.gender;
   const age = dna.age_band ?? "adult";
   const acc = accentOf(dna.language, accentText);
-  const byGender = cat.voices.filter((v) => v.gender === gender);
+  // A novelty character voice (Santa) and voices graded F by the model's authors are never cast.
+  const usable = cat.voices.filter((v) => v.id !== "am_santa" && !/^F/.test(v.grade ?? ""));
+  const byGender = (usable.length ? usable : cat.voices).filter((v) => v.gender === gender);
   const pool0 = byGender.filter((v) => v.accent === acc.accent);
   const pool = pool0.length ? pool0 : byGender.length ? byGender : cat.voices;
   // Register: Voice DNA pitch 0–99 within the gender's adult range, lifted for the young and children, lowered for elders.

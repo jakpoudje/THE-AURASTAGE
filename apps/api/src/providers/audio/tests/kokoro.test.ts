@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { accentOf, kokoroSpeed, pickKokoroVoice, type KokoroCatalogue } from "../kokoro/cast";
-import { audioBackendsFor, kokoroVoiceAdapter } from "..";
+import { audioBackendsFor, defaultVoiceBackend, kokoroVoiceAdapter } from "..";
 
 // Measured pitches as voices.json records them (values in the range the build measures).
 const cat: KokoroCatalogue = {
@@ -57,6 +57,10 @@ describe("Kokoro natural voice casting (owner request 2026-10-02: voices that kn
     const p = pickKokoroVoice(cat, dna(), "Adebayo", "Nigerian (Yoruba)")!;
     expect(p.reason).toMatch(/no free voice speaks a Nigerian \(Yoruba\) accent yet .*ElevenLabs/);
     expect(accentOf("en-us", null)).toMatchObject({ accent: "american", matched: true });
+    // Regional British Isles accents are never claimed by Kokoro's standard-English voices.
+    expect(accentOf("en-gb", "Scottish (Glasgow)")).toMatchObject({ matched: false });
+    expect(accentOf("en-gb", "Northern English")).toMatchObject({ matched: false });
+    expect(accentOf("en-gb", "London")).toMatchObject({ accent: "british", matched: true });
   });
   it("comes before the Piper voice when installed, and reports not configured (Piper used) when it isn't", () => {
     expect(kokoroVoiceAdapter.isConfigured({ KOKORO_DIR: "/nonexistent" })).toBe(false);
@@ -91,5 +95,15 @@ describe("Kokoro natural voice casting (owner request 2026-10-02: voices that kn
     expect(String((a.detail.layers as any)[0].because)).toMatch(/British female voice/);
     expect(b.bytes.length).toBe(44 + 24000);
     await expect(kokoroVoiceAdapter.generate({ ...req, description: "fail" }, env)).rejects.toThrow(/natural voice failed: model error/);
+    // An accent only the Piper corpora speak (Scottish, Northern English, Canadian, Indian) keeps the Piper voice.
+    const piper = mkdtempSync(join(tmpdir(), "piper-test-"));
+    writeFileSync(join(piper, "piper"), "");
+    mkdirSync(join(piper, "voices"));
+    writeFileSync(join(piper, "voices", "speakers.json"), JSON.stringify({ speakers: [{ model: "en_US-arctic-medium", id: 0, f0: 110, name: "awb" }] }));
+    const both = { KOKORO_DIR: d, PIPER_DIR: piper };
+    expect(defaultVoiceBackend("Scottish (Glasgow)", both)?.id).toBe("aurastage-neural-voice");
+    expect(defaultVoiceBackend("British", both)?.id).toBe("aurastage-kokoro-voice");
+    expect(defaultVoiceBackend(null, both)?.id).toBe("aurastage-kokoro-voice");
+    expect(defaultVoiceBackend("Scottish", env)?.id).toBe("aurastage-kokoro-voice");
   });
 });
