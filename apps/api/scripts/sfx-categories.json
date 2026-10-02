@@ -20,15 +20,18 @@
   ],
   "bed": false,
   "max_seconds": 12,
-  "title": "thunder"
+  "title": "thunder",
+  "not": "getting set|warning|radio"
  },
  {
   "id": "wind",
   "label": "wind",
   "search": [
    "intitle:wind",
+   "intitle:windy",
    "intitle:breeze",
-   "howling wind"
+   "sounds of wind",
+   "wind in trees"
   ],
   "bed": true,
   "max_seconds": 30,
@@ -39,12 +42,13 @@
   "id": "sea",
   "label": "sea / waves",
   "search": [
-   "intitle:waves sea",
+   "intitle:waves",
    "intitle:surf",
+   "intitle:sea",
    "intitle:ocean",
    "intitle:beach",
-   "sea shore sound",
-   "waves crashing"
+   "sounds of the sea",
+   "breaking waves"
   ],
   "bed": true,
   "max_seconds": 30,
@@ -78,7 +82,7 @@
   "bed": true,
   "max_seconds": 30,
   "title": "traffic|street|\\broad\\b|city|cars? passing|urban|junction|intersection|highway",
-  "not": "air traffic|atc|tower|dispatch|radio|crash|police|scanner|cockpit|flight"
+  "not": "air traffic|atc|tower|dispatch|radio|crash|police|scanner|cockpit|flight|parade|carnival|firework|cleaner|vacuum"
  },
  {
   "id": "market",
@@ -112,9 +116,11 @@
   "id": "birds",
   "label": "birds",
   "search": [
+   "intitle:birds",
    "intitle:dawn chorus",
    "intitle:birdsong",
-   "intitle:birds singing",
+   "intitle:bird song",
+   "songs of birds",
    "forest birds"
   ],
   "bed": true,
@@ -127,8 +133,10 @@
   "label": "night insects",
   "search": [
    "intitle:crickets",
+   "intitle:cricket",
    "intitle:cicada",
-   "night insects"
+   "intitle:cicadas",
+   "insect sounds"
   ],
   "bed": true,
   "max_seconds": 30,
@@ -138,10 +146,11 @@
   "id": "fire",
   "label": "fire",
   "search": [
+   "intitle:fire crackling",
    "intitle:campfire",
    "intitle:fireplace",
-   "fire crackling",
-   "burning wood"
+   "intitle:burning",
+   "sounds of fire"
   ],
   "bed": true,
   "max_seconds": 30,
@@ -153,9 +162,10 @@
   "label": "footsteps",
   "search": [
    "intitle:footsteps",
-   "intitle:walking on",
-   "footsteps gravel",
-   "steps on snow"
+   "intitle:footstep",
+   "intitle:walking",
+   "intitle:steps",
+   "sounds of footsteps"
   ],
   "bed": false,
   "max_seconds": 10,
@@ -206,10 +216,10 @@
   "id": "glass",
   "label": "glass breaking",
   "search": [
-   "intitle:glass breaking",
+   "intitle:glass",
    "intitle:breaking glass",
-   "intitle:bottle breaking",
-   "glass shatter"
+   "intitle:bottle",
+   "sounds of glass"
   ],
   "bed": false,
   "max_seconds": 5,
@@ -244,7 +254,7 @@
   "bed": false,
   "max_seconds": 10,
   "title": "\\bcars?\\b|engine|vehicle|motor|truck|lorry|horn|automobile|motorcycle|scooter",
-  "not": "jet engine|search engine|airplane|aircraft"
+  "not": "jet engine|search engine|airplane|aircraft|stereo|radio|tape ?deck|cd player"
  },
  {
   "id": "typing",
@@ -272,7 +282,7 @@
   "bed": false,
   "max_seconds": 6,
   "title": "paper|page|newspaper|book|rustl",
-  "not": "white paper|reading"
+  "not": "white paper|reading|sawing|toilet"
  },
  {
   "id": "impact",
@@ -300,7 +310,7 @@
   "bed": false,
   "max_seconds": 8,
   "title": "explosion|explode|blast|detonation|bomb",
-  "not": "speech|atomic test footage"
+  "not": "speech|atomic test footage|blast beat|beat\b"
  },
  {
   "id": "dog",
@@ -389,8 +399,9 @@
   "label": "keys",
   "search": [
    "intitle:keys",
-   "intitle:jingling keys",
-   "keys jingle"
+   "intitle:key",
+   "sounds of keys",
+   "keychain"
   ],
   "bed": false,
   "max_seconds": 5,

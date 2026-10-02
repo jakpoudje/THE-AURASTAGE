@@ -74,6 +74,11 @@ describe("recorded sound library (owner request 2026-10-02: real life prop sound
     expect(soundCategories([{ title: "Category:Bird songs" }, { title: "Category:Erithacus rubecula" }]).ok).toBe(true);
     expect(soundCategories(["Category:Field recordings in Greece"]).ok).toBe(true);
     expect(soundCategories([]).ok).toBe(false);
+    // Third live build: an unidentified sound proves nothing; drum patterns are instruments; look-alikes by title.
+    expect(soundCategories(["Category:Unidentified sounds"]).ok).toBe(false);
+    expect(soundCategories(["Category:Sounds of percussion instruments"]).ok).toBe(false);
+    for (const [c, t] of [["traffic", "File:Street parade carnival people yelling kamelle kamelle.ogg"], ["traffic", "File:Silvester fireworks from the street 01.ogg"], ["car", "File:Car stereo tapedeck.ogg"], ["paper", "File:Sawing an empty toilet paper roll.ogg"], ["explosion", "File:Blast beat.ogg"], ["thunder", "File:Getting set to record thunder.ogg"]] as [string, string][])
+      expect(relevantTitle(t, cat(c)), `${c}: ${t}`).toBe(false);
     for (const t of ["File:Car horn.ogg", "File:Rain on a tin roof.ogg", "File:Door slam.wav", "File:Yellowstone dawn chorus.ogg"]) expect(unsuitableTitle(t)).toBe(false);
   });
   it("the build's category list is the engine's (sfx-categories.json is generated from categories.ts)", () => {

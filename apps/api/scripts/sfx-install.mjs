@@ -34,8 +34,9 @@ export function unsuitableTitle(title) {
  */
 export function soundCategories(categories) {
   const names = (categories ?? []).map((c) => String(c.title ?? c).replace(/^Category:/, ""));
-  const good = names.filter((n) => /\bsounds?\b|field recordings?|ambien|soundscape|bird ?songs?|bird vocali|animal sounds|animal vocali|insect sounds|noises?\b|sound effects|audio files of (rain|thunder|wind|water|waves|the sea|birds|insects|animals|dogs|traffic|crowds|footsteps|doors|fire)/i.test(n));
-  const bad = names.filter((n) => /music|album|librivox|audiobook|spoken|speech|speeches|poetry|poem|president|politic|news|radio|interview|lecture|podcast|\bband\b|musician|singer|orchestra|composer|discograph|anthem|hymn|opera|literature|novel|reading|sermon|broadcast|komiku|recordings by/i.test(n));
+  // "Unidentified sounds" says nothing about what the sound is (live: someone talking before recording thunder).
+  const good = names.filter((n) => !/unidentified/i.test(n) && /\bsounds?\b|field recordings?|ambien|soundscape|bird ?songs?|songs of|vocali[sz]ation|\bcalls\b|noises?\b|sound effects|audio files of |recordings of (birds|animals|insects|nature|wind|weather|the sea|waves)/i.test(n));
+  const bad = names.filter((n) => /music|album|librivox|audiobook|spoken|speech|speeches|poetry|poem|president|politic|news|radio|interview|lecture|podcast|\bband\b|musician|singer|orchestra|composer|discograph|anthem|hymn|opera|literature|novel|reading|sermon|broadcast|komiku|recordings by|instrument|percussion|drum/i.test(n));
   return { ok: good.length > 0 && bad.length === 0, good, bad };
 }
 
@@ -77,7 +78,7 @@ async function main() {
   const seen = new Set();
   for (const cat of cats) {
     const want = cat.bed ? PER_BED : PER_EVENT;
-    let kept = 0;
+    let kept = 0, unfiled = 0;
     for (const q of cat.search) {
       if (kept >= want) break;
       let list = [];
@@ -88,7 +89,11 @@ async function main() {
         const licence = freeLicence(c.info.extmetadata);
         if (!licence) continue;
         const filed = soundCategories(c.categories);
-        if (!filed.ok) { if (filed.bad.length) console.log(`sfx ${cat.id}: refused ${c.title.replace(/^File:/, "")} — filed under ${filed.bad.slice(0, 2).join(", ")}`); continue; }
+        if (!filed.ok) {
+          if (filed.bad.length) console.log(`sfx ${cat.id}: refused ${c.title.replace(/^File:/, "")} — filed under ${filed.bad.slice(0, 2).join(", ")}`);
+          else if (unfiled++ < 4) console.log(`sfx ${cat.id}: refused ${c.title.replace(/^File:/, "")} — no sound category (${(c.categories ?? []).slice(0, 3).map((x) => String(x.title).replace(/^Category:/, "")).join(", ") || "none"})`);
+          continue;
+        }
         if ((c.info.size ?? 0) > 60e6) continue;
         seen.add(c.title);
         const id = `${cat.id}-${String(kept + 1).padStart(2, "0")}`;
