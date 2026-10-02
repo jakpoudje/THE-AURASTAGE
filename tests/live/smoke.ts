@@ -1715,5 +1715,20 @@ await check("ElevenLabs (R2): listed honestly; without its key it is never used 
   return `ElevenLabs effect made: ${row.layers.map((l: any) => l.because).join("; ").slice(0, 160)}`;
 });
 
+// Last, so nothing after it depends on the cut it rebuilds.
+await check("editorial (owner 2026-10-02: test one scene): a test cut of one scene only; the workspace says what each scene would get from Conform", async () => {
+  let ws = await edWs();
+  const wasLocked = ws.timeline.status === "locked";
+  const r = await api("POST", `/api/projects/${projectId}/editorial/assemble`, { base_revision: ws.timeline.revision, scene_ids: [s1], break_lock: true });
+  assert(/a test cut of Scene \d+ only/.test(r.summary), r.summary);
+  ws = await edWs();
+  assert(ws.clips.filter((c: any) => c.track === "V1").every((c: any) => c.scene_id === s1), "other scenes on the test cut");
+  assert(ws.conform_by_scene && typeof ws.conform_by_scene === "object", "no per-scene conform counts");
+  // An unlocked cut is kept as a version first; a locked one is already kept by its Picture Lock.
+  assert(wasLocked || ws.versions.some((v: any) => v.label === "Before re-assembly"), "the previous cut wasn't kept as a version");
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "conform", scene_id: s1 } }, [200, 409]);
+  return r.summary;
+});
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`SUMMARY ${results.length - failed}/${results.length} passed${failed ? " — FAILURES: " + results.filter((r) => !r.ok).map((r) => r.check).join("; ") : ""}`);

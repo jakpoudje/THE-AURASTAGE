@@ -87,6 +87,11 @@ async function approveTakeFor(shotId) {
     await bin.getByText(/Scene mix v1/).waitFor();
   });
   await step("owner request 2026-10-02 (test one scene): the One scene panel shows what the scene needs, builds a test cut of that scene only, and plays it", async () => {
+    // Every stage page shows its workflow: the stage's steps from the records, and how to work all at once or one at a time.
+    const flow = page.getByRole("region", { name: "Workflow on this page" });
+    await flow.getByText("All at once:").waitFor();
+    await flow.getByText("One at a time:").waitFor();
+    await flow.getByRole("list", { name: "Steps on this page" }).getByText("An assembly exists").waitFor();
     const panel = page.getByRole("region", { name: "One scene at a time" });
     await panel.getByRole("combobox", { name: "Scene to test" }).waitFor();
     const ready = panel.getByRole("list", { name: /Scene 1 readiness/ });
