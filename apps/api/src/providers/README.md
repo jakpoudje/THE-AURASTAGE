@@ -56,7 +56,13 @@ adapters — added with their phases (Audio Studio etc.).
 - `audio/` — `AudioAdapter` contract (ambience, fx, foley, score, voice). `aurastage-synth` is native (free, always
   configured) and never makes voices. `aurastage-voice` is native and speaks dialogue with espeak-ng using the Voice DNA
   in `params.voice` (configured only where the espeak-ng program exists; arguments passed without a shell).
-  `aurastage-neural-voice` (the default voice) runs Piper with multi-speaker VCTK and LibriTTS-R models; each speaker's
+  `aurastage-kokoro-voice` (the default voice where installed, 2026-10-02) runs Kokoro-82M (Apache-2.0) via kokoro-js
+  (Apache-2.0) in its own long-lived process (`apps/api/scripts/kokoro-say.mjs`, loaded once, stopped after 4 idle
+  minutes); every English voice is measured at image build time (`kokoro-install.sh` → `/opt/kokoro/voices.json`) and
+  cast by gender, age band, accent (American/British) and register (`audio/kokoro/cast.ts`). No child voices and no
+  African/Caribbean/Asian accents in the free model — said in the reason, never pretended. If the install fails the
+  build carries on without it and Piper is the default.
+  `aurastage-neural-voice` (the next voice) runs Piper with multi-speaker VCTK and LibriTTS-R models; each speaker's
   register is measured at image build time (`apps/api/scripts/piper-install.sh`, `piper-measure.mjs`) and matched to the
   character's Voice DNA (`audio/neural/voices.ts`). `audioBackendsFor(kind, env)` only returns backends that can make
   that kind AND are configured. Paid sound/voice providers will be added here.
@@ -68,6 +74,7 @@ reference in the prompt (Runway `@char1` / `@place` / `@prop1` tags; OpenAI "ref
 up to 3 (`referenceImages`); OpenAI Images: up to 6 via `/v1/images/edits`; sketch and Runway video: none.
 
 ## Third-party voice credits
+- Kokoro-82M — © hexgrad, Apache-2.0 (https://huggingface.co/hexgrad/Kokoro-82M); ONNX export onnx-community/Kokoro-82M-v1.0-ONNX; kokoro-js © Xenova, Apache-2.0.
 - Piper text-to-speech — © Michael Hansen, MIT licence (https://github.com/rhasspy/piper).
 - en_GB-vctk-medium — trained on the CSTR VCTK Corpus (Yamagishi, Veaux, MacDonald; University of Edinburgh), CC BY 4.0.
 - en_US-libritts_r-medium — trained on LibriTTS-R (Koizumi et al., Google), CC BY 4.0.

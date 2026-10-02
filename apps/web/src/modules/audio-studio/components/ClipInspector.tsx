@@ -50,7 +50,7 @@ export function ClipInspector({
       <CostNote items={[{ provider: chosen ? chosen.id : genKind === "voice" ? "aurastage-neural-voice" : "aurastage-synth", model: chosen ? MODEL[genKind ?? "fx"] : null, count: 1 }]} />
     </div>
   );
-  const label = (g: AudioGeneration) => g.provider === "aurastage-neural-voice" ? "Built-in neural voice" : g.provider === "aurastage-voice" ? "Built-in voice (robotic)" : g.provider === "elevenlabs" ? "ElevenLabs" : g.execution === "native" ? "Built-in synthesis" : g.provider;
+  const label = (g: AudioGeneration) => g.provider === "aurastage-kokoro-voice" ? "Built-in natural voice" : g.provider === "aurastage-neural-voice" ? "Built-in neural voice" : g.provider === "aurastage-voice" ? "Built-in voice (robotic)" : g.provider === "elevenlabs" ? "ElevenLabs" : g.execution === "native" ? "Built-in synthesis" : g.provider;
   const [f, setF] = useState({
     label: clip.label, track_id: clip.track_id, start_seconds: clip.start_seconds, duration_seconds: clip.duration_seconds, offset_seconds: clip.offset_seconds,
     gain_db: clip.gain_db, fade_in_seconds: clip.fade_in_seconds, fade_out_seconds: clip.fade_out_seconds, asset_id: clip.asset_id,

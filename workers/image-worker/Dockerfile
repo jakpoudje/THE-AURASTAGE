@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends espeak-ng curl 
 # The neural voice (Piper + VCTK / LibriTTS-R voices, measured) — before the source copy so it stays cached between deploys.
 COPY apps/api/scripts/piper-install.sh apps/api/scripts/piper-measure.mjs /tmp/
 RUN sh /tmp/piper-install.sh
+# The natural voice (Kokoro-82M, Apache-2.0; measured voices) — comes before Piper when installed; never fails the build.
+COPY apps/api/scripts/kokoro-install.sh apps/api/scripts/kokoro-say.mjs /tmp/
+RUN sh /tmp/kokoro-install.sh
 WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile

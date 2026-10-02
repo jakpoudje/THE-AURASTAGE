@@ -45,7 +45,8 @@ export async function getGenerationReadiness(db: SupabaseClient, projectId: stri
   const refs = stillBackendStatuses(env).map((r) => b(r.id, r.name, r.id === "aurastage-sketch" ? "native" : "external", r.state as Backend["state"], r.id === "aurastage-sketch" ? "Labelled reference sketches, not AI." : ""));
   const audioFor = (kind: "fx" | "score" | "voice") => audioStatuses(env).filter((a) => a.kinds.includes(kind)).map((a) =>
     b(a.id, a.name, a.execution === "native" ? "native" : "external", a.state as Backend["state"],
-      a.execution !== "native" ? "" : a.id === "aurastage-neural-voice" ? "Natural neural speech matched to each character's Voice DNA — free, no acting range beyond pace and energy."
+      a.execution !== "native" ? "" : a.id === "aurastage-kokoro-voice" ? "Natural speech cast from each character (gender, age, accent, register) — free; no child voices or African accents (a paid voice provider adds those)."
+        : a.id === "aurastage-neural-voice" ? "Natural neural speech matched to each character's Voice DNA — free, no acting range beyond pace and energy."
         : kind === "voice" ? "Robotic fallback speech — good for timing." : "Synthesised placeholder sound — good for timing and testing."));
   const planned = (id: string, name: string) => b(id, name, "external", "not_built");
 

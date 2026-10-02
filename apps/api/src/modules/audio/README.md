@@ -44,7 +44,8 @@ quality, every layer explained) and the built-in voice (`aurastage-voice`, espea
 images). A voice request speaks the dialogue line of the cue (or `line_id`) — the words come from the approved script —
 in the speaker's Voice DNA (`voiceCastingEngine` 1.0.0: the Casting profile's gender, age, nationality and personality,
 adjusted by the line's emotion and intensity from Dialogue Intelligence); the Voice DNA is kept in the request's
-`params` (rule 10). The default voice backend is the neural voice (`aurastage-neural-voice`: Piper with VCTK / LibriTTS-R
+`params` (rule 10). The default voice backend is the natural voice (`aurastage-kokoro-voice`: Kokoro-82M, cast by gender, age band, accent
+and measured register — providers README) where installed, then the neural voice (`aurastage-neural-voice`: Piper with VCTK / LibriTTS-R
 voices, CC BY 4.0; the speaker is matched to the character's base Voice DNA by register MEASURED at image build time, so a
 character keeps one speaker; the line's emotion sets pace and energy); the espeak voice is the labelled robotic fallback.
 Where neither is installed, voice is refused with 412,
