@@ -191,12 +191,30 @@ export function useAudio(projectId: string) {
       run("spot", () => audioApi.spotAll(projectId), (r) =>
         `${r.spotted.length ? `Spotted ${r.spotted.length} scene${r.spotted.length === 1 ? "" : "s"} (${r.spotted.join(", ")}).` : "No new scenes to spot."}${r.already ? ` ${r.already} already spotted — re-spot those one by one if their shot plan changed.` : ""}${r.waiting.length ? ` Scene${r.waiting.length === 1 ? "" : "s"} ${r.waiting.join(", ")} still need an approved shot plan in Storyboard.` : ""}`),
     generateAll: () =>
-      run("generate", () => audioApi.generateAll(projectId), (r) =>
+      run("generate", async () => {
+        let requested = 0, skipped = 0, scenes = 0;
+        for (let round = 0; round < 40; round++) {
+          const r = await audioApi.generateAll(projectId);
+          requested += r.requested; skipped = r.skipped; scenes = r.scenes;
+          if (!r.remaining) break;
+          setNotice(`Generating planned sounds… ${requested} queued so far.`);
+        }
+        return { requested, skipped, scenes };
+      }, (r) =>
         r.requested
           ? `Generating ${r.requested} planned sound${r.requested === 1 ? "" : "s"} across ${r.scenes} scene${r.scenes === 1 ? "" : "s"} with the built-in generators${r.skipped ? ` (${r.skipped} already generated or not supported)` : ""}. When they're ready, “Place generated sounds” puts each on its marked spot.`
           : "Nothing new to generate — every planned sound already has a generated sound or a recording."),
     placeGenerated: (sceneId: string | null) =>
-      run("save", () => audioApi.placeGenerated(projectId, sceneId), (r) =>
+      run("save", async () => {
+        let placed = 0, last = { still_making: 0, not_generated: 0 };
+        for (let round = 0; round < 40; round++) {
+          const r = await audioApi.placeGenerated(projectId, sceneId);
+          placed += r.placed; last = r;
+          if (!r.remaining || !r.placed) break;
+          setNotice(`Placing sounds… ${placed} placed, ${r.remaining} to go.`);
+        }
+        return { placed, still_making: last.still_making, not_generated: last.not_generated };
+      }, (r) =>
         `Placed ${r.placed} generated sound${r.placed === 1 ? "" : "s"} on ${r.placed === 1 ? "its" : "their"} marked spot${r.placed === 1 ? "" : "s"}${sceneId ? "" : " across the film"}.${r.still_making ? ` ${r.still_making} still being made — press again when they're ready.` : ""}${r.not_generated ? ` ${r.not_generated} planned cue${r.not_generated === 1 ? " has" : "s have"} no generated sound yet (dialogue without a voice, or not generated).` : ""} Recordings already on the timeline were kept; every clip can still be moved, trimmed or replaced.`),
     approve: (sceneId: string) => run("approve", () => audioApi.approve(projectId, sceneId), (r) => `Scene mix approved as version ${r.version_number}.`),
     exportStem: async (s: AudioScene, bus?: Bus) => {

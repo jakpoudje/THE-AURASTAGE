@@ -220,14 +220,14 @@ describe("Visual Generation routes", () => {
     rows.takes = [takeRow(), takeRow({ id: NEWER, take_number: 2, created_at: "2026-09-28T02:00:00Z" }), takeRow({ id: REJ, take_number: 3, approval: "rejected", created_at: "2026-09-28T03:00:00Z" })];
     const fake = fakeDb(rows, (fn, a) => (fn === "set_take_approval" ? { data: takeRow({ id: a.p_take_id, approval: a.p_approval }) } : {}));
     const r = await (await app(fake, { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/approve-all` });
-    expect(r.json()).toEqual({ approved: 1, waiting: 0, total: 1 });
+    expect(r.json()).toEqual({ approved: 1, remaining: 0, waiting: 0, total: 1 });
     const call = fake.calls.find((c) => c.fn === "set_take_approval");
     expect(call?.args).toMatchObject({ p_approval: "approved" });
     expect(JSON.stringify(call?.args)).toContain(NEWER);
     // Already approved → nothing changes.
     rows.takes = [takeRow({ approval: "approved" })];
     const fake2 = fakeDb(rows);
-    expect((await (await app(fake2, { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/approve-all` })).json()).toEqual({ approved: 0, waiting: 0, total: 1 });
+    expect((await (await app(fake2, { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/approve-all` })).json()).toEqual({ approved: 0, remaining: 0, waiting: 0, total: 1 });
     expect(fake2.calls.filter((c) => c.fn === "set_take_approval")).toEqual([]);
   });
 
@@ -235,10 +235,26 @@ describe("Visual Generation routes", () => {
     rows.generation_packages = [{ id: PKG, project_id: P, shot_id: SHOT, shot_plan_version_id: PV1, content: { prompt: "x" }, review_state: "current", review_reason: null, engine_version: "2.0.0", created_at: NOW }];
     const fake = fakeDb(rows, (fn) => (fn === "request_takes" ? { data: [takeRow({ status: "queued", approval: "pending", storage_key: null, completed_at: null })] } : {}));
     const r = await (await app(fake, { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/sketch-all` });
-    expect(r.json()).toEqual({ requested: 1, already: 0, needs_prompt: 0 });
+    expect(r.json()).toEqual({ requested: 1, remaining: 0, already: 0, needs_prompt: 0 });
     expect(fake.calls.find((c) => c.fn === "request_takes")?.args).toMatchObject({ p_provider: "aurastage-sketch", p_variations: 1 });
     rows.takes = [takeRow()];
-    expect((await (await app(fakeDb(rows), { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/sketch-all` })).json()).toEqual({ requested: 0, already: 1, needs_prompt: 0 });
+    expect((await (await app(fakeDb(rows), { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/sketch-all` })).json()).toEqual({ requested: 0, remaining: 0, already: 1, needs_prompt: 0 });
+  });
+
+  it("regression (owner 2026-10-02: compile-all cut off after 84 s): every shot compiled in one call from ONE read of the project", async () => {
+    const shots = Array.from({ length: 12 }, (_, i) => ({ ...shotSnap, id: `eeeeeeee-eeee-4eee-8eee-${String(i).padStart(12, "0")}`, ordinal: i + 1 }));
+    rows.shot_plan_versions = [{ ...rows.shot_plan_versions[0], shots }];
+    const reads: string[] = [];
+    const fake = fakeDb(rows, (fn) => (fn === "create_generation_package" ? { data: { id: PKG } } : {}));
+    const from = fake.db.from;
+    (fake.db as any).from = (t: string) => (reads.push(t), from(t));
+    const r = await (await app(fake, {})).inject({ method: "POST", url: `/api/projects/${P}/visual/compile-all` });
+    expect(r.json()).toMatchObject({ compiled: 12, remaining: 0, already: 0, waiting_scenes: [] });
+    expect(fake.calls.filter((c) => c.fn === "create_generation_package")).toHaveLength(12);
+    // Characters, dialogue and Scene DNA are read once for the whole film, not once per shot.
+    expect(reads.filter((t) => t === "characters").length).toBeLessThanOrEqual(2);
+    expect(reads.filter((t) => t === "dialogue_lines").length).toBeLessThanOrEqual(2);
+    expect(reads.filter((t) => t === "scene_dna_versions").length).toBeLessThanOrEqual(2);
   });
 
   it("refuses other projects (403)", async () => {

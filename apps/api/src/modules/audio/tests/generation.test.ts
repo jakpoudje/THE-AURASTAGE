@@ -101,7 +101,7 @@ describe("Audio Studio — generate sound", () => {
     const fake = fakeDb(r0);
     const res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/place-generated` });
     expect(res.statusCode, res.body).toBe(200);
-    expect(res.json()).toEqual({ placed: 1, still_making: 1, not_generated: 2 });
+    expect(res.json()).toEqual({ placed: 1, remaining: 0, still_making: 1, not_generated: 2 });
     const saves = fake.calls.filter((c) => c.fn === "save_audio_clip");
     expect(saves).toEqual([{ fn: "save_audio_clip", args: { p_session_id: SES, p_clip_id: C.bg, p_patch: { asset_id: "88888888-8888-4888-8888-888888888882", label: "Exterior lagos harbour ambience — rain, dawn" } } }]);
   });

@@ -81,11 +81,40 @@ export function useVisual(projectId: string) {
     compile: (shotId: string, aspect: string) => run("compile", () => visualApi.compile(projectId, shotId, aspect), () => "Prompt compiled from the approved shot plan."),
     generate: (packageId: string, input: Partial<RequestTakeInput>) =>
       run("generate", () => visualApi.requestTakes(packageId, input), (r) => `Queued ${r.takes.length} ${r.takes.length === 1 ? "take" : "takes"}. They appear here when ready.`),
-    compileAll: () => run("compile", () => visualApi.compileAll(projectId), (r) =>
-      `${r.compiled ? `Compiled ${r.compiled} shot prompt${r.compiled === 1 ? "" : "s"}` : "Every shot's prompt is already up to date"}${r.compiled && r.already ? ` (${r.already} already up to date)` : ""}.${r.waiting_scenes.length ? ` Scene${r.waiting_scenes.length === 1 ? "" : "s"} ${r.waiting_scenes.join(", ")} need their shot plan approved again in Storyboard.` : ""}`),
-    sketchAll: () => run("generate", () => visualApi.sketchAll(projectId), (r) =>
-      `${r.requested ? `Sketching ${r.requested} shot${r.requested === 1 ? "" : "s"} with AuraStage Sketch (free) in the background.` : "No shots need a sketch."}${r.already ? ` ${r.already} already have a take.` : ""}${r.needs_prompt ? ` ${r.needs_prompt} need their prompt compiled first.` : ""}`),
-    approveAll: () => run("take", () => visualApi.approveAll(projectId), (r) =>
+    // Whole film, in rounds: the server works for up to ~25 s per call and says how many remain; we call again until
+    // none do, showing progress, so a long film never hits a time limit (owner report 2026-10-02).
+    compileAll: () => run("compile", async () => {
+      let compiled = 0, already = 0, waiting: number[] = [], failed: string[] = [];
+      for (let round = 0; round < 40; round++) {
+        const r = await visualApi.compileAll(projectId);
+        compiled += r.compiled; if (round === 0) already = r.already; waiting = r.waiting_scenes; failed = [...failed, ...(r.failed ?? [])];
+        if (!r.remaining || !r.compiled) break;
+        setNotice(`Compiling prompts… ${compiled} done, ${r.remaining} to go.`);
+      }
+      return { compiled, already, waiting, failed };
+    }, (r) =>
+      `${r.compiled ? `Compiled ${r.compiled} shot prompt${r.compiled === 1 ? "" : "s"}` : "Every shot's prompt is already up to date"}${r.compiled && r.already ? ` (${r.already} already up to date)` : ""}.${r.waiting.length ? ` Scene${r.waiting.length === 1 ? "" : "s"} ${r.waiting.join(", ")} need their shot plan approved again in Storyboard.` : ""}${r.failed.length ? ` Not compiled: ${r.failed.slice(0, 3).join("; ")}.` : ""}`),
+    sketchAll: () => run("generate", async () => {
+      let requested = 0, already = 0, needs = 0;
+      for (let round = 0; round < 40; round++) {
+        const r = await visualApi.sketchAll(projectId);
+        requested += r.requested; if (round === 0) { already = r.already; needs = r.needs_prompt; }
+        if (!r.remaining || !r.requested) break;
+        setNotice(`Queuing sketches… ${requested} queued, ${r.remaining} to go.`);
+      }
+      return { requested, already, needs };
+    }, (r) =>
+      `${r.requested ? `Sketching ${r.requested} shot${r.requested === 1 ? "" : "s"} with AuraStage Sketch (free) in the background.` : "No shots need a sketch."}${r.already ? ` ${r.already} already have a take.` : ""}${r.needs ? ` ${r.needs} need their prompt compiled first.` : ""}`),
+    approveAll: () => run("take", async () => {
+      let approved = 0, waiting = 0;
+      for (let round = 0; round < 40; round++) {
+        const r = await visualApi.approveAll(projectId);
+        approved += r.approved; waiting = r.waiting;
+        if (!r.remaining || !r.approved) break;
+        setNotice(`Approving… ${approved} done, ${r.remaining} to go.`);
+      }
+      return { approved, waiting };
+    }, (r) =>
       `Approved a take for ${r.approved} shot${r.approved === 1 ? "" : "s"} (the newest finished one; rejected takes are never chosen).${r.waiting ? ` ${r.waiting} shot${r.waiting === 1 ? " has" : "s have"} no finished take yet.` : ""} Change any of them on its shot.`),
     approve: (id: string) => run("take", () => visualApi.approve(id), (t) => `Take V${t.take_number} approved for this shot.`),
     reject: (id: string) => run("take", () => visualApi.reject(id), (t) => `Take V${t.take_number} rejected.`),

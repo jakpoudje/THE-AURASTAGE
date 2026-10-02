@@ -853,7 +853,7 @@ http.createServer((req, res) => {
     const vPkg = (x) => { const pkg = [...packages].reverse().find((k) => k.shot_id === x.shot.id); return pkg && pkg.shot_plan_version_id === x.plan.approved_version_id ? pkg : null; };
     if (u === `/api/projects/${P}/visual/compile-all` && req.method === "POST") {
       let compiled = 0; for (const x of vUsable()) { if (vPkg(x)) continue; const [st, out] = compileMock(x.shot.id, ST.settings.technical.aspect_ratio); if (st !== 200) return send(st, out); compiled++; }
-      return send(200, { compiled, already: vUsable().length - compiled, waiting_scenes: plans.filter((pl) => !(pl.status === "approved" && pl.review_state === "current")).map((pl) => (scenes.find((sc) => sc.id === pl.scene_id) || {}).number) });
+      return send(200, { compiled, remaining: 0, already: vUsable().length - compiled, waiting_scenes: plans.filter((pl) => !(pl.status === "approved" && pl.review_state === "current")).map((pl) => (scenes.find((sc) => sc.id === pl.scene_id) || {}).number) });
     }
     if (u === `/api/projects/${P}/visual/sketch-all` && req.method === "POST") {
       let requested = 0, already = 0, needs = 0;
@@ -862,14 +862,14 @@ http.createServer((req, res) => {
         takes.push({ id: crypto.randomUUID(), project_id: P, shot_id: pkg.shot_id, package_id: pkg.id, take_number: takes.filter((t) => t.shot_id === pkg.shot_id).length + 1, provider: "aurastage-sketch", model: "sketch-v1", capability: "image",
           params: { aspect_ratio: "16:9", duration_seconds: null }, seed: null, status: "queued", approval: "pending", media_type: null, media_url: null, error: null, cost_actual: null, provider_request_id: null, created_at: now(), completed_at: null });
         requested++; }
-      return send(200, { requested, already, needs_prompt: needs });
+      return send(200, { requested, remaining: 0, already, needs_prompt: needs });
     }
     if (u === `/api/projects/${P}/visual/approve-all` && req.method === "POST") {
       let approved = 0, waiting = 0;
       for (const x of vUsable()) { const st = takes.filter((t) => t.shot_id === x.shot.id); if (st.some((t) => t.approval === "approved")) continue;
         const t = st.filter((k) => k.status === "succeeded" && k.approval !== "rejected").sort((a, b2) => String(b2.created_at).localeCompare(String(a.created_at)))[0];
         if (!t) { waiting++; continue; } t.approval = "approved"; approved++; }
-      return send(200, { approved, waiting, total: vUsable().length });
+      return send(200, { approved, remaining: 0, waiting, total: vUsable().length });
     }
     if ((m = u.match(/^\/api\/visual\/packages\/([^/]+)\/takes$/))) {
       const pkg = packages.find((x) => x.id === m[1]); const a = gw.getAdapter(b.provider);

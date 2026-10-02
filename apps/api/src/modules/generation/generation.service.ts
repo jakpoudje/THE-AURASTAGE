@@ -29,15 +29,15 @@ async function takeDTO(t: Row, env: Env) {
   return toTakeDTO(t, url);
 }
 
-function planUsable(plan: Row) {
+export function planUsable(plan: Row) {
   return plan.status === "approved" && plan.review_state === "current" && !!plan.approved_version_id;
 }
 
-const norm = (s: unknown) => (typeof s === "string" ? s.trim() : "") || null;
+export const norm = (s: unknown) => (typeof s === "string" ? s.trim() : "") || null;
 
 /** Current revision of every Locations & Props record (archived ones count as gone). */
-type WorldRevisions = Map<string, { name: string; revision: number }>;
-function packageReview(pkg: Row, plan: Row, versionNumber: number | null, look: string | null, world: WorldRevisions = new Map()): { state: string; reason: string | null } {
+export type WorldRevisions = Map<string, { name: string; revision: number }>;
+export function packageReview(pkg: Row, plan: Row, versionNumber: number | null, look: string | null, world: WorldRevisions = new Map()): { state: string; reason: string | null } {
   if (pkg.shot_plan_version_id !== plan.approved_version_id) {
     return { state: "stale", reason: `The shot plan was approved again${versionNumber ? ` (now version ${versionNumber})` : ""} after this was compiled.` };
   }
@@ -134,24 +134,46 @@ export async function getVisualWorkspace(db: SupabaseClient, projectId: string, 
   };
 }
 
+/**
+ * Everything the prompt compiler reads for a project, loaded once (2026-10-02: "Compile every shot's prompt" read the
+ * whole project again for every shot — 69 shots took over 80 s and the request was cut off). Per-scene data (the locked
+ * Scene DNA version, the scene's Locations & Props, the script's elements) is cached the first time a scene needs it.
+ */
+export async function loadCompileContext(db: SupabaseClient, projectId: string) {
+  const [project, scenes, plans, versions, current, scriptVersionId, chars, looks, lines, ageStates, worldItems, worldRefs, charRefs, propApps] = await Promise.all([
+    repo.getProject(db, projectId), repo.listScenes(db, projectId), repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId),
+    readProjectSettings(db, projectId), repo.getScriptVersionId(db, projectId), repo.listCharacters(db, projectId),
+    repo.listLooks(db, projectId), repo.listLines(db, projectId), repo.listAgeStates(db, projectId),
+    repo.listWorldItems(db, projectId), repo.listWorldRefs(db, projectId), repo.listCharacterRefs(db, projectId), repo.listPropAppearances(db, projectId),
+  ]);
+  const memo = <T,>(m: Map<string, Promise<T>>, k: string, f: () => Promise<T>) => (m.has(k) ? m.get(k)! : (m.set(k, f()), m.get(k)!));
+  const dnaM = new Map<string, Promise<Row | null>>(), appM = new Map<string, Promise<Row[]>>(), elM = new Map<string, Promise<{ index: number; type: string; text: string }[]>>();
+  return {
+    projectId, project, scenes, plans, versions, current, scriptVersionId, chars, looks, lines, ageStates, worldItems, worldRefs, charRefs, propApps,
+    dna: (id: string) => memo(dnaM, id, () => repo.getDnaVersion(db, id) as Promise<Row | null>),
+    appearances: (sceneId: string) => memo(appM, sceneId, () => repo.listSceneAppearances(db, sceneId) as Promise<Row[]>),
+    elements: (versionId: string) => memo(elM, versionId, () => repo.getScriptElements(db, versionId) as Promise<{ index: number; type: string; text: string }[]>),
+  };
+}
+export type CompileContext = Awaited<ReturnType<typeof loadCompileContext>>;
+
 export async function compileShot(db: SupabaseClient, projectId: string, shotId: string, payload: unknown) {
   const { aspect_ratio } = validateCompile(payload);
   await assertProjectAccess(db, projectId);
   await refreshShotPlanReview(db, projectId);
-  const [project, scenes, plans, versions] = await Promise.all([
-    repo.getProject(db, projectId), repo.listScenes(db, projectId), repo.listPlans(db, projectId), repo.listPlanVersions(db, projectId),
-  ]);
+  return compileWithContext(db, await loadCompileContext(db, projectId), shotId, aspect_ratio);
+}
+
+/** Compiles and saves one shot's package from a loaded context (same checks as the single-shot button). */
+export async function compileWithContext(db: SupabaseClient, ctx: CompileContext, shotId: string, aspect_ratio: string) {
+  const { projectId, project, scenes, plans, versions, current, scriptVersionId, chars, looks, lines, ageStates, worldItems, worldRefs, charRefs, propApps } = ctx;
   const version = versions.find((v) => (v.shots as Row[]).some((s) => s.id === shotId) && plans.some((p) => p.approved_version_id === v.id));
   if (!version) throw new GenerationNotFoundError("That shot is not in an approved shot plan.");
   const plan = plans.find((p) => p.id === version.plan_id)!;
   if (!planUsable(plan)) throw new GenerationNotReadyError(plan.review_reason ?? "Approve this scene's shot plan again first — it has changes.");
   const scene = scenes.find((s) => s.id === plan.scene_id)!;
   const shot = (version.shots as Row[]).find((s) => s.id === shotId)!;
-  const current = await readProjectSettings(db, projectId);
-  const [dna, scriptVersionId, chars, looks, lines, ageStates] = await Promise.all([
-    repo.getDnaVersion(db, version.scene_dna_version_id), repo.getScriptVersionId(db, projectId), repo.listCharacters(db, projectId),
-    repo.listLooks(db, projectId), repo.listLines(db, projectId), repo.listAgeStates(db, projectId),
-  ]);
+  const dna = await ctx.dna(version.scene_dna_version_id as string);
   const editable = ((dna?.content as Row)?.editable ?? {}) as Row;
   const wardrobe = (editable.wardrobe ?? {}) as Record<string, string>;
   // The age each character is in this scene, as locked in Scene DNA (flashbacks, time jumps; migration 0035).
@@ -166,10 +188,7 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
     return id ? ageStates.find((a) => a.id === id && follow(a.character_id) === cid) ?? null : null;
   };
   // Locations & Props for this scene, and finished reference images (consistency from the first frame to the last).
-  const [worldItems, appearances, worldRefs, charRefs, propApps] = await Promise.all([
-    repo.listWorldItems(db, projectId), repo.listSceneAppearances(db, scene.id), repo.listWorldRefs(db, projectId), repo.listCharacterRefs(db, projectId),
-    repo.listPropAppearances(db, projectId),
-  ]);
+  const appearances = await ctx.appearances(scene.id as string);
   const here = (type: string) => new Set(appearances.filter((a) => a.object_type === type).map((a) => a.object_id as string));
   const loc = worldItems.locations.find((l) => here("location").has(l.id) && !l.archived_at) ?? null;
   const props = worldItems.props.filter((x) => here("prop").has(x.id) && !x.archived_at);
@@ -202,7 +221,8 @@ export async function compileShot(db: SupabaseClient, projectId: string, shotId:
   }
   // 2.0.0 (realism R1): the script's own action around this shot, screen direction kept from the master, and the
   // shots before and after it.
-  const elements = await repo.getScriptElements(db, (scene.source_version_id as string | null) ?? scriptVersionId);
+  const srcVersion = (scene.source_version_id as string | null) ?? (scriptVersionId as string | null);
+  const elements = srcVersion ? await ctx.elements(srcVersion) : [];
   const lineIdx = lines.filter((l) => (shot.dialogue_line_ids ?? []).includes(l.id)).map((l) => Number(l.element_index)).filter((n) => Number.isFinite(n));
   const script_action = elements.length && scene.element_start !== null && scene.element_start !== undefined
     ? promptCompiler.scriptActionForShot({ elements, scene: { start: Number(scene.element_start), end: Number(scene.element_end) }, lineElementIndexes: lineIdx, purpose: (shot.purpose as string) ?? null })

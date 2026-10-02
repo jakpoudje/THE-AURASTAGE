@@ -1534,7 +1534,10 @@ await check("one click: Visual Generation compiles every prompt, sketches every 
   // A re-locked scene's plan is stale (rule 11): re-plan it from the new lock, then approve every ready plan.
   await api("POST", `/api/projects/${projectId}/storyboard/scenes/${s1}/generate`, { replace: true, style: "standard" }, [200, 201, 409, 412]);
   const ap = await api("POST", `/api/projects/${projectId}/storyboard/approve-all`, {}, [200, 409, 412]);
+  const t0 = Date.now();
   const c = await api("POST", `/api/projects/${projectId}/visual/compile-all`, {});
+  const compileMs = Date.now() - t0;
+  assert(c.remaining === 0, `compile-all left ${c.remaining} for another round on a 3-shot film`);
   const sk = await api("POST", `/api/projects/${projectId}/visual/sketch-all`, {});
   let ws: any;
   for (let i = 0; i < 45; i++) {
@@ -1548,7 +1551,7 @@ await check("one click: Visual Generation compiles every prompt, sketches every 
   const approvedUsable = ws2.scenes.filter((s: any) => s.plan.usable).flatMap((s: any) => s.shots).filter((x: any) => x.approved_take_id).length;
   assert(usable > 0, "no shot plan is usable — the check would prove nothing: " + JSON.stringify(ap).slice(0, 300));
   assert(approvedUsable === usable, `${approvedUsable} of ${usable} usable shots approved (${JSON.stringify(a)})`);
-  return `compiled ${c.compiled}, sketched ${sk.requested}, approved ${a.approved}; ${approvedUsable}/${usable} shots in usable plans approved`;
+  return `compiled ${c.compiled} in ${compileMs} ms, sketched ${sk.requested}, approved ${a.approved}; ${approvedUsable}/${usable} shots in usable plans approved`;
 });
 await check("one click: Audio Studio generates every planned sound in the film, then places each on its marked spot (recordings already placed are kept)", async () => {
   const before = await api("GET", `/api/projects/${projectId}/audio`);

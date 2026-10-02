@@ -11,6 +11,15 @@ import { getAudioWorkspace, spotScene, updateClip } from "./audio.service";
 
 type Env = Record<string, string | undefined>;
 type Row = Record<string, any>;
+const BUDGET_MS = 25_000;
+/** `size` at a time until done or the time budget is spent (each call says how many remain; the page calls again). */
+async function pool<T>(items: T[], fn: (item: T) => Promise<void>, size = 4) {
+  const t0 = Date.now();
+  let i = 0, done = 0;
+  const worker = async () => { while (i < items.length && Date.now() - t0 < BUDGET_MS) { const it = items[i++]; await fn(it); done++; } };
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker));
+  return done;
+}
 
 /** Spots every scene whose approved shot plan is usable and that has no audio session yet. */
 export async function spotAllScenes(db: SupabaseClient, projectId: string) {
@@ -33,12 +42,12 @@ export async function generateAllCues(db: SupabaseClient, projectId: string, sce
   const sessions = await repo.listSessions(db, projectId);
   const scenes = sessions.filter((s) => !sceneId || s.scene_id === sceneId);
   let requested = 0, skipped = 0;
-  for (const s of scenes) {
-    const r = await generateSceneCues(db, projectId, s.scene_id as string, env);
+  const ran = await pool(scenes, async (x) => {
+    const r = await generateSceneCues(db, projectId, x.scene_id as string, env);
     requested += r.requested.length;
     skipped += r.skipped.length;
-  }
-  return { scenes: scenes.length, requested, skipped };
+  }, 3);
+  return { scenes: scenes.length, requested, skipped, remaining: scenes.length - ran };
 }
 
 /**
@@ -57,13 +66,10 @@ export async function placeGenerated(db: SupabaseClient, projectId: string, scen
     if (g.status === "succeeded" && g.asset_id && !newest.has(g.clip_id)) newest.set(g.clip_id, g);
     if (g.status === "queued" || g.status === "running") making.add(g.clip_id);
   }
-  const placed: string[] = [];
-  let stillMaking = 0, nothingYet = 0;
-  for (const c of clips.filter((x) => sessionIds.has(x.session_id) && x.kind === "cue")) {
-    const g = newest.get(c.id);
-    if (g) { await updateClip(db, c.id, { asset_id: g.asset_id, label: String(c.label).slice(0, 200) }); placed.push(c.label); }
-    else if (making.has(c.id)) stillMaking++;
-    else nothingYet++;
-  }
-  return { placed: placed.length, still_making: stillMaking, not_generated: nothingYet };
+  const cues = clips.filter((x) => sessionIds.has(x.session_id) && x.kind === "cue");
+  const todo = cues.filter((c) => newest.has(c.id));
+  const stillMaking = cues.filter((c) => !newest.has(c.id) && making.has(c.id)).length;
+  const nothingYet = cues.length - todo.length - stillMaking;
+  const placed = await pool(todo, async (c) => { await updateClip(db, c.id, { asset_id: newest.get(c.id)!.asset_id, label: String(c.label).slice(0, 200) }); }, 6);
+  return { placed, remaining: todo.length - placed, still_making: stillMaking, not_generated: nothingYet };
 }

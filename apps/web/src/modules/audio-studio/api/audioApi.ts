@@ -30,8 +30,8 @@ export const audioApi = {
     apiPost<{ requested: AudioGeneration[]; skipped: string[] }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/generate-cues`, {}),
   // One click for the whole film or one scene (owner, 2026-10-02).
   spotAll: (projectId: string) => apiPost<{ spotted: number[]; waiting: number[]; already: number }>(`/api/projects/${projectId}/audio/spot-all`, {}),
-  generateAll: (projectId: string) => apiPost<{ scenes: number; requested: number; skipped: number }>(`/api/projects/${projectId}/audio/generate-all`, {}),
+  generateAll: (projectId: string) => apiPost<{ scenes: number; requested: number; skipped: number; remaining?: number }>(`/api/projects/${projectId}/audio/generate-all`, {}),
   placeGenerated: (projectId: string, sceneId: string | null) =>
-    apiPost<{ placed: number; still_making: number; not_generated: number }>(sceneId ? `/api/projects/${projectId}/audio/scenes/${sceneId}/place-generated` : `/api/projects/${projectId}/audio/place-generated`, {}),
+    apiPost<{ placed: number; remaining?: number; still_making: number; not_generated: number }>(sceneId ? `/api/projects/${projectId}/audio/scenes/${sceneId}/place-generated` : `/api/projects/${projectId}/audio/place-generated`, {}),
   assetBytes: (assetId: string) => apiGetBytes(`/api/assets/${assetId}/content`),
 };
