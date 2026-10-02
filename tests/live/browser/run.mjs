@@ -596,6 +596,53 @@ await check("mixer presets: phone-call channel preset (low-pass 3.4 kHz) and the
   await page.getByRole("button", { name: /^Channel strip DX/ }).first().getByText(/LPF/).waitFor();
   return "phone call on DX, horror template";
 });
+await check("one click (owner 2026-10-02): Audio Studio generates every planned sound in the film, then places each on its marked spot; reload: placed", async () => {
+  await page.goto(projectUrl + "/audio");
+  await page.getByText("Professional Sound for").waitFor();
+  const planned = () => page.getByText("planned", { exact: true }).count();
+  const before = await planned();
+  await page.getByRole("button", { name: "2 · Generate all planned sounds" }).click();
+  await page.getByText(/^Generating \d+ planned sounds? across|^Nothing new to generate/).waitFor({ timeout: 60000 });
+  let note = "";
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(5000);
+    await page.getByRole("button", { name: "3 · Place all generated sounds on their marked spots" }).click();
+    note = await page.getByText(/^Placed \d+ generated sound/).innerText({ timeout: 60000 });
+    if (!/still being made/.test(note)) break;
+  }
+  await reload("Professional Sound for");
+  const after = await planned();
+  if (/^Placed [1-9]/.test(note) && !(after < before)) throw new Error(`placed but the timeline still shows ${after} planned (was ${before})`);
+  return `${note.split(".")[0]}; planned cues on screen ${before} → ${after}`;
+});
+await check("one click (owner 2026-10-02): Visual Generation — compile every prompt, sketch every shot (free), approve a take for each; reload: counts kept", async () => {
+  await page.goto(projectUrl + "/visual");
+  await page.getByText("Stunning Visuals").waitFor();
+  await page.getByRole("button", { name: "1 · Compile every shot's prompt" }).click();
+  await page.getByText(/^Compiled \d+ shot prompts?|^Every shot's prompt is already up to date/).waitFor({ timeout: 120000 });
+  await page.getByRole("button", { name: "2 · Sketch every shot (free)" }).click();
+  await page.getByText(/^Sketching \d+ shots?|^No shots need a sketch/).waitFor({ timeout: 60000 });
+  await page.waitForTimeout(20000);
+  await page.getByRole("button", { name: "3 · Approve a take for every shot" }).click();
+  const note = await page.getByText(/^Approved a take for \d+ shots?/).innerText({ timeout: 60000 });
+  await reload("Stunning Visuals");
+  const summary = await page.getByText(/\d+ of \d+ shots have an approved take/).first().innerText();
+  return `${note.split("(")[0].trim()}; after reload: ${summary.split("·")[0].trim()}`;
+});
+await check("one click (owner 2026-10-02): Editorial makes a watchable film from everything approved — assemble, lock, Review Copy render; Export lists it after reload", async () => {
+  await page.goto(projectUrl + "/editorial");
+  await page.getByText("Perfect Your Film").waitFor();
+  await page.getByRole("button", { name: "Make a watchable film from everything approved (one click)" }).click();
+  const ok = page.getByText(/queued a Review Copy of the whole film/);
+  const err = page.locator(".text-red-300").first();
+  await Promise.race([ok.waitFor({ timeout: 120000 }), err.waitFor({ timeout: 120000 })]);
+  if (!(await ok.count())) throw new Error("refused: " + (await err.innerText()));
+  await page.goto(projectUrl + "/export");
+  await page.waitForLoadState("networkidle");
+  await page.reload();
+  await page.getByText(/Review Copy/).first().waitFor({ timeout: 30000 });
+  return "Review Copy queued from the lock and listed in Export after reload";
+});
 await check("What's next: every stage shows its next step from the project's records and links on to the next stage", async () => {
   const seen = [];
   for (const [path, next] of [["casting", /Locations & Props →/], ["scene-dna", /Storyboard & Shots →/], ["editorial", /Export & Deliver →/]]) {
