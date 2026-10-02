@@ -268,6 +268,7 @@ export default function AudioStudioPage() {
                         canGenerate={canGenerate}
                         onGenerate={(body) => d.generate(s.scene.id, body)}
                         voiceReady={ws.generators.some((g) => g.kinds.includes("voice") && g.state === "configured")}
+                        paid={ws.generators.filter((g) => g.execution === "external" && g.state === "configured").map((g) => ({ id: g.id, label: g.label, kinds: g.kinds }))}
                       />
                     )}
                     <Mixer tracks={s.tracks} clips={s.clips} player={player} busy={d.busy !== null} seconds={seconds} position={pos}

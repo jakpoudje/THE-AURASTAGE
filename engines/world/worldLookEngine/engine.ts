@@ -59,7 +59,10 @@ export function worldLookEngine(raw: WorldLookInput): WorldLookOutput {
   if (input.kind === "location") {
     const ie = it.int_ext.includes("INT") && it.int_ext.includes("EXT") ? "interior and exterior" : it.int_ext.includes("EXT") ? "exterior" : it.int_ext.includes("INT") ? "interior" : "";
     identity = [`${clean(it.name)}${ie ? ` — ${ie}` : ""}${it.areas.length ? `, including ${it.areas.join(", ")}` : ""}.`, desc].filter(Boolean).join(" ");
-    const times = it.times_of_day.length ? it.times_of_day : ["DAY"];
+    // Script words that say WHEN in the story, not what the light is ("CONTINUOUS", "SAME TIME", "MOMENTS LATER") get no
+    // pictures of their own (1.1.0, owner report 2026-10-02); a place with only those is shown by day.
+    const lit = it.times_of_day.filter((t) => !/^(CONTINUOUS|CONT'?D?|SAME( TIME)?|LATER|MOMENTS? LATER|A? ?(FEW|LITTLE) (MOMENTS|MINUTES) LATER|SIMULTANEOUS|INTERCUT|FLASHBACK|PRESENT|FLASH FORWARD)$/i.test(t.trim()));
+    const times = lit.length ? lit : ["DAY"];
     const all = times.flatMap((t) => LOCATION_VIEWS.map((v) => ({ v, t })));
     // Recommended set: establishing + wide at every time of day the script uses, and one detail view.
     const isDefault = (v: LocationView, t: string) => v === "establishing" || v === "wide" || (v === "detail" && t === times[0]);

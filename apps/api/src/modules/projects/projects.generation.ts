@@ -68,9 +68,9 @@ export async function getGenerationReadiness(db: SupabaseClient, projectId: stri
     { id: "character_refs", label: "Character reference views", where: "Casting → Look & References", href: `${P}/casting`, backends: refs, evidence: looks },
     { id: "world_refs", label: "Location & prop reference views", where: "Locations & Props", href: `${P}/world`, backends: refs.map((x) => x.id === "aurastage-sketch" ? { ...x, quality: "Labelled location and prop sketches, not AI." } : x), evidence: worldRefs },
     { id: "video", label: "Video clips", where: "Visual Generation", href: `${P}/visual`, backends: [...visFor("video"), planned("aurastage-animatic", "AuraStage animatic (built in)")].map((x) => x.id === "aurastage-animatic" ? { ...x, execution: "native" as const } : x), evidence: videos },
-    { id: "sound", label: "Sound effects, Foley & ambience", where: "Audio Studio", href: `${P}/audio`, backends: [...audioFor("fx"), planned("elevenlabs", "ElevenLabs sound effects")], evidence: sounds },
-    { id: "music", label: "Music & score", where: "Audio Studio", href: `${P}/audio`, backends: [...audioFor("score"), planned("music-provider", "Music provider (official API)")], evidence: music },
-    { id: "voice", label: "Dialogue voices (text-to-speech)", where: "Audio Studio", href: `${P}/audio`, backends: [...audioFor("voice"), planned("elevenlabs", "ElevenLabs voices")], evidence: voices },
+    { id: "sound", label: "Sound effects, Foley & ambience", where: "Audio Studio", href: `${P}/audio`, backends: audioFor("fx"), evidence: sounds },
+    { id: "music", label: "Music & score", where: "Audio Studio", href: `${P}/audio`, backends: audioFor("score"), evidence: music },
+    { id: "voice", label: "Dialogue voices (text-to-speech)", where: "Audio Studio", href: `${P}/audio`, backends: audioFor("voice"), evidence: voices },
     { id: "delivery", label: "Rendering deliverables (MP4, subtitles, audio)", where: "Export & Deliver", href: `${P}/export`, backends: [b("render-worker", "AuraStage render worker (ffmpeg)", "native", "configured")], evidence: renders },
   ]);
   return out;

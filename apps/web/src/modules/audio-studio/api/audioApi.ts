@@ -24,7 +24,7 @@ export const audioApi = {
       file,
       file.type || "audio/wav"
     ),
-  generate: (projectId: string, sceneId: string, body: { clip_id: string | null; kind: AudioGeneration["kind"]; description: string; duration_seconds: number }) =>
+  generate: (projectId: string, sceneId: string, body: { clip_id: string | null; kind: AudioGeneration["kind"]; description: string; duration_seconds: number; provider?: string }) =>
     apiPost<AudioGeneration>(`/api/projects/${projectId}/audio/scenes/${sceneId}/generate`, body),
   generateCues: (projectId: string, sceneId: string) =>
     apiPost<{ requested: AudioGeneration[]; skipped: string[] }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/generate-cues`, {}),

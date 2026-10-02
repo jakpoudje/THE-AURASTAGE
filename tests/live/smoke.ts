@@ -1561,5 +1561,25 @@ await check("one click: Audio Studio generates every planned sound in the film, 
   return `generated ${g.requested} across ${g.scenes} scene(s); placed ${p.placed}; ${p.not_generated} cue(s) without a generated sound`;
 });
 
+await check("ElevenLabs (R2): listed honestly; without its key it is never used (412, nothing queued); with it, a voice line is made by ElevenLabs", async () => {
+  const ws = await api("GET", `/api/projects/${projectId}/audio`);
+  const el = ws.generators.find((g: any) => g.id === "elevenlabs");
+  assert(el && el.execution === "external" && el.kinds.includes("voice") && el.kinds.includes("score"), "ElevenLabs missing from the generators");
+  if (el.state !== "configured") {
+    const r = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { kind: "fx", description: "door slams", duration_seconds: 2, provider: "elevenlabs" }, [412]);
+    assert(/isn't connected/.test(r.error.message), r.error.message);
+    return "not connected yet (no key) — refused plainly";
+  }
+  const g = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate`, { kind: "fx", description: "a wooden door slams shut", duration_seconds: 2, provider: "elevenlabs" });
+  let row: any;
+  for (let i = 0; i < 40; i++) {
+    await Bun.sleep(3000);
+    row = (await api("GET", `/api/projects/${projectId}/audio`)).scenes.flatMap((x: any) => x.generations).find((x: any) => x.id === g.id);
+    if (row.status === "succeeded" || row.status === "failed") break;
+  }
+  assert(row.status === "succeeded", `${row.status}: ${row.error ?? ""}`);
+  return `ElevenLabs effect made: ${row.layers.map((l: any) => l.because).join("; ").slice(0, 160)}`;
+});
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`SUMMARY ${results.length - failed}/${results.length} passed${failed ? " — FAILURES: " + results.filter((r) => !r.ok).map((r) => r.check).join("; ") : ""}`);

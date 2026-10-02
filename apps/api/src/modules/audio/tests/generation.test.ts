@@ -85,7 +85,9 @@ describe("Audio Studio — generate sound", () => {
     const bad = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/generate`, payload: { kind: "fx", description: "", duration_seconds: 3 } });
     expect(bad.statusCode).toBe(400);
     const paid = await a.inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/generate`, payload: { kind: "fx", description: "x", duration_seconds: 3, provider: "elevenlabs" } });
-    expect(paid.statusCode).toBe(400);
+    // ElevenLabs is a real backend now (R2) but never used without its key: plainly "not connected", nothing queued.
+    expect(paid.statusCode).toBe(412);
+    expect(paid.json().error.message).toMatch(/ElevenLabs isn't connected/);
   });
 
   it("one click: places each finished generated sound on its planned cue (newest take), never over a recording; counts sounds still being made", async () => {

@@ -86,6 +86,19 @@ describe("Locations & Props API", () => {
     expect(f.calls[0].args).toMatchObject({ p_type: "location", p_aspect: "16:9", p_provider: "aurastage-sketch", p_sketch: { kind: "location", time: "DAWN" } });
     expect(new Set(f.calls.map((c) => c.args.p_identity_hash)).size).toBe(1);
   });
+  it("regression (owner 2026-10-02, 'views.0: Invalid'): one click makes pictures for a place whose script times include SAME TIME / MAGIC HOUR / MOMENTS LATER", async () => {
+    const loc = { ...base().locations[0], times_of_day: ["MORNING", "SAME TIME", "MAGIC HOUR", "MOMENTS LATER", "CONTINUOUS"] };
+    const f = fakeDb(base({ locations: [loc] }));
+    const a = await app(f);
+    const r = await a.inject({ method: "POST", url: `/api/projects/${P}/world/looks/generate-all`, payload: {} });
+    expect(r.statusCode, r.body).toBe(200);
+    const keys = f.calls.filter((c) => c.fn === "request_world_reference" && c.args.p_type === "location").map((c) => c.args.p_view);
+    // Story-timing words get no pictures of their own; real light conditions (incl. two-word ones) do.
+    expect(keys).toEqual(["establishing:MORNING", "wide:MORNING", "detail:MORNING", "establishing:MAGIC HOUR", "wide:MAGIC HOUR"]);
+    // The single-view button accepts such a key too.
+    expect((await a.inject({ method: "POST", url: `/api/world/location/${L}/look/generate`, payload: { views: ["wide:MAGIC HOUR"] } })).statusCode).toBe(200);
+    expect((await a.inject({ method: "POST", url: `/api/world/location/${L}/look/generate`, payload: { views: ["wide:<script>"] } })).statusCode).toBe(400);
+  });
   it("a paid provider that isn't connected is refused plainly; unknown kinds are 404; edits need the revision", async () => {
     const a = await app(fakeDb(base()));
     expect((await a.inject({ method: "POST", url: `/api/world/prop/${PR}/look/generate`, payload: { provider: "openai" } })).json().error.message).toBe("openai isn't connected on the server.");

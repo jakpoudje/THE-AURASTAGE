@@ -189,7 +189,7 @@ export async function getWorldLook(db: SupabaseClient, kindRaw: string, id: stri
   };
 }
 
-const GenerateInput = z.object({ views: z.array(z.string().regex(/^[a-z_]{2,20}(:[A-Z]{2,12})?$/)).min(1).max(40).optional(), provider: z.string().max(60).optional() }).strict();
+const GenerateInput = z.object({ views: z.array(z.string().regex(/^[a-z_]{2,20}(:[A-Z0-9][A-Z0-9 '/.-]{0,39})?$/)).min(1).max(40).optional(), provider: z.string().max(60).optional() }).strict();
 
 export async function generateWorldLook(db: SupabaseClient, kindRaw: string, id: string, body: unknown, env: Env = process.env) {
   const kind = kindOf(kindRaw);

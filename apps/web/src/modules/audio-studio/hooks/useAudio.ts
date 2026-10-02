@@ -180,7 +180,7 @@ export function useAudio(projectId: string) {
         },
         (m) => `Measured the rendered mix: ${m.integrated_lufs === null ? "silent" : `${m.integrated_lufs.toFixed(1)} LUFS`}${m.true_peak_dbtp === null ? "" : `, true peak ${m.true_peak_dbtp.toFixed(1)} dBTP`}.`
       ),
-    generate: (sceneId: string, body: { clip_id: string | null; kind: AudioGeneration["kind"]; description: string; duration_seconds: number }) =>
+    generate: (sceneId: string, body: { clip_id: string | null; kind: AudioGeneration["kind"]; description: string; duration_seconds: number; provider?: string }) =>
       run("generate", () => audioApi.generate(projectId, sceneId, body), () => "Generating — it will appear here and in the Assets Library when it's ready."),
     generateCues: (sceneId: string) =>
       run("generate", () => audioApi.generateCues(projectId, sceneId), (r) =>

@@ -71,6 +71,8 @@ async function api(method, p, body) {
     await page.getByTestId("generator-aurastage-synth").getByText("built in · free").waitFor();
     await page.getByTestId("generator-aurastage-voice").getByText("built in · free").waitFor();
     await page.getByTestId("generator-cleanup").getByText("not built yet", { exact: true }).waitFor();
+    // R2: ElevenLabs (voices with accents, effects, music) is listed honestly — it needs its key; nothing offers it until then.
+    await page.getByTestId("generator-elevenlabs").getByText("add a key to connect").waitFor();
   });
   await step("spot audio from the approved shot plan: dialogue, ambience and score cues; survives reload", async () => {
     await page.getByRole("button", { name: "Spot audio from the shot plan" }).click();

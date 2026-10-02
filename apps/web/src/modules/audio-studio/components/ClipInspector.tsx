@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { AudioClip, AudioTrack, SaveAudioClipInput } from "@aurastage/contracts";
 import type { AudioAsset, AudioGeneration } from "../types";
 import { audioApi } from "../api/audioApi";
+import { CostNote } from "@/components/CostNote";
 
 /** Which kind of sound a planned cue on this track family is (mirrors the API's FAMILY_KIND). */
 const FAMILY_KIND: Record<string, AudioGeneration["kind"]> = { BG: "ambience", WALLA: "ambience", FX: "fx", FOLEY: "foley", SCORE: "score", MX: "score", DX: "voice", VO: "voice", ADR: "voice" };
@@ -13,23 +14,43 @@ const STATUS: Record<AudioGeneration["status"], string> = { queued: "Waiting…"
 function Listen({ assetId }: { assetId: string }) {
   const [url, setUrl] = useState<string | null>(null);
   return url ? <audio controls autoPlay src={url} className="h-8 w-48" aria-label="Generated sound" />
-    : <button onClick={async () => setUrl(URL.createObjectURL(new Blob([await audioApi.assetBytes(assetId)], { type: "audio/wav" })))} className="rounded border border-aura-border px-2 py-0.5">▶ Listen</button>;
+    : <button onClick={async () => setUrl(URL.createObjectURL(new Blob([await audioApi.assetBytes(assetId)])))} className="rounded border border-aura-border px-2 py-0.5">▶ Listen</button>;
 }
 
 const input = "w-full rounded-md border border-aura-border bg-black/40 px-2 py-1 text-sm";
 
 export function ClipInspector({
-  clip, tracks, assets, busy, onSave, onDelete, onUpload, generations = [], canGenerate = false, onGenerate, voiceReady = false,
+  clip, tracks, assets, busy, onSave, onDelete, onUpload, generations = [], canGenerate = false, onGenerate, voiceReady = false, paid = [],
 }: {
   clip: AudioClip; tracks: AudioTrack[]; assets: AudioAsset[]; busy: boolean;
   onSave: (patch: SaveAudioClipInput) => void; onDelete: () => void; onUpload: (file: File) => void;
-  generations?: AudioGeneration[]; canGenerate?: boolean; onGenerate?: (body: { clip_id: string; kind: AudioGeneration["kind"]; description: string; duration_seconds: number }) => void;
+  generations?: AudioGeneration[]; canGenerate?: boolean; onGenerate?: (body: { clip_id: string; kind: AudioGeneration["kind"]; description: string; duration_seconds: number; provider?: string }) => void;
+  /** Connected paid generators (e.g. ElevenLabs) that can make this kind of sound; chosen per clip, never by default. */
+  paid?: { id: string; label: string; kinds: string[] }[];
   /** The built-in (or a connected) voice generator is available on the server. */
   voiceReady?: boolean;
 }) {
   const family = tracks.find((t) => t.id === clip.track_id)?.family;
   const genKind = family ? FAMILY_KIND[family] : undefined;
   const [genText, setGenText] = useState(clip.label);
+  // Built-in (free) unless the person picks a connected paid generator for this clip.
+  const options = paid.filter((p) => genKind && p.kinds.includes(genKind));
+  const [provider, setProvider] = useState("");
+  const chosen = options.find((o) => o.id === provider);
+  const MODEL: Record<string, string> = { voice: "eleven_multilingual_v2", score: "music_v1", fx: "eleven_text_to_sound_v2", foley: "eleven_text_to_sound_v2", ambience: "eleven_text_to_sound_v2" };
+  const pickGen = options.length > 0 && (
+    <div className="mt-2">
+      <label className="flex items-center gap-2 text-white/60">
+        Generator
+        <select aria-label="Generator" value={provider} onChange={(e) => setProvider(e.target.value)} className="rounded border border-aura-border bg-black px-1 py-0.5 text-white">
+          <option value="">Built-in (free)</option>
+          {options.map((o) => <option key={o.id} value={o.id}>{o.label} (paid)</option>)}
+        </select>
+      </label>
+      <CostNote items={[{ provider: chosen ? chosen.id : genKind === "voice" ? "aurastage-neural-voice" : "aurastage-synth", model: chosen ? MODEL[genKind ?? "fx"] : null, count: 1 }]} />
+    </div>
+  );
+  const label = (g: AudioGeneration) => g.provider === "aurastage-neural-voice" ? "Built-in neural voice" : g.provider === "aurastage-voice" ? "Built-in voice (robotic)" : g.provider === "elevenlabs" ? "ElevenLabs" : g.execution === "native" ? "Built-in synthesis" : g.provider;
   const [f, setF] = useState({
     label: clip.label, track_id: clip.track_id, start_seconds: clip.start_seconds, duration_seconds: clip.duration_seconds, offset_seconds: clip.offset_seconds,
     gain_db: clip.gain_db, fade_in_seconds: clip.fade_in_seconds, fade_out_seconds: clip.fade_out_seconds, asset_id: clip.asset_id,
@@ -90,7 +111,8 @@ export function ClipInspector({
         <section aria-label="Generate this voice" className="mt-3 rounded-md border border-aura-border p-3 text-xs">
           <div className="mb-1 text-[11px] uppercase tracking-wider text-white/50">Generate this line's voice</div>
           <p className="text-white/60">Speaks the line from the approved script in the character's Voice DNA (from their Casting profile), shaped by the line's emotion.</p>
-          <button onClick={() => onGenerate({ clip_id: clip.id, kind: "voice", description: "", duration_seconds: Math.min(300, clip.duration_seconds) })}
+          {pickGen}
+          <button onClick={() => onGenerate({ clip_id: clip.id, kind: "voice", description: "", duration_seconds: Math.min(300, clip.duration_seconds), ...(chosen ? { provider: chosen.id } : {}) })}
             disabled={busy || !canGenerate} title={canGenerate ? undefined : "Your role can't generate audio"}
             className="mt-2 rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold disabled:opacity-40">Generate voice</button>
           {generations.length > 0 && (
@@ -98,7 +120,7 @@ export function ClipInspector({
               {generations.map((g) => (
                 <li key={g.id} className="flex flex-wrap items-center gap-2" data-testid="generation">
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] ${g.status === "succeeded" ? "border-emerald-400/50 text-emerald-300" : g.status === "failed" ? "border-red-400/50 text-red-300" : "border-white/20 text-white/50"}`}>{STATUS[g.status]}</span>
-                  <span className="text-white/60">{g.provider === "aurastage-neural-voice" ? "Built-in neural voice" : g.provider === "aurastage-voice" ? "Built-in voice (robotic)" : g.provider}{g.layers.length ? ` · ${g.layers.map((l) => l.name.replace(/^Voice: /, "")).join(", ")}` : ""}</span>
+                  <span className="text-white/60" title={g.layers.map((l) => l.because).join(" · ")}>{label(g)}{g.layers.length ? ` · ${g.layers.map((l) => l.name.replace(/^Voice: /, "")).join(", ")}` : ""}</span>
                   {g.error && <span className="text-red-300">{g.error}</span>}
                   {g.asset_id && <Listen assetId={g.asset_id} />}
                   {g.asset_id && (clip.asset_id === g.asset_id
@@ -116,16 +138,17 @@ export function ClipInspector({
           <div className="mb-1 text-[11px] uppercase tracking-wider text-white/50">Generate this {genKind === "score" ? "music" : genKind === "ambience" ? "ambience" : "sound"}</div>
           <div className="flex gap-2">
             <input aria-label="Sound description" value={genText} onChange={(e) => setGenText(e.target.value)} maxLength={500} className={input} />
-            <button onClick={() => onGenerate({ clip_id: clip.id, kind: genKind, description: genText.trim(), duration_seconds: Math.min(300, clip.duration_seconds) })}
+            <button onClick={() => onGenerate({ clip_id: clip.id, kind: genKind, description: genText.trim(), duration_seconds: Math.min(300, clip.duration_seconds), ...(chosen ? { provider: chosen.id } : {}) })}
               disabled={busy || !canGenerate || !genText.trim()} title={canGenerate ? undefined : "Your role can't generate audio"}
               className="whitespace-nowrap rounded-md border border-aura-gold/60 px-3 text-aura-gold disabled:opacity-40">Generate</button>
           </div>
+          {pickGen}
           {generations.length > 0 && (
             <ul aria-label="Generated for this cue" className="mt-2 space-y-1">
               {generations.map((g) => (
                 <li key={g.id} className="flex flex-wrap items-center gap-2" data-testid="generation">
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] ${g.status === "succeeded" ? "border-emerald-400/50 text-emerald-300" : g.status === "failed" ? "border-red-400/50 text-red-300" : "border-white/20 text-white/50"}`}>{STATUS[g.status]}</span>
-                  <span className="text-white/60">{g.execution === "native" ? "Built-in synthesis" : g.provider}{g.layers.length ? ` · ${g.layers.map((l) => l.name).join(", ")}` : ""}</span>
+                  <span className="text-white/60" title={g.layers.map((l) => l.because).join(" · ")}>{label(g)}{g.layers.length ? ` · ${g.layers.map((l) => l.name).join(", ")}` : ""}</span>
                   {g.error && <span className="text-red-300">{g.error}</span>}
                   {g.asset_id && <Listen assetId={g.asset_id} />}
                   {g.asset_id && (clip.asset_id === g.asset_id

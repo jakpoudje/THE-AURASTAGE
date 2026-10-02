@@ -24,6 +24,7 @@ export const PRICE_PAGES: Record<string, string> = {
   luma: "https://lumalabs.ai/api/pricing",
   kling: "https://kling.ai/dev/pricing",
   minimax: "https://platform.minimax.io/docs/guides/pricing-video",
+  elevenlabs: "https://elevenlabs.io/pricing",
 };
 
 export const PRICES: PriceEntry[] = [
@@ -31,6 +32,10 @@ export const PRICES: PriceEntry[] = [
   { provider: "anthropic", model: "claude-opus-5-5", label: "Claude Opus 5.5", price: { unit: "mtok", input: 4, output: 20 }, source: PRICE_PAGES.anthropic },
   { provider: "openai", model: "gpt-5", label: "GPT-5", price: { unit: "mtok", input: 1.25, output: 10 }, source: PRICE_PAGES.openai },
   { provider: "gemini", model: "gemini-2.5-pro", label: "Gemini 2.5 Pro", price: null, source: PRICE_PAGES.gemini },
+  // Voices, sound effects and music (R2). ElevenLabs bills in plan credits, so no per-use dollar price is confirmed here.
+  { provider: "elevenlabs", model: "eleven_multilingual_v2", label: "ElevenLabs voice", price: null, source: PRICE_PAGES.elevenlabs },
+  { provider: "elevenlabs", model: "eleven_text_to_sound_v2", label: "ElevenLabs sound effect", price: null, source: PRICE_PAGES.elevenlabs },
+  { provider: "elevenlabs", model: "music_v1", label: "ElevenLabs music", price: null, source: PRICE_PAGES.elevenlabs },
   // Images
   { provider: "openai", model: "gpt-image-1", label: "GPT Image 1 (1536×1024, quality chosen by OpenAI)", price: { unit: "image", min: 0.016, max: 0.25 }, source: PRICE_PAGES.openai },
   { provider: "bfl", model: "flux-pro-1.1", label: "FLUX 1.1 [pro]", price: { unit: "image", min: 0.04, max: 0.04 }, source: PRICE_PAGES.bfl },

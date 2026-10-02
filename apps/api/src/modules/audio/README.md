@@ -117,3 +117,9 @@ AURA-AUD-002 invalid input · 429 too many generations in a minute · 403 no acc
 `…/audio/scenes/:sceneId/place-generated` (each planned cue gets its newest finished generated sound through the same
 gated `save_audio_clip` as "Use this"; clips that already hold a recording are never touched; cues still being made are
 counted, not waited for). The web mixer's fader, pan, mute and solo act on what is playing (`Player.setLive/setTrack`).
+
+## ElevenLabs (realism R2, 2026-10-02)
+`providers/audio/elevenlabs/elevenLabsAdapter.ts` — voices (accent from Casting → library accent, gender, age band; line
+emotion/intensity → delivery), sound effects (≤ 30 s per cue) and music. Listed as "add a key to connect" until
+`ELEVENLABS_API_KEY` is set on the API and the generation worker; then chosen per clip, never by default. Prices are not
+quoted (ElevenLabs bills in plan credits) — the cost note links the price page.

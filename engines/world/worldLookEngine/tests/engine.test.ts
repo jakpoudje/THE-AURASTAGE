@@ -12,6 +12,11 @@ describe("worldLookEngine", () => {
     expect(r.identity).toBe("Lagos Harbour — exterior. Rusting cranes and stacked containers.");
     expect(r.missing).toEqual([]);
   });
+  it("1.1.0: story-timing words (CONTINUOUS, SAME TIME, MOMENTS LATER) get no views; a place with only those is shown by day", () => {
+    const r = worldLookEngine({ kind: "location", item: { ...loc, times_of_day: ["NIGHT", "CONTINUOUS", "SAME TIME", "MOMENTS LATER"] } });
+    expect([...new Set(r.views.map((v) => v.time))]).toEqual(["NIGHT"]);
+    expect([...new Set(worldLookEngine({ kind: "location", item: { ...loc, times_of_day: ["CONTINUOUS"] } }).views.map((v) => v.time))]).toEqual(["DAY"]);
+  });
   it("prop views; the identity hash changes with the description, not with the views asked for", () => {
     const a = worldLookEngine({ kind: "prop", item: { name: "Notebook", description: "Battered, red cover" } });
     const b = worldLookEngine({ kind: "prop", item: { name: "Notebook", description: "Battered, red cover" }, views: ["hero"] });
