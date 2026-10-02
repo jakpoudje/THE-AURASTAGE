@@ -129,6 +129,8 @@ export function useLibrary(projectId: string) {
         await assetsApi.videoEdit(selected!, body);
         return assetsApi.detail(selected!);
       }),
+    /** Re-reads the list with the current filters (after a bulk delete). */
+    reload: () => load(filters).catch((e) => setError(e instanceof Error ? e.message : "Could not reload the library")),
     /** Re-reads the open asset (e.g. while a video edit is being made). */
     refreshDetail: async () => { if (selected) setDetail(await assetsApi.detail(selected)); },
     clearError: () => setError(null),

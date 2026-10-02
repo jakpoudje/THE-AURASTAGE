@@ -7,11 +7,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { deleteMedia, getMedia, mediaConfigured, putMedia } from "../../storage/media";
-import { assertAssetAccess, assertProjectAccess } from "./assets.permissions";
+import { AssetForbiddenError, assertAssetAccess, assertProjectAccess } from "./assets.permissions";
+import { deleteClip } from "../audio/audio.service";
 import * as repo from "./assets.repository";
 import { toAssetDTO } from "./assets.mapper";
 import { AssetConflictError, AssetNotFoundError, AssetNotReadyError, AssetValidationError, cleanName, MAX_AUDIO_BYTES, sniffAsset, sniffAudio } from "./assets.validator";
-import { ASSET_CATEGORIES, AssetCategorySchema, AssetLinkInputSchema, UpdateAssetInputSchema } from "@aurastage/contracts";
+import { ASSET_CATEGORIES, AssetCategorySchema, AssetLinkInputSchema, BULK_DELETE_MAX, BulkDeleteAssetsSchema, UpdateAssetInputSchema } from "@aurastage/contracts";
 import { assetCatalog, assetCatalogEngine } from "@aurastage/engines";
 const { CatalogQuerySchema } = assetCatalog;
 
@@ -266,6 +267,49 @@ export async function deleteAsset(db: SupabaseClient, assetId: string, payload: 
     for (const p of paths) await deleteMedia(p, env).catch(() => void left++);
   }
   return { deleted: true, name: r.name, files_removed: mediaConfigured(env) ? paths.length - left : 0, files_left: mediaConfigured(env) ? left : paths.length };
+}
+
+/**
+ * Deletes several assets (owner request 2026-10-02: clear out the generated audio). At most BULK_DELETE_MAX per call —
+ * the page sends batches and shows progress, so a busy database never sees one huge request. Each asset is deleted on
+ * its own (one failure never stops the rest) and every outcome is reported. With `remove_from_clips`, a recording is
+ * first taken off the Audio Studio clips that use it, through Audio's own gated function (those mixes return to draft
+ * and must be measured and approved again — rule 11). Assets on the Editorial cut are refused: remove them there first.
+ */
+export async function deleteAssets(db: SupabaseClient, projectId: string, payload: unknown, env: Env = process.env) {
+  await assertProjectAccess(db, projectId);
+  const p = BulkDeleteAssetsSchema.safeParse(payload);
+  if (!p.success) throw new AssetValidationError(`Choose between 1 and ${BULK_DELETE_MAX} assets to delete.`);
+  const ids = [...new Set(p.data.asset_ids)];
+  const [found, clips, onCut] = await Promise.all([
+    repo.getAssetsIn(db, projectId, ids),
+    p.data.remove_from_clips ? repo.listClipsHolding(db, projectId, ids) : Promise.resolve([] as Row[]),
+    repo.listTimelineHolding(db, projectId, ids),
+  ]);
+  const names = new Map(found.map((a) => [a.id as string, a.name as string]));
+  const cut = new Set(onCut.map((c) => c.asset_id as string));
+  const deleted: { id: string; name: string }[] = [];
+  const failed: { id: string; name: string | null; reason: string }[] = [];
+  let clipsRemoved = 0, filesRemoved = 0, filesLeft = 0;
+  for (const id of ids) {
+    const name = names.get(id) ?? null;
+    if (!name) { failed.push({ id, name, reason: "Not found in this project (it may already be deleted)." }); continue; }
+    if (cut.has(id)) { failed.push({ id, name, reason: "It's on the Editorial timeline — remove it from the cut first." }); continue; }
+    try {
+      for (const c of clips.filter((x) => x.asset_id === id)) {
+        await deleteClip(db, c.id);
+        clipsRemoved++;
+      }
+      const r = await deleteAsset(db, id, { confirm: p.data.confirm }, env);
+      filesRemoved += r.files_removed;
+      filesLeft += r.files_left;
+      deleted.push({ id, name });
+    } catch (e) {
+      if (e instanceof AssetForbiddenError) throw e; // no permission: the same for every asset, say it once
+      failed.push({ id, name, reason: e instanceof Error && e.message ? e.message : "Couldn't delete it." });
+    }
+  }
+  return { deleted, failed, clips_removed: clipsRemoved, files_removed: filesRemoved, files_left: filesLeft };
 }
 
 export async function linkAsset(db: SupabaseClient, assetId: string, payload: unknown) {

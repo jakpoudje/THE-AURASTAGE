@@ -1470,6 +1470,13 @@ http.createServer((req, res) => {
       return { project: { id: P, title: project.title, org_id: ORG }, access: a, can_manage: manage, can_manage_studio: T.as === "owner", roles: T.roles, members: [me(), ...T.people], invites: manage ? T.invites.filter((i) => !i.accepted_at && !i.revoked_at) : [] };
     };
     const refuse = (what) => send(403, { error: { code: "AURA-COL-403", message: `your role (${teamAccess().project_role_label}) can't administer in ${what}. Ask the project's producer for access.` } });
+    // Places an asset on an Audio Studio clip in the first scene (so bulk delete can be tested against a real use).
+    if (u === "/__test/place-audio") {
+      const sc = scenes[0]; let se = asessions.find((x) => x.scene_id === sc.id);
+      if (!se) { se = { id: crypto.randomUUID(), scene_id: sc.id, status: "approved", review_state: "current", review_reason: null, approved_version_id: null, revision: crypto.randomUUID() }; asessions.push(se); }
+      aclips.push({ id: crypto.randomUUID(), session_id: se.id, track_id: null, kind: "asset", asset_id: b.asset_id, label: "Placed take", start_seconds: 0, duration_seconds: 1, gain_db: 0 });
+      return send(200, { ok: true, session_id: se.id });
+    }
     if (u === "/__test/as") { T.as = b.role; if (b.email) T.email = b.email; return send(200, { ok: true }); }
     // ---- AI & Generation readiness (mirrors apps/api/src/modules/projects/projects.generation; REAL engine; evidence from the mock's records) ----
     if (u === `/api/projects/${P}/generation-readiness`) {
@@ -1730,6 +1737,26 @@ http.createServer((req, res) => {
         a.updated_at = now(); a.history.push({ action: b.archived === undefined ? "AssetUpdated" : b.archived ? "AssetArchived" : "AssetRestored", metadata: {}, created_at: now() });
         return send(200, detailOf(a));
       }
+    }
+    // Bulk delete (mirrors assets.service deleteAssets): ≤25 per call; placed sounds come off their clips when asked
+    // (those mixes go back to draft); assets on the Editorial cut are skipped; every outcome is reported.
+    if (u === `/api/projects/${P}/library/delete` && req.method === "POST") {
+      if (astGate("edit")) return;
+      const ids = Array.isArray(b.asset_ids) ? [...new Set(b.asset_ids)] : [];
+      if (!ids.length || ids.length > 25) return astErr(400, "Choose between 1 and 25 assets to delete.");
+      const out = { deleted: [], failed: [], clips_removed: 0, files_removed: 0, files_left: 0 };
+      for (const id of ids) {
+        const a = assetById(id);
+        if (!a) { out.failed.push({ id, name: null, reason: "Not found in this project (it may already be deleted)." }); continue; }
+        if (tclips.some((c) => c.asset_id === a.id)) { out.failed.push({ id, name: a.name, reason: "It's on the Editorial timeline — remove it from the cut first." }); continue; }
+        const onClips = aclips.filter((c) => c.asset_id === a.id);
+        if (onClips.length && b.remove_from_clips !== true) { out.failed.push({ id, name: a.name, reason: `“${a.name}” is placed on Audio Studio clips — remove it from those clips first (or archive it to hide it)` }); continue; }
+        if (usageOf(a).some((x) => x.kind !== "audio_clip") && b.confirm !== true) { out.failed.push({ id, name: a.name, reason: `“${a.name}” is in use in this project — confirm to delete it anyway` }); continue; }
+        for (const c of onClips) { const s = asessions.find((x) => x.id === c.session_id); aclips.splice(aclips.indexOf(c), 1); if (s) { atouch(s); s.status = "draft"; } out.clips_removed++; }
+        assets.splice(assets.indexOf(a), 1);
+        out.files_removed += a.versions.length; out.deleted.push({ id, name: a.name });
+      }
+      return send(200, out);
     }
     // Delete for good (mirrors migration 0043 delete_asset): refused while on Audio Studio clips; other uses need confirm.
     if ((m = u.match(/^\/api\/assets\/([0-9a-f-]{36})\/delete$/)) && req.method === "POST") {

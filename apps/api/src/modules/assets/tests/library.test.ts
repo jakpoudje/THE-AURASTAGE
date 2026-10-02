@@ -31,6 +31,7 @@ function app(rows: Record<string, any[]>, calls: any[]) {
           select: () => q, order: () => q, limit: () => q,
           eq: (k: string, v: unknown) => (f.push((r) => r[k] === v), q),
           neq: (k: string, v: unknown) => (f.push((r) => r[k] !== v), q),
+          in: (k: string, vs: unknown[]) => (f.push((r) => vs.includes(r[k])), q),
           not: (k: string) => (f.push((r) => r[k] !== null && r[k] !== undefined), q),
           maybeSingle: async () => ({ data: res()[0] ?? null, error: null }),
           then: (ok: any) => ok({ data: res(), error: null }),
@@ -63,6 +64,10 @@ function app(rows: Record<string, any[]>, calls: any[]) {
           if (rows.character_reference_images?.some((r) => r.asset_id === a0.id) && !args.p_confirm) return { data: null, error: { message: `AURA-AST-409: “${a0.name}” is in use in this project — confirm to delete it anyway`, code: "P0409" } };
           rows.assets = rows.assets.filter((x) => x !== a0);
           return { data: { name: a0.name, storage_paths: rows.asset_versions.filter((v) => v.asset_id === a0.id).map((v) => v.storage_path) }, error: null };
+        }
+        if (fn === "delete_audio_clip") {
+          rows.audio_clips = rows.audio_clips.filter((c) => c.id !== args.p_clip_id);
+          return { data: null, error: null };
         }
         if (fn === "set_asset_link") {
           rows.asset_links.push({ asset_id: args.p_asset, project_id: P, object_type: args.p_object_type, object_id: args.p_object_id });
@@ -182,6 +187,39 @@ describe("Assets Library routes", () => {
     const ok = await a.inject({ method: "POST", url: `/api/assets/${WAV}/delete`, payload: { confirm: true } });
     expect(ok.json()).toEqual({ deleted: true, name: "Tunde line 1", files_removed: 1, files_left: 0 });
     expect(stored["k/wav1.wav"]).toBeUndefined();
+  });
+
+  it("bulk delete (owner request 2026-10-02): sounds placed in Audio Studio are taken off their clips first when asked, the Editorial cut is never touched, every outcome is reported, and batches are capped", async () => {
+    const C1 = "dddddddd-dddd-4ddd-8ddd-000000000001", C2 = "dddddddd-dddd-4ddd-8ddd-000000000002";
+    const W2 = "99999999-9999-4999-8999-999999999999", W3 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", GONE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    for (const [id, name] of [[W2, "Rain bed"], [W3, "Theme"]] as const) {
+      rows.assets.push({ ...rows.assets[0], id, name, storage_path: `k/${id}.wav` });
+      rows.asset_versions.push({ ...rows.asset_versions[0], asset_id: id, storage_path: `k/${id}.wav` });
+      stored[`k/${id}.wav`] = Buffer.from("RIFF");
+    }
+    rows.audio_clips = [{ id: C1, asset_id: WAV, session_id: SESS, label: "Tunde line", project_id: P }, { id: C2, asset_id: WAV, session_id: SESS, label: "again", project_id: P }];
+    rows.timeline_clips = [{ asset_id: W3, project_id: P, label: "Theme", record_in: 0 }];
+    const calls: any[] = [];
+    const a = app(rows, calls);
+    await registerAssetsRoutes(a);
+    const url = `/api/projects/${P}/library/delete`;
+    // Without remove_from_clips the placed sound is refused (named), the free one goes.
+    let r = (await a.inject({ method: "POST", url, payload: { asset_ids: [WAV, W2] } })).json();
+    expect(r.deleted.map((x: any) => x.name)).toEqual(["Rain bed"]);
+    expect(r.failed[0]).toMatchObject({ id: WAV, reason: expect.stringMatching(/Audio Studio clips in Scene 1/) });
+    expect(stored[`k/${W2}.wav`]).toBeUndefined();
+    // With it: both clips come off through Audio's own function, then the sound and its file go.
+    r = (await a.inject({ method: "POST", url, payload: { asset_ids: [WAV, W3, GONE], remove_from_clips: true } })).json();
+    expect(r.deleted.map((x: any) => x.name)).toEqual(["Tunde line 1"]);
+    expect(r.clips_removed).toBe(2);
+    expect(calls.filter((c) => c.fn === "delete_audio_clip").map((c) => c.args.p_clip_id)).toEqual([C1, C2]);
+    expect(r.failed.map((x: any) => x.reason)).toEqual([expect.stringMatching(/Editorial timeline/), expect.stringMatching(/Not found/)]);
+    expect(rows.assets.map((x) => x.id)).toEqual([W3]);
+    expect(stored["k/wav1.wav"]).toBeUndefined();
+    // Batches are capped so a busy database never gets one huge request.
+    const many = Array.from({ length: 26 }, (_, i) => `cccccccc-cccc-4ccc-8ccc-${String(i).padStart(12, "0")}`);
+    expect((await a.inject({ method: "POST", url, payload: { asset_ids: many } })).statusCode).toBe(400);
+    expect((await a.inject({ method: "POST", url, payload: { asset_ids: [] } })).statusCode).toBe(400);
   });
 
   it("video edits (migration 0050): trim / mute / speed are queued for the render worker; nothing-to-do, bad ranges and non-video are refused; the detail shows the edits", async () => {

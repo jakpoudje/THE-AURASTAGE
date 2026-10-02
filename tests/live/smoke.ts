@@ -565,6 +565,16 @@ await check("assets: delete (migration 0043) — a recording in the mix is refus
   assert(!lib.assets.some((a: any) => a.id === imageId), "still listed");
   return `${r.files_removed} file(s) removed`;
 });
+await check("assets: bulk delete (owner request 2026-10-02) — several at once, one unknown is reported not fatal, more than 25 is refused", async () => {
+  const ids: string[] = [];
+  for (const n of ["Bulk%20a", "Bulk%20b"]) ids.push((await (await rawPost(`/api/projects/${projectId}/library?name=${n}&category=locations&width=1&height=1`, "image/png", PNG_1PX)).json()).asset.id);
+  const r = await api("POST", `/api/projects/${projectId}/library/delete`, { asset_ids: [...ids, "00000000-0000-4000-8000-000000000000"], confirm: true });
+  assert(r.deleted.length === 2 && r.failed.length === 1 && /Not found/.test(r.failed[0].reason) && r.files_left === 0, "bulk " + JSON.stringify(r));
+  const lib = await api("GET", `/api/projects/${projectId}/library`);
+  assert(!lib.assets.some((a: any) => ids.includes(a.id)), "still listed");
+  await api("POST", `/api/projects/${projectId}/library/delete`, { asset_ids: Array.from({ length: 26 }, () => ids[0]) }, [400]);
+  return `${r.deleted.length} deleted, ${r.files_removed} file(s) removed`;
+});
 // ---- Editorial & Timeline (Phase 9) ----
 let edRev = "";
 const edWs = () => api("GET", `/api/projects/${projectId}/editorial`);

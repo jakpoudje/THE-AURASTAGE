@@ -51,6 +51,21 @@ export const UpdateAssetInputSchema = z
   .refine((v) => Object.keys(v).length > 0, "Nothing to change");
 export type UpdateAssetInput = z.infer<typeof UpdateAssetInputSchema>;
 
+/**
+ * Delete several assets in one go (owner request 2026-10-02: clear out generated audio). At most 25 per call so a busy
+ * database never gets one huge request; the page sends batches and shows progress. `remove_from_clips` takes a recording
+ * off the Audio Studio clips that use it first (those mixes go back to draft for review — never silently kept approved).
+ */
+export const BULK_DELETE_MAX = 25;
+export const BulkDeleteAssetsSchema = z
+  .object({
+    asset_ids: z.array(z.string().uuid()).min(1).max(BULK_DELETE_MAX),
+    confirm: z.boolean().default(false),
+    remove_from_clips: z.boolean().default(false),
+  })
+  .strict();
+export type BulkDeleteAssetsInput = z.infer<typeof BulkDeleteAssetsSchema>;
+
 export const AssetLinkInputSchema = z
   .object({ object_type: z.enum(["scene", "character"]), object_id: z.string().uuid(), linked: z.boolean().default(true) })
   .strict();

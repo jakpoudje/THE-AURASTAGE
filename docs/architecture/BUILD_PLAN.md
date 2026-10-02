@@ -280,7 +280,8 @@ Everything not yet done, in build order. When an item is finished it moves up in
 | 37 | 🟡 One click for every page, in workflow order, with every item still editable by hand (owner request 2026-10-02). Done: Casting's whole-cast fill also saves the relationships the dialogue states, plus **Add all suggested relationships**; Locations & Props **Make reference pictures for every place and prop (free)**; Visual Generation **1 Compile every shot's prompt · 2 Sketch every shot (free) · 3 Approve a take for every shot** — so the whole film can be assembled in Editorial from sketches before any paid provider has credit; Audio Studio **1 Spot all scenes · 2 Generate all planned sounds · 3 Place all generated sounds on their marked spots** (and per scene); mixer fader, pan, mute and solo now act on what is playing; Editorial **Make a watchable film from everything approved (one click)** (assembly if none → Picture Lock → Review Copy render); Visual Generation shows the **1,000-character version** of each prompt that fits every provider. Next: Dialogue and Scene DNA "every scene" buttons, measure + approve every scene mix | Each page has its whole-film buttons; nothing approved is overwritten |
 | 38 | ✅ Timeline editing on both timelines (owner request 2026-10-02: "no means of deleting or editing audio further … removing or reinstating the parts I didn't want … must be considered even for video timelines"). Audio Studio: Clip tools bar (split, mute/unmute, trim start/end to playhead, edge-drag trims, fades, ±3 dB, duplicate, delete), keyboard shortcuts and Undo (last 30, a delete included); muted clips are kept but left out of playback, the approved mix and the render (migration 0053, renderManifest 1.9.0). Editorial: ↶ Undo / Ctrl+Z for every edit, one at a time (migration 0054) | Unwanted sound can be removed or muted and brought back; any picture edit can be undone |
 | 39 | ✅ Whole-film work in batches with live progress, and team hand-offs (owner request 2026-10-02: "generate all planned sounds says: that's a lot of generations in a minute … do it in batches whilst showing … what stage and % completion for each scene … teams … notification on completed stage"). **Batches** (migration 0055): whole-film runs are bounded by queue size (48 sounds / 96 takes per project) instead of the per-minute click cap, and workers always take a person's own request first. **Production runs** (migration 0056, `apps/api/src/modules/runs`): "▶ Do 1–3 for the whole film, scene by scene" in Audio Studio (spot → generate → place) and Visual Generation (compile → sketch → approve), plus each step on its own; worked in ~25 s rounds by whichever open page holds the lease, shared with the team, pause / resume / stop, log. **Background activity panel**: who started it, the step, what it just did, overall % and every scene's stage and % with segmented, animated bars — all counted from the records. **Hand-offs** (migration 0057): stage owners on the Team page; when a scene clears a stage the next stage's owners are notified with a link, grouped ("Scenes 3, 4 and 7 are ready for Visual Generation"); never about your own work. Also: audio reads page past 1,000 rows; a cue whose sound failed twice is left for the person | A whole film is generated without errors while every scene's progress is visible; the next department hears when its scenes are ready |
-| 40 | ✅ Incident 2026-10-02 (pages not loading, sign-in hanging): Supabase Auth took 10–60 s because the small database instance it shares was starved — ~10 worker lanes polled for work every 1–3 s around the clock and queued on one heartbeat row's lock, every API call re-verified its token with Auth, progress panels refreshed every 3 s, on top of the day's whole-film runs. Fixed: workers back off when idle (3 s → 10–30 s, back to full speed on work), the heartbeat never waits on a lock (migration 0058), the API reuses a verified session for 30 s (cleared at once when other devices are signed out), progress panels refresh every 5 s and not in background tabs. If it recurs under heavy use, the Supabase compute size is the next lever (owner's plan) | Sign-in answers in about a second again; no statement timeouts at rest |
+| 40 | ✅ Incident 2026-10-02 (pages not loading, sign-in hanging): Supabase Auth took 10–60 s because the small database instance it shares was starved — ~10 worker lanes polled for work every 1–3 s around the clock and queued on one heartbeat row's lock, every API call re-verified its token with Auth, progress panels refreshed every 3 s, on top of the day's whole-film runs. Fixed: workers back off when idle (3 s → 10–30 s, back to full speed on work), the heartbeat never waits on a lock (migration 0058), the API reuses a verified session for 30 s (cleared at once when other devices are signed out), progress panels refresh every 5 s and not in background tabs. If it recurs under heavy use, the Supabase compute size is the next lever (owner's plan). Update 15:20 UTC: still slow at rest — a count over 85 in-memory pages took 4.8–16.5 s, so the free Nano instance (shared CPU, 0.5 GB, also running Auth and the data API) is starved, not the queries (RLS already uses initplans; the performance advisor has no blocking findings). Owner choices: restart the project (free, temporary relief) or a larger compute size (lasting) | Sign-in answers in about a second again; no statement timeouts at rest |
+| 41 | ✅ Delete many assets at once (owner request 2026-10-02: "make sure all assets can be deleted … delete a lot of the downloaded audio"). Assets Library → **Select to delete…** → tick cards or **Select all shown** (use the filters, e.g. type Audio) → the dialog says exactly what will happen: how many are placed in Audio Studio and in which scenes (tick **Take them off those clips too** — those mixes go back to draft to be measured and approved again, rule 11), how many are used elsewhere, and which are on the Editorial cut (skipped until removed there). Deleted in batches of 25 with a short pause and a live progress bar; can be stopped between batches; every skipped asset is listed with why. `POST /api/projects/:id/library/delete` (contracts `BulkDeleteAssetsSchema`, max 25); clips come off through Audio's own gated `delete_audio_clip`, then `delete_asset` and the stored files. No migration. Note: files live in the Railway media bucket, not in Supabase — the database is 72 MB of the free plan's 500 MB, so deleting audio frees bucket space and lightens the Audio pages, but it is not what made the site slow (item 40) | Hundreds of sounds can be cleared from the library, including ones placed in Audio Studio, with progress shown |
 | 16 | ✅ Casting whole-cast buttons and "Save & next" (2026-09-30); remaining: the same "save & continue + what's next" on every other stage (item 17) | Owner request 2026-09-30 |
 | 17 | ✅ "What's next" on every stage: the stage's next step and progress from the production overview (never a made-up percentage), updated after every save; "Continue to …" once the stage is done, "Skip ahead" otherwise — 2026-09-30 | Owner request 2026-09-30 |
 | 18 | ✅ Delete any asset, with a warning that lists exactly where it is used (migration 0043, 2026-09-30) | Owner request 2026-09-30 |
@@ -290,3 +291,49 @@ Everything not yet done, in build order. When an item is finished it moves up in
 | 20 | 🟡 Cost shown before every paid action: Visual Generation, Casting looks, Locations & Props views, AuraScript, and "Refine with Claude" in Ask AuraStage (filling fields is free — item 22) — done 2026-09-30. Remaining: confirm the prices marked "not confirmed" (Gemini, Imagen, Kling, MiniMax, Luma Photon, Runway images, some Stability models) and add voice/music when those providers arrive | Owner request 2026-09-30 |
 | 15 | Verify every page live after each change (the live checks grow with every feature) | `live-smoke` and `live-browser` both pass |
 
+
+## 9. Version 2 — where next (owner question 2026-10-02)
+
+Version 1 is the whole studio working end to end with free built-in tools, and every paid provider wired in but
+switched off until its key is added. Version 2 makes the result a cinema-grade film. Three principles:
+**every timing comes from one clock**, **every provider is a plug-in behind the gateway**, and **nothing is ever
+silently replaced**.
+
+**V2.1 — One timing spine (frame-accurate sync).** Today shots, lines, cues and the cut each have their own
+lengths. V2 gives every scene one master timeline in frames (24 fps), owned by Editorial: each shot's in/out, each
+line's start and end (from the recorded or generated voice, not an estimate), each sound cue anchored to an action
+or a frame, and each music cue anchored to a beat. When anything changes length (a new take, a longer voice line),
+the spine re-times everything after it and flags what moved, instead of drifting. Lip sync, Foley and music all
+read the same spine, so they land on the same frame.
+
+**V2.2 — Providers that slot in.** One adapter per provider behind the Provider Gateway, each declaring what it can
+do (lengths, sizes, reference images, start/end frames, voices, accents, languages) and its price. Script (Claude),
+images (OpenAI, Imagen, Flux), video (Runway, Kling, Luma, Veo — image-to-video from the approved still, with a
+last-frame hand-off for continuous shots), voices and sound (ElevenLabs), music (ElevenLabs Music or a score
+provider), lip sync (sync.so or Kling). Each one is tested against the real API shape and turns on when its key is
+added. Best-provider routing per shot (close-up dialogue → the best lip-sync-ready model; wide establishing shot →
+the best landscape model), always with the price first.
+
+**V2.3 — Performance and lip sync.** Each line: the final voice (with accent and emotion) → the approved take →
+lip-sync pass → a mouth-movement check → a new take marked "lip-synced", never overwriting the original.
+
+**V2.4 — Surround sound and cinema delivery.** Version 1 mixes in stereo. V2 adds a **5.1 mix** (dialogue anchored in
+the centre, music and ambience spread wide, effects panned to where they are in the frame, LFE for impacts), then
+**7.1**, and **Dolby Atmos-ready stems** (dialogue, music, effects and object tracks) for a mixing stage to finish.
+Loudness to each delivery target (cinema, streaming −27 LKFS / −24 LUFS, broadcast, social), M&E for foreign
+versions, and a **DCP-ready** master alongside the streaming files.
+
+**V2.5 — Quality control before delivery.** Automatic checks on the whole film: continuity (faces, wardrobe, props,
+time of day) shot to shot, sync drift, loudness and peaks, black frames and flash frames, and missing captions —
+each with the frame to fix.
+
+**V2.6 — Scale and team.** A larger database tier and a dedicated worker pool so a feature film (thousands of shots
+and sounds) loads in under two seconds; live presence (who is in which scene), review links for clients, and
+version history across the whole film.
+
+**V2.7 — Global.** Interface languages (R6), scripts and dialogue in any language, dubbing into other languages with
+the same voices and lip sync, and Location Intelligence (R7).
+
+**Order:** finish the open V1 items above (R2–R7) and verify each live → V2.1 timing spine (everything else depends
+on it) → V2.3 lip sync → V2.4 surround → V2.5 QC → V2.2 routing → V2.6 → V2.7. Paid keys and a larger database are
+the owner's to add when ready; until then everything stays on the free built-in tools.

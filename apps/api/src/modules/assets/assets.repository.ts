@@ -90,6 +90,14 @@ export const listRenderSources = (db: SupabaseClient, projectId: string) =>
   rows(db.from("renders").select("id, profile_id, lock_number, status, asset_ids:manifest->sources->asset_ids").eq("project_id", projectId).neq("status", "cancelled"));
 export const listHistory = (db: SupabaseClient, assetId: string) =>
   rows(db.from("audit_events").select("action, metadata, actor_id, created_at").eq("object_type", "Asset").eq("object_id", assetId).order("created_at", { ascending: false }).limit(50));
+/** Audio Studio clips holding any of these assets (read-only; Audio owns clips and removes them through its own function). */
+export const listClipsHolding = (db: SupabaseClient, projectId: string, assetIds: string[]) =>
+  rows(db.from("audio_clips").select("id, asset_id").eq("project_id", projectId).in("asset_id", assetIds));
+/** Assets on the Editorial timeline (A2 music) — Editorial owns those clips; the asset can't go while it's on the cut. */
+export const listTimelineHolding = (db: SupabaseClient, projectId: string, assetIds: string[]) =>
+  rows(db.from("timeline_clips").select("asset_id").eq("project_id", projectId).in("asset_id", assetIds));
+export const getAssetsIn = (db: SupabaseClient, projectId: string, ids: string[]) =>
+  rows(db.from("assets").select("id, name, project_id").eq("project_id", projectId).in("id", ids));
 export const deleteAsset = (db: SupabaseClient, id: string, confirm: boolean) =>
   rpc<{ name: string; storage_paths: string[] }>(db, "delete_asset", { p_asset: id, p_confirm: confirm });
 export const updateAsset = (db: SupabaseClient, id: string, patch: Row) => rpc(db, "update_asset", { p_asset: id, p_patch: patch });

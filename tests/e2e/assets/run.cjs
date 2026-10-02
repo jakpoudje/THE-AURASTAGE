@@ -273,6 +273,40 @@ You came.
     await detail().getByTestId("video-edit").getByText("Saved as version 2").waitFor();
   });
 
+  await step("bulk delete (owner request 2026-10-02): select several, the dialog says one is placed in Audio Studio, take it off its clip and delete them all with progress; reload: gone", async () => {
+    await page.goto(`${BASE}/projects/${P}/assets`);
+    await page.getByLabel("Search assets").waitFor();
+    for (const n of ["Bulk one", "Bulk two", "Bulk three"]) {
+      await page.getByLabel("File to upload").setInputFiles(wav(`${n.replace(" ", "_")}.wav`, 1));
+      const dlg = page.getByRole("dialog", { name: "Add asset" });
+      await dlg.getByLabel("Asset name").fill(n);
+      await dlg.getByRole("button", { name: "Add to library" }).click();
+      await page.getByRole("status").getByText(`Added “${n}”.`).waitFor();
+    }
+    const lib = await api("GET", `/api/projects/${P}/library`);
+    const one = lib.assets.find((a) => a.name === "Bulk one");
+    await api("POST", "/__test/place-audio", { asset_id: one.id });
+    await page.reload();
+    await page.getByLabel("Search assets").fill("Bulk");
+    const grid = page.getByRole("list", { name: "Assets" });
+    await grid.getByRole("button", { name: /Bulk three/ }).waitFor();
+    await page.getByRole("button", { name: "Select to delete…" }).click();
+    await page.getByRole("toolbar", { name: "Selection" }).getByRole("button", { name: /Select all shown \(3\)/ }).click();
+    await page.getByTestId("selected-count").getByText("3 selected").waitFor();
+    await page.getByRole("button", { name: "Delete 3 selected…" }).click();
+    const dlg = page.getByRole("dialog", { name: "Delete selected assets" });
+    await dlg.getByText(/placed in Audio Studio \(Scene 1/).waitFor();
+    const go = dlg.getByRole("button", { name: "Delete 3 assets" });
+    if (!(await go.isDisabled())) throw new Error("delete must wait for the 'I understand' tick");
+    await dlg.getByLabel("I understand these will be deleted for good").check();
+    await go.click();
+    const prog = page.getByRole("region", { name: "Deleting assets" });
+    await prog.getByText(/Finished · 3 deleted · 1 Audio Studio clip removed/).waitFor({ timeout: 15000 });
+    await page.reload();
+    await page.getByLabel("Search assets").fill("Bulk");
+    await page.getByText("Nothing matches these filters.").waitFor();
+  });
+
   await browser.close();
   if (errors.length) { console.log("ERRORS:", errors); failed++; }
   console.log(failed ? `${failed} FAILED` : "ALL PASSED");

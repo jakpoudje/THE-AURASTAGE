@@ -1,7 +1,7 @@
 "use client";
 
 import { apiGet, apiGetBytes, apiPatch, apiPost, apiUpload } from "@/lib/apiClient";
-import type { AssetDetail, Filters, Library, VideoEditParams } from "../types";
+import type { AssetDetail, BulkDeleteResult, Filters, Library, VideoEditParams } from "../types";
 
 const qs = (f: Filters) => {
   const p = new URLSearchParams();
@@ -27,6 +27,9 @@ export const assetsApi = {
     apiUpload<AssetDetail>(`/api/assets/${assetId}/versions?${meta(m)}`, file, contentTypeOf(file)),
   remove: (assetId: string, confirm: boolean) =>
     apiPost<{ deleted: true; name: string; files_removed: number; files_left: number }>(`/api/assets/${assetId}/delete`, { confirm }),
+  /** Deletes up to 25 assets in one call (the page batches larger selections and shows progress). */
+  removeMany: (projectId: string, body: { asset_ids: string[]; confirm: boolean; remove_from_clips: boolean }) =>
+    apiPost<BulkDeleteResult>(`/api/projects/${projectId}/library/delete`, body),
   update: (assetId: string, patch: Record<string, unknown>) => apiPatch<AssetDetail>(`/api/assets/${assetId}`, patch),
   link: (assetId: string, object_type: "scene" | "character", object_id: string, linked: boolean) =>
     apiPost<AssetDetail>(`/api/assets/${assetId}/links`, { object_type, object_id, linked }),

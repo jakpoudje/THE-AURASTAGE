@@ -13,6 +13,8 @@ import { useLibrary } from "./hooks/useLibrary";
 import { AssetGrid } from "./components/AssetGrid";
 import { AssetDetailPanel } from "./components/AssetDetailPanel";
 import { CategoryTabs, FilterBar } from "./components/LibraryFilters";
+import { BulkDeleteDialog, BulkProgressPanel, SelectionBar } from "./components/BulkDelete";
+import { useBulkDelete } from "./hooks/useBulkDelete";
 
 const ACCEPT = "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,audio/*,application/pdf,text/plain,text/csv,.cube";
 
@@ -25,6 +27,9 @@ export default function AssetsLibraryPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<File | null>(null);
   const [name, setName] = useState("");
+  const [selecting, setSelecting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const B = useBulkDelete(id, L.reload);
 
   if (L.loading) return <div className="p-12 text-center text-white/50">Opening the Assets Library…</div>;
   if (!L.project || !L.lib) {
@@ -78,10 +83,26 @@ export default function AssetsLibraryPage() {
         <CategoryTabs lib={lib} filters={L.filters} set={L.setFilters} />
         <FilterBar lib={lib} filters={L.filters} set={L.setFilters} />
         <p className="text-[11px] text-white/40">{lib.search_note}</p>
+        {canEdit && (
+          <SelectionBar selecting={selecting} setSelecting={(v) => { setSelecting(v); if (v) L.select(null); }} count={B.selected.size} shown={lib.assets}
+            selectMany={B.selectMany} clear={B.clear} onDelete={() => setConfirming(true)} disabled={L.busy || !!B.progress?.running} />
+        )}
+        {confirming && (
+          <BulkDeleteDialog assets={lib.assets.filter((a) => B.selected.has(a.id))} onCancel={() => setConfirming(false)}
+            onConfirm={(opts) => {
+              setConfirming(false);
+              const chosen = lib.assets.filter((a) => B.selected.has(a.id));
+              // Assets on the Editorial cut (and, without "take them off", placed sounds) are skipped up front.
+              const ids = chosen.filter((a) => !a.usage.some((u) => u.kind === "timeline") && (opts.remove_from_clips || !a.usage.some((u) => u.kind === "audio_clip"))).map((a) => a.id);
+              void B.run(ids, opts);
+            }} />
+        )}
+        {B.progress && <BulkProgressPanel p={B.progress} onStop={B.stop} onDismiss={B.dismiss} />}
         <div className={`grid gap-4 ${L.detail ? "xl:grid-cols-[minmax(0,1fr)_420px]" : ""}`}>
           <div>
             {lib.assets.length ? (
-              <AssetGrid assets={lib.assets} selected={L.selected} onSelect={L.select} categoryLabel={catLabel} />
+              <AssetGrid assets={lib.assets} selected={L.selected} onSelect={L.select} categoryLabel={catLabel}
+                picked={selecting ? { ids: B.selected, toggle: B.toggle } : undefined} />
             ) : (
               <div className="rounded-lg border border-dashed border-aura-border p-10 text-center text-sm text-white/50">
                 {lib.library_size === 0 && !L.filters.archived ? "No assets yet. Upload reference images, recordings, documents or LUTs — audio recorded in Audio Studio shows up here too." : "Nothing matches these filters."}

@@ -54,6 +54,14 @@ metadata fields are not modelled yet; deleting an org/project does not yet remov
   `reference` views). Reference views then count as missing and can be made again; delivered files keep their own copy.
 - Every version's file is then removed from the private bucket; any file that couldn't be removed is reported (`files_left`).
 
+## Deleting many assets (owner request 2026-10-02)
+`POST /api/projects/:id/library/delete { asset_ids (1–25), confirm, remove_from_clips }` → for each asset on its own:
+refused if it is on the Editorial cut (Editorial owns it — remove it there first); with `remove_from_clips` its Audio
+Studio clips are removed first through Audio's own `deleteClip` (gated `delete_audio_clip`; the mix goes back to draft,
+rule 11); then `delete_asset` and its files as above. Returns `{ deleted, failed: [{id, name, reason}], clips_removed,
+files_removed, files_left }`; one failure never stops the rest, a permission refusal stops the call. The page
+(Select to delete…) sends batches of 25 with a short pause and shows progress.
+
 ## Video edits (migration 0050, BUILD_PLAN §8 item 34)
 
 `POST /api/assets/:id/video-edit` `{ trim_start, trim_end|null, mute, speed (0.5–2), note }` → `request_video_edit`

@@ -25,3 +25,8 @@ export type AssetDetail = {
 export type VideoEditParams = { trim_start: number; trim_end: number | null; mute: boolean; speed: 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2 };
 export type VideoEdit = { id: string; source_version: number; params: VideoEditParams; note: string; status: "queued" | "running" | "succeeded" | "failed"; error: string | null; result_version: number | null; created_at: string; completed_at: string | null };
 export type Filters = { q: string; category: string | null; type: string | null; usage: "any" | "used" | "unused"; scene_id: string | null; archived: boolean; sort: "newest" | "name" };
+export type BulkDeleteResult = {
+  deleted: { id: string; name: string }[];
+  failed: { id: string; name: string | null; reason: string }[];
+  clips_removed: number; files_removed: number; files_left: number;
+};
