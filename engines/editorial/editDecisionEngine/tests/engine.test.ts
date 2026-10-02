@@ -99,6 +99,20 @@ describe("editDecisionEngine", () => {
     expect(r.clips.find((c) => c.id === U(2))).toMatchObject({ take_id: U(77), record_in: 48, duration: 48, label: "C2 new take" });
     expect(() => run({ op: "conform" }, { replacements: [] })).toThrow(/already/);
   });
+  it("1.3.0 (owner 2026-10-02): conform adds approved scene sound that isn't on the cut, in sync, in free space only", () => {
+    // Scene 2's picture follows at 192; its mix was approved after the cut was assembled.
+    const clips = [...tl(), clip(5, "V1", 192, 100, { scene_id: U(91) })];
+    const mix = (record_in: number, duration: number) => ({ ...clip(6, "A1", record_in, duration), id: null, scene_id: U(91), audio_session_version_id: U(61), label: "Scene 2 mix v1" });
+    let r = editDecisionEngine({ clips, operation: { op: "conform" }, additions: [mix(192, 100)] });
+    expect(pick(r, "A1")).toEqual([["C4", 0, 192, 0], ["Scene 2 mix v1", 192, 100, 0]]);
+    expect(pick(r, "V1")).toEqual(pick(editDecisionEngine({ clips, operation: { op: "conform" }, additions: [mix(192, 100)] }), "V1"));
+    expect(r.summary).toMatch(/added the approved sound of 1 scene/i);
+    // Never covers existing sound: shortened to the gap before the next clip, skipped where sound already plays.
+    const later = { ...clip(7, "A1", 250, 50), scene_id: U(92) };
+    r = editDecisionEngine({ clips: [...clips, later], operation: { op: "conform" }, additions: [mix(192, 100)] });
+    expect(pick(r, "A1")).toEqual([["C4", 0, 192, 0], ["Scene 2 mix v1", 192, 58, 0], ["C7", 250, 50, 0]]);
+    expect(() => editDecisionEngine({ clips, operation: { op: "conform" }, additions: [mix(100, 50)] })).toThrow(/no free space/);
+  });
   it("refuses unknown clips in plain language", () => {
     expect(() => run({ op: "lift", clip_id: U(55) })).toThrow(/no longer on the timeline/);
   });

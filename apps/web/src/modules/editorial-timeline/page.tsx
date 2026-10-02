@@ -196,8 +196,18 @@ export default function EditorialPage() {
             <div className="min-w-0 flex-1">
               <p className="font-medium">{t.review_state !== "current" ? "Upstream changes need review." : "New approved takes or mixes are available."}</p>
               <p className="mt-1 text-xs opacity-90">
-                {t.review_reason ?? `${ws.conformable} clip${ws.conformable === 1 ? "" : "s"} can use a newly approved take or mix. Your cut stays exactly as it is until you conform.`}
+                {t.review_reason ?? (() => {
+                  const add = ws.sound_to_add ?? 0, swap = ws.conformable - add;
+                  return [
+                    swap > 0 ? `${swap} clip${swap === 1 ? "" : "s"} can use a newly approved take or mix.` : "",
+                    add > 0 ? `${add} scene${add === 1 ? " has" : "s have"} approved sound from Audio Studio that isn't on the Sound track yet.` : "",
+                    "Your cut stays exactly as it is until you conform.",
+                  ].filter(Boolean).join(" ");
+                })()}
               </p>
+              {t.review_reason && (ws.sound_to_add ?? 0) > 0 && (
+                <p className="mt-1 text-xs opacity-90">{ws.sound_to_add} scene{ws.sound_to_add === 1 ? " has" : "s have"} approved sound from Audio Studio that isn't on the Sound track yet.</p>
+              )}
             </div>
             {ws.conformable > 0 && (
               <button onClick={() => edit({ op: "conform" })} disabled={d.busy !== null} className="rounded-md border border-aura-gold px-3 py-1.5 text-sm disabled:opacity-40">

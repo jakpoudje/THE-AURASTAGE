@@ -65,6 +65,11 @@ function app(rows: Record<string, any[]>, calls: any[]) {
           rows.assets = rows.assets.filter((x) => x !== a0);
           return { data: { name: a0.name, storage_paths: rows.asset_versions.filter((v) => v.asset_id === a0.id).map((v) => v.storage_path) }, error: null };
         }
+        if (fn === "save_audio_clip") {
+          const c = rows.audio_clips.find((x) => x.id === args.p_clip_id);
+          if ("asset_id" in args.p_patch) Object.assign(c, { asset_id: args.p_patch.asset_id, kind: args.p_patch.asset_id ? "asset" : "cue" });
+          return { data: { ...c, track_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", updated_at: "2026-10-02T00:00:00Z", created_at: "2026-10-02T00:00:00Z", start_seconds: 0, duration_seconds: 1, offset_seconds: 0, gain_db: 0, fade_in_seconds: 0, fade_out_seconds: 0 }, error: null };
+        }
         if (fn === "delete_audio_clip") {
           rows.audio_clips = rows.audio_clips.filter((c) => c.id !== args.p_clip_id);
           return { data: null, error: null };
@@ -197,7 +202,8 @@ describe("Assets Library routes", () => {
       rows.asset_versions.push({ ...rows.asset_versions[0], asset_id: id, storage_path: `k/${id}.wav` });
       stored[`k/${id}.wav`] = Buffer.from("RIFF");
     }
-    rows.audio_clips = [{ id: C1, asset_id: WAV, session_id: SESS, label: "Tunde line", project_id: P }, { id: C2, asset_id: WAV, session_id: SESS, label: "again", project_id: P }];
+    // C1 is a planned dialogue line (it goes back to planned and keeps its place); C2 was added by hand (removed).
+    rows.audio_clips = [{ id: C1, asset_id: WAV, session_id: SESS, label: "Tunde line", project_id: P, source: { dialogue_line_id: "l1", evidence: "spotted" } }, { id: C2, asset_id: WAV, session_id: SESS, label: "again", project_id: P, source: { added_by_hand: true } }];
     rows.timeline_clips = [{ asset_id: W3, project_id: P, label: "Theme", record_in: 0 }];
     const calls: any[] = [];
     const a = app(rows, calls);
@@ -212,7 +218,8 @@ describe("Assets Library routes", () => {
     r = (await a.inject({ method: "POST", url, payload: { asset_ids: [WAV, W3, GONE], remove_from_clips: true } })).json();
     expect(r.deleted.map((x: any) => x.name)).toEqual(["Tunde line 1"]);
     expect(r.clips_removed).toBe(2);
-    expect(calls.filter((c) => c.fn === "delete_audio_clip").map((c) => c.args.p_clip_id)).toEqual([C1, C2]);
+    expect(calls.filter((c) => c.fn === "save_audio_clip").map((c) => [c.args.p_clip_id, c.args.p_patch])).toEqual([[C1, { asset_id: null }]]);
+    expect(calls.filter((c) => c.fn === "delete_audio_clip").map((c) => c.args.p_clip_id)).toEqual([C2]);
     expect(r.failed.map((x: any) => x.reason)).toEqual([expect.stringMatching(/Editorial timeline/), expect.stringMatching(/Not found/)]);
     expect(rows.assets.map((x) => x.id)).toEqual([W3]);
     expect(stored["k/wav1.wav"]).toBeUndefined();

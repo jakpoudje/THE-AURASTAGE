@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { deleteMedia, getMedia, mediaConfigured, putMedia } from "../../storage/media";
 import { AssetForbiddenError, assertAssetAccess, assertProjectAccess } from "./assets.permissions";
-import { deleteClip } from "../audio/audio.service";
+import { deleteClip, updateClip } from "../audio/audio.service";
 import * as repo from "./assets.repository";
 import { toAssetDTO } from "./assets.mapper";
 import { AssetConflictError, AssetNotFoundError, AssetNotReadyError, AssetValidationError, cleanName, MAX_AUDIO_BYTES, sniffAsset, sniffAudio } from "./assets.validator";
@@ -273,7 +273,8 @@ export async function deleteAsset(db: SupabaseClient, assetId: string, payload: 
  * Deletes several assets (owner request 2026-10-02: clear out the generated audio). At most BULK_DELETE_MAX per call —
  * the page sends batches and shows progress, so a busy database never sees one huge request. Each asset is deleted on
  * its own (one failure never stops the rest) and every outcome is reported. With `remove_from_clips`, a recording is
- * first taken off the Audio Studio clips that use it, through Audio's own gated function (those mixes return to draft
+ * first taken off the Audio Studio clips that use it, through Audio's own gated functions (a planned dialogue line or
+ * spotted cue goes back to planned and keeps its place; a hand-added clip is removed) (those mixes return to draft
  * and must be measured and approved again — rule 11). Assets on the Editorial cut are refused: remove them there first.
  */
 export async function deleteAssets(db: SupabaseClient, projectId: string, payload: unknown, env: Env = process.env) {
@@ -297,7 +298,10 @@ export async function deleteAssets(db: SupabaseClient, projectId: string, payloa
     if (cut.has(id)) { failed.push({ id, name, reason: "It's on the Editorial timeline — remove it from the cut first." }); continue; }
     try {
       for (const c of clips.filter((x) => x.asset_id === id)) {
-        await deleteClip(db, c.id);
+        // A planned cue (a dialogue line or a spotted sound) keeps its place and goes back to "planned", so Generate
+        // all can make it again; a clip someone added by hand is removed.
+        if (c.source?.dialogue_line_id || c.source?.cue) await updateClip(db, c.id, { asset_id: null });
+        else await deleteClip(db, c.id);
         clipsRemoved++;
       }
       const r = await deleteAsset(db, id, { confirm: p.data.confirm }, env);

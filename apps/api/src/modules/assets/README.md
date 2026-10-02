@@ -57,8 +57,10 @@ metadata fields are not modelled yet; deleting an org/project does not yet remov
 ## Deleting many assets (owner request 2026-10-02)
 `POST /api/projects/:id/library/delete { asset_ids (1–25), confirm, remove_from_clips }` → for each asset on its own:
 refused if it is on the Editorial cut (Editorial owns it — remove it there first); with `remove_from_clips` its Audio
-Studio clips are removed first through Audio's own `deleteClip` (gated `delete_audio_clip`; the mix goes back to draft,
-rule 11); then `delete_asset` and its files as above. Returns `{ deleted, failed: [{id, name, reason}], clips_removed,
+Studio clips are cleared first through Audio's own functions — a planned dialogue line or spotted cue goes back to
+"planned" and keeps its place (`updateClip` with `asset_id: null`, gated `save_audio_clip`; fixed 2026-10-02 so Generate
+all can voice the line again), a clip added by hand is removed (`deleteClip`, gated `delete_audio_clip`); the mix goes
+back to draft, rule 11; then `delete_asset` and its files as above. Returns `{ deleted, failed: [{id, name, reason}], clips_removed,
 files_removed, files_left }`; one failure never stops the rest, a permission refusal stops the call. The page
 (Select to delete…) sends batches of 25 with a short pause and shows progress.
 

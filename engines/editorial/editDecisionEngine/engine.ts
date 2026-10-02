@@ -86,7 +86,7 @@ function fitTransitions<T extends { track: string; duration: number; transition?
 }
 
 export function editDecisionEngine(raw: unknown): EditDecisionOutput {
-  const { clips: input, operation: op, new_clip, replacements } = validateEditDecisionInput(raw);
+  const { clips: input, operation: op, new_clip, replacements, additions } = validateEditDecisionInput(raw);
   let clips: EngineClip[] = input.map((c) => ({ ...c }));
   const find = (id: string) => clips.find((c) => c.id === id) ?? reject("That clip is no longer on the timeline — reload.");
   const all = SYNC_LOCKED_TRACKS;
@@ -227,7 +227,8 @@ export function editDecisionEngine(raw: unknown): EditDecisionOutput {
     }
     case "conform": {
       const reps = replacements ?? [];
-      if (!reps.length) return reject("Everything already uses the approved takes and mixes.");
+      const adds = additions ?? [];
+      if (!reps.length && !adds.length) return reject("Everything already uses the approved takes and mixes.");
       for (const r of reps) {
         const c = find(r.clip_id);
         Object.assign(c, { kind: r.kind, take_id: r.take_id, audio_session_version_id: r.audio_session_version_id, source_frames: r.source_frames, label: r.label });
@@ -237,7 +238,24 @@ export function editDecisionEngine(raw: unknown): EditDecisionOutput {
           c.duration = Math.max(1, c.source_frames - c.source_in);
         }
       }
-      summary = `Updated ${reps.length} clip${reps.length === 1 ? "" : "s"} to the currently approved takes and mixes — the cut is unchanged.`;
+      // Newly approved scene sound: laid where its scene's picture is, only in free space on its track — an existing
+      // clip there is never covered or moved, so the new clip is shortened to the gap (or skipped when there is none).
+      let added = 0;
+      for (const a of adds) {
+        const same = clips.filter((c) => c.track === a.track);
+        if (same.some((c) => c.record_in <= a.record_in && end(c) > a.record_in)) continue;
+        const next = Math.min(...same.filter((c) => c.record_in > a.record_in).map((c) => c.record_in), Infinity);
+        const duration = Math.min(a.duration, next - a.record_in);
+        if (duration < 1) continue;
+        clips.push({ ...a, duration });
+        added++;
+      }
+      if (!reps.length && !added) return reject("There's no free space on the sound track where those scenes are — make room there first.");
+      const parts = [
+        reps.length ? `updated ${reps.length} clip${reps.length === 1 ? "" : "s"} to the currently approved takes and mixes` : "",
+        added ? `added the approved sound of ${added} scene${added === 1 ? "" : "s"} in sync with ${added === 1 ? "its" : "their"} picture` : "",
+      ].filter(Boolean);
+      summary = `${parts.join(" and ").replace(/^./, (x) => x.toUpperCase())} — the cut is unchanged.`;
       break;
     }
   }

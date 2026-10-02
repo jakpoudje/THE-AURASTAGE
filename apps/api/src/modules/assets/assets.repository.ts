@@ -92,7 +92,7 @@ export const listHistory = (db: SupabaseClient, assetId: string) =>
   rows(db.from("audit_events").select("action, metadata, actor_id, created_at").eq("object_type", "Asset").eq("object_id", assetId).order("created_at", { ascending: false }).limit(50));
 /** Audio Studio clips holding any of these assets (read-only; Audio owns clips and removes them through its own function). */
 export const listClipsHolding = (db: SupabaseClient, projectId: string, assetIds: string[]) =>
-  rows(db.from("audio_clips").select("id, asset_id").eq("project_id", projectId).in("asset_id", assetIds));
+  rows(db.from("audio_clips").select("id, asset_id, source").eq("project_id", projectId).in("asset_id", assetIds));
 /** Assets on the Editorial timeline (A2 music) — Editorial owns those clips; the asset can't go while it's on the cut. */
 export const listTimelineHolding = (db: SupabaseClient, projectId: string, assetIds: string[]) =>
   rows(db.from("timeline_clips").select("asset_id").eq("project_id", projectId).in("asset_id", assetIds));

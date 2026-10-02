@@ -190,6 +190,28 @@ describe("Editorial routes", () => {
     expect(saved).toMatchObject({ take_id: TK1B, record_in: 0, duration: 48 });
   });
 
+  it("owner report 2026-10-02: a scene mix approved after the cut was built is offered and Conform lays it on A1 in sync with its picture", async () => {
+    withTimeline();
+    // The cut was assembled before the mix was approved: no sound on A1.
+    rows.timeline_clips = rows.timeline_clips.filter((c) => c.track !== "A1");
+    const fake = fakeDb(rows, (fn, a) => ({ data: fn === "set_timeline_review" ? { ...rows.timelines[0], review_state: a.p_state, review_reason: a.p_reason } : {} }));
+    const ws = (await (await app(fake)).inject({ method: "GET", url: `/api/projects/${P}/editorial` })).json();
+    expect(ws).toMatchObject({ conformable: 1, sound_to_add: 1 });
+    const f2 = fakeDb(rows);
+    const res = await (await app(f2)).inject({ method: "POST", url: `/api/projects/${P}/editorial/edit`, payload: { base_revision: REV, operation: { op: "conform" } } });
+    expect(res.json()).toMatchObject({ summary: expect.stringMatching(/Added the approved/) });
+    expect(res.json().summary).toMatch(/Added the approved sound of 1 scene in sync/);
+    const saved = f2.calls.find((c) => c.fn === "save_timeline")!.args.p_clips as Row[];
+    expect(saved.find((c) => c.track === "A1")).toMatchObject({ kind: "audio_mix", audio_session_version_id: AV1, scene_id: S1, record_in: 0, duration: 96, source_frames: 96, label: "Scene 1 mix v1" });
+    expect(saved.filter((c) => c.track === "V1").map((c) => [c.id, c.record_in, c.duration])).toEqual([[C1, 0, 48], [C2, 48, 48]]);
+    // Nothing to add once the scene has sound on the cut; an unapproved mix is never added.
+    withTimeline();
+    expect((await (await app(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/editorial` })).json().sound_to_add).toBe(0);
+    rows.timeline_clips = rows.timeline_clips.filter((c) => c.track !== "A1");
+    rows.audio_sessions[0].status = "draft";
+    expect((await (await app(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/editorial` })).json().sound_to_add).toBe(0);
+  });
+
   it("Picture Lock needs passing checks; a locked picture refuses edits until the break is confirmed (with impact)", async () => {
     withTimeline();
     let res = await (await app(fakeDb(rows))).inject({ method: "POST", url: `/api/projects/${P}/editorial/lock`, payload: { base_revision: REV } });

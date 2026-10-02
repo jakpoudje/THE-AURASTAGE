@@ -109,6 +109,29 @@ function conformReplacements(ctx: Ctx, up: Up) {
   return out;
 }
 
+/**
+ * Approved scene mixes that aren't on the cut yet (owner report 2026-10-02: Audio Studio's voices never reached the
+ * timeline). A mix approved after the first assembly used to need a full re-assembly; Conform now lays it on A1 in sync
+ * with its scene's picture (from the scene's first picture clip to its last, never longer than the mix).
+ */
+function soundAdditions(ctx: Ctx, up: Up): EngineClip[] {
+  const out: EngineClip[] = [];
+  for (const row of up.scenes) {
+    if (!row.mixCurrent || ctx.clips.some((c) => c.track === "A1" && c.scene_id === row.scene.id)) continue;
+    const pic = ctx.clips.filter((c) => c.track === "V1" && c.scene_id === row.scene.id);
+    if (!pic.length) continue;
+    const start = Math.min(...pic.map((c) => c.record_in)), stop = Math.max(...pic.map((c) => c.record_in + c.duration));
+    const frames = F(mixSeconds(row.mixCurrent, row.session));
+    out.push({
+      id: null, track: "A1", kind: "audio_mix", record_in: start, duration: Math.max(1, Math.min(frames, stop - start)), source_in: 0, source_frames: frames,
+      scene_id: row.scene.id, shot_id: null, take_id: null, audio_session_version_id: row.mixCurrent.id, asset_id: null, gain_db: 0,
+      grade: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 }, transition: { in: "cut", out: "cut", frames: 12 },
+      label: `Scene ${row.scene.number} mix v${row.mixCurrent.version_number}`,
+    } as EngineClip);
+  }
+  return out;
+}
+
 function runQC(ctx: Ctx, clips: TimelineClip[], issues: ReturnType<typeof clipIssues>) {
   return editorialQCEngine({
     fps, clips, issues, target_runtime_minutes: ctx.project.target_runtime_minutes ?? null,
@@ -150,7 +173,8 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
   const ctx = await load(db, projectId);
   const up = upstream(ctx);
   const issues = clipIssues(ctx, up);
-  const conformable = conformReplacements(ctx, up).length;
+  const soundToAdd = soundAdditions(ctx, up).length;
+  const conformable = conformReplacements(ctx, up).length + soundToAdd;
   let timeline = ctx.timeline;
   if (timeline) {
     const state = issues.length ? "review_required" : "current";
@@ -205,6 +229,7 @@ export async function getEditorialWorkspace(db: SupabaseClient, projectId: strin
     clips: ctx.clips,
     issues,
     conformable,
+    sound_to_add: soundToAdd,
     qc,
     versions: versions.map((v) => ({ id: v.id, version_number: v.version_number, label: v.label, kind: v.kind, duration_frames: v.duration_frames, created_at: v.created_at })),
     locks: locks.map((l) => ({ lock_number: l.lock_number, locked_at: l.locked_at, broken_at: l.broken_at, impact: l.impact ?? null })),
@@ -340,6 +365,7 @@ export async function editTimeline(db: SupabaseClient, projectId: string, payloa
       clips: ctx.clips, operation: op,
       new_clip: op.op === "insert" || op.op === "overwrite" ? await resolveSource(db, ctx, up, op) : undefined,
       replacements: op.op === "conform" ? conformReplacements(ctx, up) : undefined,
+      additions: op.op === "conform" ? soundAdditions(ctx, up) : undefined,
     });
   } catch (e) {
     if (e instanceof EditRejectedError) throw new EditorialConflictError(e.message);

@@ -31,7 +31,7 @@ time. An undone entry is marked (`undone_at`), not removed.
 
 ## Engines
 - `assemblyTimelineEngine` — first assembly: per scene, cut to the most recently started shot covering each moment of story time; no approved take → offline slug; mix on A1 in sync.
-- `editDecisionEngine` — insert, overwrite, trim (with/without ripple), roll, slip, slide, blade, lift, extract, move, grade, conform, gain (music level). Sources: take, insert_shot (V2), music (A2). Sync lock always on (1.2.0).
+- `editDecisionEngine` (1.3.0) — insert, overwrite, trim (with/without ripple), roll, slip, slide, blade, lift, extract, move, grade, conform, gain (music level). Sources: take, insert_shot (V2), music (A2). Sync lock always on (1.2.0).
 - `editorialQCEngine` — blocking: picture present, no offline media, sources current, no overlaps; recommended: flash frames, gaps, A/V sync per scene, scenes without sound, runtime vs target. Each with timecodes.
 - `pictureLockEngine` — impact of changing a locked picture, per scene.
 - `edlExportEngine` — CMX 3600 EDL.
@@ -62,7 +62,14 @@ the render does.
 ## Invalidation (rule 11)
 A newer approved take/mix, an unapproved plan edit or a removed shot flags the timeline
 `review_required` and lists the clips; the cut is never changed until someone runs
-Conform (keeps every cut point, swaps sources). A locked picture refuses edits (423 with
+Conform (keeps every cut point, swaps sources).
+
+**Approved sound added on Conform (2026-10-02, editDecisionEngine 1.3.0).** Owner report: Audio Studio's voices never
+reached the timeline. A scene mix approved after the cut was assembled used to need a full re-assembly. The workspace
+now counts such scenes (`sound_to_add`, included in `conformable`) and Conform lays each one on A1 from its scene's first
+picture clip, as long as its picture (never longer than the mix), only in free space — existing sound is never covered
+or moved. The one-click "watchable film" conforms before it locks. Only APPROVED, current mixes are ever added: a scene
+whose sound is still a draft in Audio Studio stays silent until it is measured and approved there. A locked picture refuses edits (423 with
 the impact) until the break is confirmed; the break and its impact are recorded.
 
 ## Events emitted

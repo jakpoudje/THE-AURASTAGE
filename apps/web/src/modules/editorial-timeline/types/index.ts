@@ -38,6 +38,8 @@ export interface EditorialWorkspace {
   clips: TimelineClip[];
   issues: { clip_id: string; code: string; message: string }[];
   conformable: number;
+  /** Scenes whose approved mix isn't on the cut yet; Conform lays them on Sound (A1) in sync with their picture. */
+  sound_to_add?: number;
   qc: { checks: QCCheck[]; ready_for_lock: boolean; duration_frames: number; engine_version: string };
   versions: { id: string; version_number: number; label: string; kind: "manual" | "auto" | "picture_lock"; duration_frames: number; created_at: string }[];
   locks: { lock_number: number; locked_at: string; broken_at: string | null; impact: PictureImpact[] | null }[];
