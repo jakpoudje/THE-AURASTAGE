@@ -390,10 +390,10 @@ export function placeSketchEngine(input: PlaceSketchInput): PlaceSketchOutput {
   if (drawn.weather === "rain" || drawn.weather === "storm") over.push(Array.from({ length: drawn.interior ? 0 : 160 }, () => { const x = rng() * W, y = rng() * H; return `<line x1="${r1(x)}" y1="${r1(y)}" x2="${r1(x - 4)}" y2="${r1(y + 18)}" stroke="#c9d6e6" stroke-width="1" opacity="0.45"/>`; }).join(""), `<rect width="${W}" height="${H}" fill="#5a6a7a" opacity="0.12"/>`);
   if (drawn.weather === "fog") over.push(`<rect width="${W}" height="${H}" fill="#e6e8ea" opacity="0.32"/>`);
   if (drawn.weather === "dust") over.push(`<rect width="${W}" height="${H}" fill="#d9b98a" opacity="0.3"/>`);
-  if (st) over.push(`<rect width="${W}" height="${H}" fill="${st.shade}" opacity="${r1(st.grade * 0.18 * 100) / 100}" style="mix-blend-mode:multiply"/>`);
+  if (st && st.id !== "drama") over.push(`<rect width="${W}" height="${H}" fill="${st.shade}" opacity="${Math.round(st.grade * 18) / 100}" style="mix-blend-mode:multiply"/>`);
   over.push(`<rect width="${W}" height="${H}" fill="url(#vign)"/>`);
   // The genre's colour grade is applied to the colours themselves (an SVG filter here makes the render worker's resvg panic).
-  const graded = st ? gradeSvg(`${sky}${body}${over.join("")}`, st) : `${sky}${body}${over.join("")}`;
+  const graded = st && st.id !== "drama" ? gradeSvg(`${sky}${body}${over.join("")}`, st) : `${sky}${body}${over.join("")}`;
   const svg = `${defs}<g>${graded}</g>`;
   return { svg, place: drawn, engine_version: ENGINE_VERSION };
 }
