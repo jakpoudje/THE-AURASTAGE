@@ -47,10 +47,14 @@ process.on("SIGINT", () => (stopping = true));
 (async () => {
   const { stdout } = await ffmpeg(["-version"]);
   log("worker.started", { ffmpeg: stdout.toString().split("\n")[0] });
+  // Idle back-off (2026-10-02): an idle worker waits longer each time it finds nothing (3 s → 15 s), so it barely touches
+  // the database; it is back to full speed the moment a render or video edit is queued.
+  let idle = 0;
   while (!stopping) {
     try {
       const worked = (await runOnce(deps)) || (await runVideoEditOnce(editDeps));
-      if (!worked) await new Promise((r) => setTimeout(r, 3000));
+      if (worked) idle = 0;
+      else await new Promise((r) => setTimeout(r, Math.min(15000, 3000 * 2 ** Math.min(idle++, 4)) + Math.floor(Math.random() * 400)));
     } catch (e) {
       log("worker.error", { error: (e as Error).message });
       await new Promise((r) => setTimeout(r, 10000));

@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as svc from "./help.service";
 import { HelpForbiddenError, HelpNotFoundError, HelpRateLimitError, HelpValidationError } from "./help.validator";
+import { forgetVerifiedSessions } from "../../infrastructure/auth";
 
 function handleError(err: unknown, reply: FastifyReply) {
   const send = (status: number, e: Error & { code: string; issues?: unknown }) => reply.code(status).send({ error: { code: e.code, message: e.message, issues: e.issues } });
@@ -35,5 +36,9 @@ export async function registerHelpRoutes(app: FastifyInstance) {
   app.post("/api/help/tickets/:id/reply", route(({ params, body, db }) => svc.replyTicket(db, params.id, body)));
   app.post("/api/help/tickets/:id/close", route(({ params, db }) => svc.closeTicket(db, params.id)));
   app.get("/api/account/sessions", route(({ db }) => svc.sessions(db)));
-  app.post("/api/account/sessions/revoke", route(({ body, db }) => svc.revokeSessions(db, body)));
+  app.post("/api/account/sessions/revoke", route(async ({ body, db }) => {
+    const r = await svc.revokeSessions(db, body);
+    forgetVerifiedSessions(); // a signed-out device is refused on its very next request
+    return r;
+  }));
 }

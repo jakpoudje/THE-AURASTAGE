@@ -19,6 +19,26 @@ declare module "fastify" {
 
 const PUBLIC_PATHS = new Set(["/health"]);
 
+/**
+ * Verified sessions are remembered for a short while (2026-10-02: every API call asked Supabase Auth to verify the token
+ * — with pages refreshing progress every few seconds that was most of Auth's traffic, and when the database was busy
+ * sign-in took up to a minute for everyone). A token is re-checked with Supabase at least every 30 s, never past its own
+ * expiry, and the whole cache is forgotten the moment anyone signs other devices out (forgetVerifiedSessions).
+ */
+const VERIFIED_MS = 30_000;
+const verified = new Map<string, { userId: string; until: number }>();
+export function forgetVerifiedSessions() {
+  verified.clear();
+}
+function tokenExpiry(token: string): number {
+  try {
+    const exp = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp;
+    return typeof exp === "number" ? exp * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function registerAuth(app: FastifyInstance) {
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
     const pathname = request.url.split("?")[0];
@@ -31,12 +51,22 @@ export async function registerAuth(app: FastifyInstance) {
       return reply;
     }
 
+    const now = Date.now();
+    const known = verified.get(token);
+    if (known && known.until > now) {
+      request.userId = known.userId;
+      request.db = createSupabaseClient(token);
+      return;
+    }
     const anonClient = createSupabaseClient();
     const { data, error } = await anonClient.auth.getUser(token);
     if (error || !data.user) {
+      verified.delete(token);
       reply.code(401).send({ error: { code: "AURA-MOS-401", message: "Invalid or expired session" } });
       return reply;
     }
+    if (verified.size > 5000) verified.clear(); // bounded; entries are short-lived anyway
+    verified.set(token, { userId: data.user.id, until: Math.min(now + VERIFIED_MS, tokenExpiry(token) || now) });
 
     request.userId = data.user.id;
     request.db = createSupabaseClient(token);

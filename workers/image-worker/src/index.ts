@@ -96,6 +96,13 @@ const writingDeps = {
 };
 
 let stopping = false;
+/**
+ * Idle back-off (2026-10-02: with ~10 lanes each asking for work every 1–3 s, an idle worker kept the small database
+ * busy around the clock, and with the day's whole-film runs it starved Supabase — sign-in slowed to a minute). A lane
+ * that finds nothing waits longer each time (base → max, with a little jitter so lanes don't line up) and is back to
+ * full speed the moment it finds work.
+ */
+const idleWait = (n: number, base: number, max: number) => new Promise((r) => setTimeout(r, Math.min(max, base * 2 ** Math.min(n, 6)) + Math.floor(Math.random() * 400)));
 // A restart (redeploy) hands unfinished writing back to the queue straight away, with everything written so far.
 process.on("SIGTERM", () => { stopping = true; void releaseInFlight(writingDeps); });
 process.on("SIGINT", () => (stopping = true));
@@ -103,9 +110,11 @@ process.on("SIGINT", () => (stopping = true));
 // Script writing runs in its own lane: a full script can take many minutes of model calls, and it must never hold up
 // the short interactive jobs (assistant plans, sounds, reference views, takes) in the main lane.
 async function writingLane() {
+  let idle = 0;
   while (!stopping) {
     try {
-      if (!(await writingOnce(writingDeps))) await new Promise((r) => setTimeout(r, 3000));
+      if (await writingOnce(writingDeps)) idle = 0;
+      else await idleWait(idle++, 3000, 30000);
     } catch (e) {
       log("worker.error", { lane: "writing", error: (e as Error).message });
       await new Promise((r) => setTimeout(r, 10000));
@@ -120,9 +129,12 @@ const WRITING_LANES = Math.min(8, Math.max(1, Number(env.WRITING_LANES) || 3));
 // Ask AuraStage plans: short and interactive (the built-in ones are already planned and are only recorded), so they
 // run in their own lane and never wait behind a generation take.
 async function planLane() {
+  let idle = 0;
   while (!stopping) {
     try {
-      if (!(await planOnce(plannerDeps))) await new Promise((r) => setTimeout(r, 1000));
+      // Assistant plans are interactive: never more than 5 s before one is picked up.
+      if (await planOnce(plannerDeps)) idle = 0;
+      else await idleWait(idle++, 1000, 5000);
     } catch (e) {
       log("worker.error", { lane: "plans", error: (e as Error).message });
       await new Promise((r) => setTimeout(r, 5000));
@@ -134,10 +146,13 @@ async function planLane() {
 // shared with sounds and reference pictures made ~1–2 a minute). Claims use FOR UPDATE SKIP LOCKED, so lanes never
 // take the same job.
 const TAKE_LANES = Math.min(8, Math.max(1, Number(env.TAKE_LANES) || 4));
-async function takeLane() {
+async function takeLane(lane: number) {
+  let idle = 0;
   while (!stopping) {
     try {
-      if (!(await runOnce(deps))) await new Promise((r) => setTimeout(r, 3000));
+      // The first lane stays quick to notice new work (≤ 10 s); the extra lanes, there for big batches, rest longer.
+      if (await runOnce(deps)) idle = 0;
+      else await idleWait(idle++, 3000, lane === 0 ? 10000 : 30000);
     } catch (e) {
       log("worker.error", { lane: "takes", error: (e as Error).message });
       await new Promise((r) => setTimeout(r, 10000));
@@ -148,8 +163,9 @@ async function takeLane() {
 (async () => {
   void planLane();
   for (let i = 0; i < WRITING_LANES; i++) void writingLane();
-  for (let i = 0; i < TAKE_LANES; i++) void takeLane();
+  for (let i = 0; i < TAKE_LANES; i++) void takeLane(i);
   log("worker.started", { writing_lanes: WRITING_LANES, take_lanes: TAKE_LANES, providers: providerStatuses(env).filter((p) => p.state === "configured").map((p) => p.id), planner: reasoningProvider(env, { allowTest: env.AURA_TEST_PROVIDER !== "off" })?.id ?? null });
+  let idle = 0;
   while (!stopping) {
     try {
       // Assistant plans have their own lane (planLane), so a long generation never keeps a suggestion waiting.
@@ -158,7 +174,8 @@ async function takeLane() {
       const drew = await refOnce(refDeps);
       const drewWorld = await refOnce(worldRefDeps);
       const worked = planned || sounded || drew || drewWorld;
-      if (!worked) await new Promise((r) => setTimeout(r, 3000));
+      if (worked) idle = 0;
+      else await idleWait(idle++, 3000, 10000);
     } catch (e) {
       log("worker.error", { error: (e as Error).message });
       await new Promise((r) => setTimeout(r, 10000));

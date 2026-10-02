@@ -74,16 +74,20 @@ export function useProductionRun(projectId: string, area: Area, opts: { onRound?
     return () => { alive.current = false; driving.current = null; };
   }, [loadRun, loadProgress, drive]);
 
-  // Progress: every 3 s while a run or the generator is busy, every 20 s otherwise.
+  // Progress: every 5 s while a run or the generator is busy, every 30 s otherwise — and not at all while the tab is in
+  // the background (2026-10-02: steady polling from open tabs added to the load that slowed the database).
   const busy = run?.status === "running" || (progress ? progress.generator.queued + progress.generator.running > 0 : false);
   useEffect(() => {
     let stop = false, t: ReturnType<typeof setTimeout>;
+    const every = busy ? 5000 : 30000;
     const tick = async () => {
-      await loadProgress();
-      if (run?.status === "paused" || (run?.status === "running" && !driving.current)) await loadRun().catch(() => null);
-      if (!stop) t = setTimeout(tick, busy ? 3000 : 20000);
+      if (typeof document === "undefined" || document.visibilityState !== "hidden") {
+        await loadProgress();
+        if (run?.status === "paused" || (run?.status === "running" && !driving.current)) await loadRun().catch(() => null);
+      }
+      if (!stop) t = setTimeout(tick, every);
     };
-    t = setTimeout(tick, busy ? 3000 : 20000);
+    t = setTimeout(tick, every);
     return () => { stop = true; clearTimeout(t); };
   }, [busy, loadProgress, loadRun, run?.status]);
 
