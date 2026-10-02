@@ -44,6 +44,7 @@ describe("placeSketchEngine — places drawn from their description (owner reque
   it("an interior's establishing view is the building from outside; the film's genre grades the picture", () => {
     expect(draw("CHIEF'S OFFICE", "", ["INT"], "DAY", "establishing").place.type).toBe("building_ext");
     const graded = placeSketchEngine({ name: "OFFICE", int_ext: ["INT"], time: "DAY", width: W, height: H, style: { id: "horror", sat: 0.32, warmth: -0.2, shadow: 1.8, key: "#d9f0c8", shade: "#0c1a10", grade: 0.6 } }).svg;
-    expect(graded).toContain('<feColorMatrix type="saturate" values="0.32"');
+    expect(graded).not.toContain("<filter");
+    expect(graded).not.toBe(placeSketchEngine({ name: "OFFICE", int_ext: ["INT"], time: "DAY", width: W, height: H }).svg);
   });
 });

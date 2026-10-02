@@ -67,9 +67,25 @@ export function sketchStyleFor(genre: string | null | undefined, tone?: string |
 }
 
 /** An SVG filter that applies the style's colour (saturation and warmth) to everything inside it. */
-export function styleFilter(st: SketchStyle, id: string) {
+export function styleFilter(st: SketchStyle, id: string, region: { x: number; y: number; width: number; height: number } = { x: -6, y: -3, width: 12, height: 14 }) {
   const w = st.warmth * 0.08;
-  // Saturation, then a gentle warm/cool shift of red and blue.
-  return `<filter id="${id}" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="${Math.max(0, Math.min(2, st.sat))}"/>` +
+  // Saturation, then a gentle warm/cool shift of red and blue. A fixed region in user space: the render worker's
+  // rasteriser (resvg) panics computing a region from very large drawings.
+  return `<filter id="${id}" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse" x="${region.x}" y="${region.y}" width="${region.width}" height="${region.height}"><feColorMatrix type="saturate" values="${Math.max(0, Math.min(2, st.sat))}"/>` +
     `<feColorMatrix type="matrix" values="${1 + w} 0 0 0 0  0 1 0 0 0  0 0 ${1 - w} 0 0  0 0 0 1 0"/></filter>`;
 }
+
+/**
+ * The style's colour grade applied to one colour (saturation, then warm/cool) — used on the finished drawing instead of an
+ * SVG filter, so it looks the same in the browser and in the render worker (resvg panics on some filtered drawings).
+ */
+export function gradeHex(hex: string, st: { sat: number; warmth: number }): string {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const L = 0.299 * r + 0.587 * g + 0.114 * b, s = Math.max(0, Math.min(2, st.sat)), w = st.warmth * 0.08;
+  r = (L + (r - L) * s) * (1 + w); g = L + (g - L) * s; b = (L + (b - L) * s) * (1 - w);
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+/** Grades every #rrggbb colour in an SVG string. */
+export const gradeSvg = (svg: string, st: { sat: number; warmth: number }) => (st.sat === 1 && st.warmth === 0 ? svg : svg.replace(/#[0-9a-fA-F]{6}\b/g, (h) => gradeHex(h, st)));

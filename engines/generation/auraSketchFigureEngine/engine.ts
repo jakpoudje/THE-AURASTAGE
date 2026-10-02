@@ -9,7 +9,7 @@
 import type { Appearance } from "../../character/characterAppearanceEngine/engine";
 import { ENGINE_VERSION } from "./version";
 import { drawFace, drawProfileFace, faceOf, type MouthMode } from "./face";
-import { SKETCH_STYLES, styleFilter, type SketchStyle } from "./style";
+import { gradeSvg, SKETCH_STYLES, type SketchStyle } from "./style";
 
 export type SketchAngle = "front" | "three_quarter" | "profile" | "back";
 export type SketchSize = "CU" | "MCU" | "MS" | "FULL" | "WIDE";
@@ -310,7 +310,9 @@ export function auraSketchFigure(a: Appearance, angle: SketchAngle, size: Sketch
   // The genre's colour treatment is applied to the whole figure; natural drama needs none.
   const fid = `fx${st.id}`;
   const body = auraSketchFigureShapes(a, angle, opts);
-  const inner = st.id === "drama" ? body : `<defs>${styleFilter(st, fid)}</defs><g filter="url(#${fid})">${body}</g>`;
+  // The genre's colour grade is applied to the colours themselves (no SVG filter — see gradeHex).
+  const inner = st.id === "drama" ? body : gradeSvg(body, st);
+  void fid;
   const svg = `<svg x="${f(box.x)}" y="${f(box.y)}" width="${f(box.width)}" height="${f(box.height)}" viewBox="${pts(-w / 2 + shift, top, w, h)}" preserveAspectRatio="xMidYMid meet" overflow="hidden">${inner}</svg>`;
   return { svg, engine_version: ENGINE_VERSION };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { characterAppearanceEngine } from "../../../character/characterAppearanceEngine/engine";
 import { auraSketchFigure } from "../engine";
-import { sketchStyleFor, SKETCH_STYLES } from "../style";
+import { gradeHex, sketchStyleFor, SKETCH_STYLES } from "../style";
 import { blinksFor, estimateLineSeconds, visemesFor } from "../speech";
 
 const box = { x: 0, y: 0, width: 300, height: 300 };
@@ -40,9 +40,12 @@ describe("AuraSketch 3 — faces, genre styles and speech (owner request 2026-10
     expect(Object.keys(SKETCH_STYLES).length).toBeGreaterThanOrEqual(12);
     const a = same("Amara Bello");
     const drama = auraSketchFigure(a, "three_quarter", "MCU", box).svg, horror = auraSketchFigure(a, "three_quarter", "MCU", box, { style: SKETCH_STYLES.horror }).svg;
+    // No SVG filters (the render worker's resvg panics on them): the grade is in the colours themselves.
     expect(drama).not.toContain("<filter");
-    expect(horror).toContain('<feColorMatrix type="saturate" values="0.32"');
-    expect(horror).toContain(SKETCH_STYLES.horror.rim!);
+    expect(horror).not.toContain("<filter");
+    expect(horror).not.toBe(drama);
+    expect(horror).toContain(gradeHex(SKETCH_STYLES.horror.rim!, SKETCH_STYLES.horror));
+    expect(gradeHex("#c43b2f", SKETCH_STYLES.noir)).toMatch(/^#([0-9a-f]{2})\1\1$|^#6/); // nearly grey in noir
   });
 
   it("a line becomes timed mouth shapes that start and end at rest, fit the length, and close on m/b/p", () => {

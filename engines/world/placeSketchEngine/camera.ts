@@ -48,11 +48,18 @@ export function scaleAt(c: Camera, p: V3) {
   return q[2] < NEAR ? 0 : c.f / q[2];
 }
 
+/** True when every point is outside the picture on the same side (nothing of it would show). Such shapes are skipped:
+ * they cost size, and an off-screen shape with opacity makes the render worker's resvg panic (empty layer bounds). */
+function offscreen(c: Camera, pts: [number, number][], margin = 4) {
+  return pts.every(([x]) => x < -margin) || pts.every(([x]) => x > c.W + margin) || pts.every(([, y]) => y < -margin) || pts.every(([, y]) => y > c.H + margin);
+}
+
 /** A flat polygon in the world. `extra` adds SVG attributes (stroke, opacity, filter …). */
 export function poly(c: Camera, pts: V3[], fill: string, extra = ""): Face | null {
   const cam = clipNear(pts.map((p) => toCam(c, p)));
   if (cam.length < 3) return null;
   const sp = cam.map(([x, y, z]) => [c.W / 2 + (c.f * x) / z, c.horizon - (c.f * y) / z] as [number, number]);
+  if (offscreen(c, sp)) return null;
   const depth = cam.reduce((n, p) => n + p[2], 0) / cam.length;
   return { pts: sp, depth, svg: `<polygon points="${sp.map(([x, y]) => `${r1(x)},${r1(y)}`).join(" ")}" fill="${fill}" ${extra}/>` };
 }
@@ -62,6 +69,7 @@ export function seg(c: Camera, a: V3, b: V3, stroke: string, width: number, extr
   if (cam.length < 2) return null;
   const [p, q] = [cam[0], cam[1]];
   const P = [c.W / 2 + (c.f * p[0]) / p[2], c.horizon - (c.f * p[1]) / p[2]], Q = [c.W / 2 + (c.f * q[0]) / q[2], c.horizon - (c.f * q[1]) / q[2]];
+  if (offscreen(c, [P as [number, number], Q as [number, number]], 8)) return null;
   const w = Math.max(0.4, (width * c.f) / ((p[2] + q[2]) / 2));
   return { pts: [P as [number, number], Q as [number, number]], depth: (p[2] + q[2]) / 2 - 0.001, svg: `<line x1="${r1(P[0])}" y1="${r1(P[1])}" x2="${r1(Q[0])}" y2="${r1(Q[1])}" stroke="${stroke}" stroke-width="${r1(w)}" stroke-linecap="round" ${extra}/>` };
 }
@@ -102,6 +110,8 @@ export function sprite(c: Camera, at: V3, draw: (x: number, y: number, s: number
   const p = project(c, at);
   if (!p) return null;
   const s = scaleAt(c, at);
+  // A sprite reaches about 3 m around its point (glows, palm fronds); skip it only when that is all off-screen.
+  if (offscreen(c, [[p[0] - s * 3, p[1] - s * 3], [p[0] + s * 3, p[1] + s * 3]].map(([x, y]) => [x, y] as [number, number]), 0) && (p[0] + s * 3 < 0 || p[0] - s * 3 > c.W || p[1] + s * 3 < 0 || p[1] - s * 3 > c.H)) return null;
   return { pts: [p], depth: toCam(c, at)[2] + depthBias, svg: draw(p[0], p[1], s) };
 }
 

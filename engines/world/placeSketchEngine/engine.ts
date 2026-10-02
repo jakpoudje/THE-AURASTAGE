@@ -10,6 +10,7 @@ import { box, hexMix, hexShade, paint, poly, seg, sprite, type Camera, type Face
 import * as O from "./objects";
 import { readPlace, type PlaceSpec, type PlaceType } from "./read";
 import { ENGINE_VERSION } from "./version";
+import { gradeSvg } from "../../generation/auraSketchFigureEngine/style";
 
 export type PlaceView = "establishing" | "wide" | "medium" | "detail";
 export interface PlaceSketchInput {
@@ -378,7 +379,7 @@ export function placeSketchEngine(input: PlaceSketchInput): PlaceSketchOutput {
   const defs = `<defs><linearGradient id="skyg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/></linearGradient>
 <radialGradient id="glow"><stop offset="0" stop-color="#ffe2a0" stop-opacity="0.9"/><stop offset="1" stop-color="#ffe2a0" stop-opacity="0"/></radialGradient>
 <linearGradient id="vign" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0.25"/><stop offset="0.5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.3"/></linearGradient>
-${st ? `<filter id="grade" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="${st.sat}"/><feColorMatrix type="matrix" values="${1 + st.warmth * 0.08} 0 0 0 0  0 1 0 0 0  0 0 ${1 - st.warmth * 0.08} 0 0  0 0 0 1 0"/></filter>` : ""}</defs>`;
+</defs>`;
   const sky = `<rect width="${W}" height="${H}" fill="url(#skyg)"/>${drawn.lit === "night" ? Array.from({ length: 24 }, () => `<circle cx="${r1(rng() * W)}" cy="${r1(rng() * c.horizon * 0.8)}" r="${r1(0.6 + rng())}" fill="#e8ecf5" opacity="${r1(0.4 + rng() * 0.5)}"/>`).join("") : drawn.lit === "day" ? `<circle cx="${r1(W * 0.82)}" cy="${r1(H * 0.12)}" r="${r1(H * 0.05)}" fill="#fff4cf" opacity="0.9"/>` : `<circle cx="${r1(W * 0.75)}" cy="${r1(c.horizon - H * 0.04)}" r="${r1(H * 0.06)}" fill="#ffb877" opacity="0.9"/>`}`;
   const body = drawn.interior ? interior(c, drawn, view, rng) : exterior(c, drawn, view, rng);
   // Light and weather over everything: night darkens, dawn/dusk warm, rain streaks, fog and dust haze, a vignette.
@@ -391,7 +392,9 @@ ${st ? `<filter id="grade" color-interpolation-filters="sRGB"><feColorMatrix typ
   if (drawn.weather === "dust") over.push(`<rect width="${W}" height="${H}" fill="#d9b98a" opacity="0.3"/>`);
   if (st) over.push(`<rect width="${W}" height="${H}" fill="${st.shade}" opacity="${r1(st.grade * 0.18 * 100) / 100}" style="mix-blend-mode:multiply"/>`);
   over.push(`<rect width="${W}" height="${H}" fill="url(#vign)"/>`);
-  const svg = `${defs}<g${st ? ` filter="url(#grade)"` : ""}>${sky}${body}${over.join("")}</g>`;
+  // The genre's colour grade is applied to the colours themselves (an SVG filter here makes the render worker's resvg panic).
+  const graded = st ? gradeSvg(`${sky}${body}${over.join("")}`, st) : `${sky}${body}${over.join("")}`;
+  const svg = `${defs}<g>${graded}</g>`;
   return { svg, place: drawn, engine_version: ENGINE_VERSION };
 }
 void sprite; void seg; void hexShade;
