@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { assetEdit, recordedSound } from "@aurastage/engines";
 import { audioBackendsFor, recordedSoundAdapter } from "..";
 // @ts-expect-error — plain .mjs build script (runs before the source is copied into the image)
-import { freeLicence, relevantTitle, unsuitableTitle } from "../../../../scripts/sfx-install.mjs";
+import { freeLicence, relevantTitle, soundCategories, unsuitableTitle } from "../../../../scripts/sfx-install.mjs";
 
 function library() {
   const d = mkdtempSync(join(tmpdir(), "sfx-test-"));
@@ -65,6 +65,15 @@ describe("recorded sound library (owner request 2026-10-02: real life prop sound
     for (const [c, t] of wrong) expect(!unsuitableTitle(t) && relevantTitle(t, cat(c)), `${c}: ${t}`).toBe(false);
     const right: [string, string][] = [["rain", "File:Rain against the window.ogg"], ["wind", "File:Howling wind.ogg"], ["knock", "File:Knock on door.wav"], ["gunshot", "File:Gunshots 8.ogg"], ["birds", "File:Dawnchorus-uk.ogg"], ["insects", "File:Cicada orni.ogg"], ["siren", "File:American police siren i.ogg"], ["door", "File:Springlocked cellar door.ogg"]];
     for (const [c, t] of right) expect(!unsuitableTitle(t) && relevantTitle(t, cat(c)), `${c}: ${t}`).toBe(true);
+    // Second live build: titles that pass but are songs, books or speeches — refused by how Commons files them.
+    expect(soundCategories(["Category:LibriVox recordings", "Category:The Wind in the Willows"]).ok).toBe(false);
+    expect(soundCategories(["Category:Komiku", "Category:Free music"]).ok).toBe(false);
+    expect(soundCategories(["Category:Ronald Reagan speeches", "Category:Audio files of walking"]).ok).toBe(false);
+    expect(soundCategories(["Category:Weather radio"]).ok).toBe(false);
+    expect(soundCategories(["Category:Sounds of rain"]).ok).toBe(true);
+    expect(soundCategories([{ title: "Category:Bird songs" }, { title: "Category:Erithacus rubecula" }]).ok).toBe(true);
+    expect(soundCategories(["Category:Field recordings in Greece"]).ok).toBe(true);
+    expect(soundCategories([]).ok).toBe(false);
     for (const t of ["File:Car horn.ogg", "File:Rain on a tin roof.ogg", "File:Door slam.wav", "File:Yellowstone dawn chorus.ogg"]) expect(unsuitableTitle(t)).toBe(false);
   });
   it("the build's category list is the engine's (sfx-categories.json is generated from categories.ts)", () => {

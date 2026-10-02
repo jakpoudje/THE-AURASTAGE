@@ -27,6 +27,18 @@ export function freeLicence(meta) {
 export function unsuitableTitle(title) {
   return /^File:(LL-Q\d|[A-Z][a-z]-[a-z]{2}-|[A-Z][a-z]-[A-ZÄÖÜ])|pronunc|lingua ?libre|spoken|speech|interview|lecture|lectio|reading|recitation|song\b|music|anthem|sings?\b|choir|orchestra|piano|guitar|symphony|concert|\bmidi\b|ringtone remix|podcast|news ?cast|wikipedia|audacity|noise reduction|tutorial|\bdemo\b|test tone|radio|dispatch|\batc\b|cockpit|\bcall\b|wilhelm|scream|festival|\bfolk\b|march\b|national anthem|sermon|poem|audiobook|librivox|episode/i.test(title);
 }
+/**
+ * Commons' own filing decides whether a file is a recording of a sound (live build 2026-10-02: titles alone let through
+ * an audiobook of "The Wind in the Willows" as wind, surf-rock songs as sea, a presidential speech as footsteps). A file
+ * must sit in at least one sound category and in none for music, speech, books or broadcasts.
+ */
+export function soundCategories(categories) {
+  const names = (categories ?? []).map((c) => String(c.title ?? c).replace(/^Category:/, ""));
+  const good = names.filter((n) => /\bsounds?\b|field recordings?|ambien|soundscape|bird ?songs?|bird vocali|animal sounds|animal vocali|insect sounds|noises?\b|sound effects|audio files of (rain|thunder|wind|water|waves|the sea|birds|insects|animals|dogs|traffic|crowds|footsteps|doors|fire)/i.test(n));
+  const bad = names.filter((n) => /music|album|librivox|audiobook|spoken|speech|speeches|poetry|poem|president|politic|news|radio|interview|lecture|podcast|\bband\b|musician|singer|orchestra|composer|discograph|anthem|hymn|opera|literature|novel|reading|sermon|broadcast|komiku|recordings by/i.test(n));
+  return { ok: good.length > 0 && bad.length === 0, good, bad };
+}
+
 /** The title has to name this category's sound (and not one of its known look-alikes). */
 export function relevantTitle(title, cat) {
   const t = String(title).replace(/^File:/, "");
@@ -45,8 +57,8 @@ async function api(params) {
 }
 
 async function candidates(query) {
-  const j = await api({ action: "query", generator: "search", gsrnamespace: "6", gsrsearch: `${query} filetype:audio`, gsrlimit: "50", prop: "imageinfo", iiprop: "url|extmetadata|mime|size|mediatype" });
-  return (j.query?.pages ?? []).map((p) => ({ title: p.title, info: p.imageinfo?.[0] })).filter((p) => p.info?.url);
+  const j = await api({ action: "query", generator: "search", gsrnamespace: "6", gsrsearch: `${query} filetype:audio`, gsrlimit: "50", prop: "imageinfo|categories", iiprop: "url|extmetadata|mime|size|mediatype", clshow: "!hidden", cllimit: "max" });
+  return (j.query?.pages ?? []).map((p) => ({ title: p.title, info: p.imageinfo?.[0], categories: p.categories ?? [] })).filter((p) => p.info?.url);
 }
 
 function probeSeconds(file) {
@@ -75,6 +87,8 @@ async function main() {
         if (seen.has(c.title) || unsuitableTitle(c.title) || !relevantTitle(c.title, cat)) continue;
         const licence = freeLicence(c.info.extmetadata);
         if (!licence) continue;
+        const filed = soundCategories(c.categories);
+        if (!filed.ok) { if (filed.bad.length) console.log(`sfx ${cat.id}: refused ${c.title.replace(/^File:/, "")} — filed under ${filed.bad.slice(0, 2).join(", ")}`); continue; }
         if ((c.info.size ?? 0) > 60e6) continue;
         seen.add(c.title);
         const id = `${cat.id}-${String(kept + 1).padStart(2, "0")}`;
@@ -96,10 +110,10 @@ async function main() {
           catalogue.push({
             id, category: cat.id, file: `clips/${id}.wav`, seconds: Math.round(seconds * 100) / 100,
             title: c.title.replace(/^File:/, ""), author: clean(m.Artist?.value) || "unknown", licence, source: c.info.descriptionurl ?? c.info.url,
-            description: clean(m.ImageDescription?.value),
+            description: clean(m.ImageDescription?.value), filed_under: filed.good.slice(0, 3),
           });
           kept++;
-          console.log(`sfx ${cat.id}: ${c.title.replace(/^File:/, "")} — ${licence}, ${seconds.toFixed(1)} s`);
+          console.log(`sfx ${cat.id}: ${c.title.replace(/^File:/, "")} — ${licence}, ${seconds.toFixed(1)} s [${filed.good.slice(0, 2).join(", ")}]`);
         } catch (e) {
           console.log(`sfx ${cat.id}: ${c.title} failed (${e.message})`);
         } finally {
