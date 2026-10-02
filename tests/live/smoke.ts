@@ -1519,6 +1519,12 @@ await check("one click: reference pictures for every location and prop (free bui
   assert(typeof r.requested === "number" && Array.isArray(r.items), JSON.stringify(r).slice(0, 200));
   const again = await api("POST", `/api/projects/${projectId}/world/looks/generate-all`, {});
   assert(again.requested === 0, `second click requested ${again.requested}`);
+  // Regression (owner 2026-10-02 "views.0: Invalid"): a view named with a two-word script time passes validation now.
+  const loc = r.items.find((x: any) => x.kind === "location");
+  if (loc) {
+    const v = await api("POST", `/api/world/location/${loc.id}/look/generate`, { views: ["wide:SAME TIME"] }, [200, 400]);
+    assert(!/views\.0: Invalid/.test(v?.error?.message ?? ""), "two-word times still refused: " + v?.error?.message);
+  }
   return `${r.requested} pictures for ${r.items.length} places/props`;
 });
 await check("one click: Visual Generation compiles every prompt, sketches every shot (free) and approves a take for each — the whole film can be assembled before any paid provider", async () => {
