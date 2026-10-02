@@ -51,6 +51,18 @@ const api = async (method, p, body) => (await fetch(API + p, { method, headers: 
     await reload();
     if ((await ada().getByRole("combobox").inputValue()) !== "director") throw new Error("role not kept");
   });
+  await step("owner request 2026-10-02: production hand-offs — choose Ada as owner of Visual Generation; kept after reload", async () => {
+    const st = () => page.getByRole("region", { name: "Production hand-offs" });
+    const vis = () => st().getByRole("listitem", { name: "Stage Visual Generation" });
+    await vis().getByText("no owner — members whose role edits it").waitFor();
+    await vis().getByText("told when a scene's shot plan is approved").waitFor();
+    await vis().getByRole("button", { name: "Choose owners" }).click();
+    await vis().getByLabel("ada@aurastage.invalid").check();
+    await vis().getByRole("button", { name: "Save owners" }).click();
+    await st().getByText(/^Visual Generation: 1 owner saved — they're told as soon as a scene's shot plan is approved\./).waitFor();
+    await reload();
+    await vis().getByText("ada", { exact: true }).waitFor();
+  });
   await step("give an extra permission on top of the role; role permissions are shown fixed; kept after reload", async () => {
     await ada().getByRole("button", { name: "Extra permissions" }).click();
     const grid = page.getByRole("table", { name: "Extra permissions" });

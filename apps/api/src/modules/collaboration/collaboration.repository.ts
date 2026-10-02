@@ -108,3 +108,9 @@ export const countUnread = async (db: SupabaseClient) => {
 export const markRead = (db: SupabaseClient, ids: string[] | null) => rpc<number>(db, "mark_notifications_read", { p_ids: ids });
 export const projectActivity = (db: SupabaseClient, projectId: string, before: string | null, limit: number) =>
   rpc<Row[]>(db, "project_activity", { p_project: projectId, p_before: before, p_limit: limit });
+
+// ---- Production hand-offs (migration 0057) ----
+export const listStageOwners = (db: SupabaseClient, projectId: string) =>
+  rows(db.from("project_stage_owners").select("stage, user_ids, updated_at").eq("project_id", projectId));
+export const setStageOwners = (db: SupabaseClient, projectId: string, stage: string, userIds: string[]) =>
+  rpc<string[]>(db, "set_stage_owners", { p_project: projectId, p_stage: stage, p_users: userIds });

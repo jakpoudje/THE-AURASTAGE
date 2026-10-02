@@ -240,7 +240,7 @@ export function useAudio(projectId: string) {
     generateCues: (sceneId: string) =>
       run("generate", () => audioApi.generateCues(projectId, sceneId), (r) =>
         r.requested.length
-          ? `Generating ${r.requested.length} planned sound${r.requested.length === 1 ? "" : "s"} with the built-in generators${r.skipped.length ? ` (${r.skipped.length} already generated or not supported)` : ""}. Nothing is placed until you choose “Use this”.`
+          ? `Generating ${r.requested.length} planned sound${r.requested.length === 1 ? "" : "s"} with the built-in generators${r.skipped.length ? ` (${r.skipped.length} already generated or not supported)` : ""}.${r.waiting ? ` ${r.waiting} more wait for the generator to catch up — press again in a moment, or use “Do 1–3 for the whole film”, which carries on by itself.` : ""} Nothing is placed until you choose “Use this”.`
           : "Nothing new to generate — every ambience, effect and score cue already has a generated sound or a recording."),
     spotAll: () =>
       run("spot", () => audioApi.spotAll(projectId), (r) =>

@@ -22,7 +22,7 @@ function handleError(err: unknown, reply: FastifyReply) {
   return reply.code(500).send({ error: { code: "AURA-COL-500", message: "Unexpected error" } });
 }
 
-type Params = { id: string; userId: string };
+type Params = { id: string; userId: string; stage: string };
 type Query = Record<string, string | undefined>;
 const route =
   <T>(fn: (a: { params: Params; query: Query; body: unknown; db: SupabaseClient; userId: string }) => Promise<T>) =>
@@ -48,6 +48,8 @@ export async function registerCollaborationRoutes(app: FastifyInstance) {
   app.get("/api/projects/:id/access", route(({ params, db }) => svc.getProjectAccess(db, params.id)));
   app.get("/api/projects/:id/team", route(({ params, db }) => svc.getProjectTeam(db, params.id)));
   app.post("/api/projects/:id/team/members", route(({ params, body, db }) => svc.setProjectMember(db, params.id, body)));
+  app.get("/api/projects/:id/stage-owners", route(({ params, db }) => svc.getStageOwners(db, params.id)));
+  app.put("/api/projects/:id/stage-owners/:stage", route(({ params, body, db }) => svc.setStageOwners(db, params.id, params.stage, body)));
   app.delete("/api/projects/:id/team/members/:userId", route(({ params, db }) => svc.removeProjectMember(db, params.id, params.userId)));
 
   // Invites. Tokens travel in request bodies, never in URLs, so they don't end up in access logs.

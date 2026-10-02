@@ -73,3 +73,14 @@ live checks in `tests/live/smoke.ts` and `tests/live/browser/run.mjs`.
 ## Known operational error codes
 AURA-COL-400 invalid input · 401 not signed in · 403 not allowed (with the reason) · 404 not found ·
 409 conflict (last owner, already used) · 410 invite expired or cancelled · 500 unexpected.
+
+## Production hand-offs (migration 0057, owner request 2026-10-02)
+`project_stage_owners` (one row per stage: its owners) — set on the Team page (`GET /api/projects/:id/stage-owners`,
+`PUT /api/projects/:id/stage-owners/:stage {user_ids}`, gated `team/administer`). A database trigger on the audit log turns
+production events into `stage_ready` notifications for the owners of the stage that can now start (script approved →
+Casting, Locations & Props, Dialogue; a scene's dialogue approved → Scene DNA; Scene DNA locked → Storyboard; shot plan
+approved → Visual Generation and Audio Studio; every shot of a scene approved, or its mix approved → Editorial; Picture
+Lock → Export & Deliver). With no owner set, the project's members whose role edits that stage are told. While unread,
+one notification per stage collects the scene numbers. The actor is never told about their own work; a notification
+never blocks the approval (failures are logged as `AURA-COL-HANDOFF` warnings).
+

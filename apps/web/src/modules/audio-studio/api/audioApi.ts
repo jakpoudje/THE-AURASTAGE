@@ -27,7 +27,7 @@ export const audioApi = {
   generate: (projectId: string, sceneId: string, body: { clip_id: string | null; kind: AudioGeneration["kind"]; description: string; duration_seconds: number; provider?: string }) =>
     apiPost<AudioGeneration>(`/api/projects/${projectId}/audio/scenes/${sceneId}/generate`, body),
   generateCues: (projectId: string, sceneId: string) =>
-    apiPost<{ requested: AudioGeneration[]; skipped: string[] }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/generate-cues`, {}),
+    apiPost<{ requested: AudioGeneration[]; skipped: string[]; waiting?: number }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/generate-cues`, {}),
   // One click for the whole film or one scene (owner, 2026-10-02).
   spotAll: (projectId: string) => apiPost<{ spotted: number[]; waiting: number[]; already: number }>(`/api/projects/${projectId}/audio/spot-all`, {}),
   generateAll: (projectId: string) => apiPost<{ scenes: number; requested: number; skipped: number; remaining?: number }>(`/api/projects/${projectId}/audio/generate-all`, {}),

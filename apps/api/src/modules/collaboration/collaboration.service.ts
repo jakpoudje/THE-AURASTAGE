@@ -3,7 +3,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CreateInviteInputSchema, InviteTokenInputSchema, SetOrgRoleInputSchema, SetProjectMemberInputSchema } from "@aurastage/contracts";
-import { CreateCommentInputSchema, CreateTaskInputSchema, TaskStatusSchema, CommentSchema, NotificationSchema, TaskSchema } from "@aurastage/contracts";
+import { PRODUCTION_STAGES, ProductionStageSchema, SetStageOwnersSchema, CreateCommentInputSchema, CreateTaskInputSchema, TaskStatusSchema, CommentSchema, NotificationSchema, TaskSchema } from "@aurastage/contracts";
 import { activityFeedEngine } from "@aurastage/engines";
 import { z } from "zod";
 import * as repo from "./collaboration.repository";
@@ -189,4 +189,30 @@ export async function projectActivity(db: SupabaseClient, projectId: string, q: 
   const before = q.before && !Number.isNaN(Date.parse(q.before)) ? new Date(q.before).toISOString() : null;
   const events = await repo.projectActivity(db, id(projectId, "Project"), before, 50);
   return activityFeedEngine({ events: events.map((e) => ({ ...e, metadata: e.metadata ?? {} })) as never });
+}
+
+// ---- Production hand-offs (migration 0057, owner request 2026-10-02) ----
+/**
+ * Each stage's owners and when they hear that their stage can start. With no owner set, the project's members whose role
+ * edits that stage are told instead. The notifications themselves are written by the database when a scene clears a stage.
+ */
+export async function getStageOwners(db: SupabaseClient, projectId: string) {
+  const pid = id(projectId, "Project");
+  const access = toAccessDTO(await repo.projectAccess(db, pid));
+  const [rows, team] = await Promise.all([repo.listStageOwners(db, pid), repo.projectTeam(db, pid)]);
+  const email = new Map(team.map((m) => [String(m.user_id), (m.email as string | null) ?? null]));
+  return {
+    can_manage: access.modules.team?.includes("administer") ?? false,
+    stages: PRODUCTION_STAGES.map((s) => {
+      const r = rows.find((x) => x.stage === s.id);
+      return { ...s, owners: ((r?.user_ids as string[] | undefined) ?? []).map((u) => ({ user_id: u, email: email.get(u) ?? null })) };
+    }),
+  };
+}
+export async function setStageOwners(db: SupabaseClient, projectId: string, stage: string, payload: unknown) {
+  const pid = id(projectId, "Project");
+  const st = parse(ProductionStageSchema, stage);
+  const { user_ids } = parse(SetStageOwnersSchema, payload);
+  await repo.setStageOwners(db, pid, st, user_ids);
+  return getStageOwners(db, pid);
 }

@@ -220,14 +220,14 @@ describe("Visual Generation routes", () => {
     rows.takes = [takeRow(), takeRow({ id: NEWER, take_number: 2, created_at: "2026-09-28T02:00:00Z" }), takeRow({ id: REJ, take_number: 3, approval: "rejected", created_at: "2026-09-28T03:00:00Z" })];
     const fake = fakeDb(rows, (fn, a) => (fn === "set_take_approval" ? { data: takeRow({ id: a.p_take_id, approval: a.p_approval }) } : {}));
     const r = await (await app(fake, { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/approve-all` });
-    expect(r.json()).toEqual({ approved: 1, remaining: 0, waiting: 0, total: 1 });
+    expect(r.json()).toEqual({ approved: 1, remaining: 0, waiting: 0, total: 1, making: 0 });
     const call = fake.calls.find((c) => c.fn === "set_take_approval");
     expect(call?.args).toMatchObject({ p_approval: "approved" });
     expect(JSON.stringify(call?.args)).toContain(NEWER);
     // Already approved → nothing changes.
     rows.takes = [takeRow({ approval: "approved" })];
     const fake2 = fakeDb(rows);
-    expect((await (await app(fake2, { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/approve-all` })).json()).toEqual({ approved: 0, remaining: 0, waiting: 0, total: 1 });
+    expect((await (await app(fake2, { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/approve-all` })).json()).toEqual({ approved: 0, remaining: 0, waiting: 0, total: 1, making: 0 });
     expect(fake2.calls.filter((c) => c.fn === "set_take_approval")).toEqual([]);
   });
 
@@ -235,10 +235,12 @@ describe("Visual Generation routes", () => {
     rows.generation_packages = [{ id: PKG, project_id: P, shot_id: SHOT, shot_plan_version_id: PV1, content: { prompt: "x" }, review_state: "current", review_reason: null, engine_version: "2.0.0", created_at: NOW }];
     const fake = fakeDb(rows, (fn) => (fn === "request_takes" ? { data: [takeRow({ status: "queued", approval: "pending", storage_key: null, completed_at: null })] } : {}));
     const r = await (await app(fake, { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/sketch-all` });
-    expect(r.json()).toEqual({ requested: 1, remaining: 0, already: 0, needs_prompt: 0 });
+    expect(r.json()).toEqual({ requested: 1, remaining: 0, already: 0, needs_prompt: 0, busy: false, making: 1, failed: [] });
     expect(fake.calls.find((c) => c.fn === "request_takes")?.args).toMatchObject({ p_provider: "aurastage-sketch", p_variations: 1 });
+    // 2026-10-02: whole-film sketches are batch work — queued behind people's own requests, bounded per project (migration 0055).
+    expect(fake.calls.find((c) => c.fn === "request_takes")?.args.p_params).toMatchObject({ batch: true });
     rows.takes = [takeRow()];
-    expect((await (await app(fakeDb(rows), { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/sketch-all` })).json()).toEqual({ requested: 0, remaining: 0, already: 1, needs_prompt: 0 });
+    expect((await (await app(fakeDb(rows), { MEDIA_BUCKET: "b" })).inject({ method: "POST", url: `/api/projects/${P}/visual/sketch-all` })).json()).toEqual({ requested: 0, remaining: 0, already: 1, needs_prompt: 0, busy: false, making: 0, failed: [] });
   });
 
   it("regression (owner 2026-10-02: compile-all cut off after 84 s): every shot compiled in one call from ONE read of the project", async () => {

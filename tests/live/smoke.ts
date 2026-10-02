@@ -1596,6 +1596,68 @@ await check("one click: Audio Studio generates every planned sound in the film, 
   return `generated ${g.requested} across ${g.scenes} scene(s); placed ${p.placed}; ${p.not_generated} cue(s) without a generated sound`;
 });
 
+// ---- Production runs (migration 0056) and generation in batches (0055) — owner request 2026-10-02 ----
+async function driveRun(id: string, max = 40) {
+  let r: any = null;
+  for (let i = 0; i < max; i++) {
+    r = await api("POST", `/api/runs/${id}/step`, {});
+    if (r.run.status !== "running") return r.run;
+    await Bun.sleep(Math.max(500, r.wait_ms));
+  }
+  return r?.run;
+}
+await check("production runs: a whole-film sound run (spot → generate → place) is shared, joined instead of doubled, worked in rounds to the end; per-scene progress from the records", async () => {
+  const s = await api("POST", `/api/projects/${projectId}/runs`, { kind: "audio.film" });
+  assert(s.joined === false && s.run.status === "running" && s.run.phase === "spot", JSON.stringify(s).slice(0, 300));
+  const j = await api("POST", `/api/projects/${projectId}/runs`, { kind: "audio.place" });
+  assert(j.joined === true && j.run.id === s.run.id, "a second run in the same area should join the one already running");
+  const end = await driveRun(s.run.id);
+  assert(end?.status === "completed", `run ended ${end?.status}: ${end?.message}`);
+  assert(end.log.some((l: any) => /^Finished —/.test(l.text)), "no finish line in the log");
+  const prog = await api("GET", `/api/projects/${projectId}/audio/progress`);
+  const sc = prog.scenes.find((x: any) => x.scene_id === s1);
+  assert(sc && typeof sc.pct === "number" && sc.counts.total >= sc.counts.placed && sc.label, JSON.stringify(sc));
+  const list = await api("GET", `/api/projects/${projectId}/runs`);
+  assert(list.active.audio === null && list.runs[0].id === s.run.id, "finished run should no longer be active");
+  return `${end.rounds} rounds; ${end.message.slice(0, 120)}; scene 1: ${sc.label} (${sc.pct}%) · generator ${JSON.stringify(prog.generator)}`;
+});
+await check("production runs: pause stops the rounds (no page drives it), resume carries on, stop keeps what's done; visual whole-film run completes; visual progress per scene", async () => {
+  const s = await api("POST", `/api/projects/${projectId}/runs`, { kind: "audio.place" });
+  const p = await api("POST", `/api/runs/${s.run.id}/control`, { action: "pause" });
+  assert(p.run.status === "paused", "not paused");
+  const idle = await api("POST", `/api/runs/${s.run.id}/step`, {});
+  assert(idle.driving === false && idle.run.status === "paused", "a paused run must not be driven");
+  assert((await api("POST", `/api/runs/${s.run.id}/control`, { action: "resume" })).run.status === "running", "not resumed");
+  const st = await api("POST", `/api/runs/${s.run.id}/control`, { action: "stop" });
+  assert(st.run.status === "cancelled" && /Everything already made is kept/.test(st.run.message), "not stopped");
+  await api("POST", `/api/projects/${projectId}/runs`, { kind: "audio.everything" }, [400]);
+  const v = await api("POST", `/api/projects/${projectId}/runs`, { kind: "visual.film" });
+  const end = await driveRun(v.run.id);
+  assert(end?.status === "completed", `visual run ended ${end?.status}: ${end?.message}`);
+  const prog = await api("GET", `/api/projects/${projectId}/visual/progress`);
+  const sc = prog.scenes.find((x: any) => x.scene_id === s1);
+  assert(sc && sc.counts.shots > 0 && sc.pct === 100 && sc.stage === "approved", JSON.stringify(sc));
+  return `visual: ${end.rounds} rounds — ${end.message.slice(0, 100)}; scene 1 ${sc.label}`;
+});
+await check("hand-offs (migration 0057): with the editor as owner of Editorial, a scene whose every shot is approved tells them (grouped, linked); the person who approved isn't told", async () => {
+  await api("POST", `/api/projects/${projectId}/team/members`, { user_id: user2, role: "editor" });
+  const so = await api("PUT", `/api/projects/${projectId}/stage-owners/editorial`, { user_ids: [user2] });
+  assert(so.stages.find((x: any) => x.id === "editorial").owners[0]?.user_id === user2, "owner not saved");
+  await api("PUT", `/api/projects/${projectId}/stage-owners/kazoo`, { user_ids: [] }, [400]);
+  await apiAs(token2, "POST", "/api/notifications/read", { ids: null });
+  const ws = await api("GET", `/api/projects/${projectId}/visual`);
+  const shot = ws.scenes.find((x: any) => x.scene.id === s1).shots.find((x: any) => x.approved_take_id);
+  await api("POST", `/api/takes/${shot.approved_take_id}/approve`, {});
+  const n = await apiAs(token2, "GET", "/api/notifications");
+  const h = n.items.find((x: any) => x.kind === "stage_ready");
+  assert(h && /ready for Editorial & Timeline$/.test(h.title) && h.link === `/projects/${projectId}/editorial`, JSON.stringify(n.items.slice(0, 3)));
+  const mine = await api("GET", "/api/notifications");
+  assert(!mine.items.some((x: any) => x.kind === "stage_ready" && /Editorial/.test(x.title) && x.created_at > h.created_at), "the actor shouldn't hear about their own work");
+  await api("PUT", `/api/projects/${projectId}/stage-owners/editorial`, { user_ids: [] });
+  await api("DELETE", `/api/projects/${projectId}/team/members/${user2}`);
+  return `${h.title} — ${h.body}`;
+});
+
 await check("ElevenLabs (R2): listed honestly; without its key it is never used (412, nothing queued); with it, a voice line is made by ElevenLabs", async () => {
   const ws = await api("GET", `/api/projects/${projectId}/audio`);
   const el = ws.generators.find((g: any) => g.id === "elevenlabs");

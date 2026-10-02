@@ -1776,6 +1776,18 @@ http.createServer((req, res) => {
     if (u === "/api/organizations" && req.method === "GET") return send(200, [{ org_id: ORG, role: T.as === "owner" ? "owner" : "member", organization: { id: ORG, name: "Test Studio", slug: "t", created_at: now() } }]);
     if (u === `/api/projects/${P}/access`) return send(200, teamAccess());
     if (u === `/api/projects/${P}/team`) return send(200, teamView());
+    // Production hand-offs (mirrors collaboration.service getStageOwners/setStageOwners + migration 0057).
+    const SO = globalThis.__stageOwners || (globalThis.__stageOwners = {});
+    const stageView = () => { const mem = teamView().members; return { can_manage: teamAccess().modules.team.includes("administer"),
+      stages: cc0.PRODUCTION_STAGES.map((st) => ({ ...st, owners: (SO[st.id] || []).map((id) => ({ user_id: id, email: (mem.find((x) => x.user_id === id) || {}).email || null })) })) }; };
+    if (u === `/api/projects/${P}/stage-owners` && req.method === "GET") return send(200, stageView());
+    if ((m = u.match(/^\/api\/projects\/[^/]+\/stage-owners\/([a-z_]+)$/)) && req.method === "PUT") {
+      if (!teamAccess().modules.team.includes("administer")) return refuse("Team & Collaboration");
+      if (!cc0.ProductionStageSchema.safeParse(m[1]).success) return send(400, { error: { code: "AURA-COL-400", message: "unknown stage" } });
+      const p = cc0.SetStageOwnersSchema.safeParse(b); if (!p.success) return send(400, { error: { code: "AURA-COL-400", message: "Invalid input" } });
+      const mem = teamView().members; if (p.data.user_ids.some((x) => !mem.some((y) => y.user_id === x))) return send(400, { error: { code: "AURA-COL-400", message: "that person isn't on this project" } });
+      SO[m[1]] = [...new Set(p.data.user_ids)]; return send(200, stageView());
+    }
     if (u === `/api/projects/${P}/team/members` && req.method === "POST") {
       if (!teamAccess().modules.team.includes("administer")) return refuse("Team & Collaboration");
       const pr = T.people.find((x) => x.user_id === b.user_id); Object.assign(pr, { project_role: b.role, grants: b.grants || [] }); return send(200, teamView());

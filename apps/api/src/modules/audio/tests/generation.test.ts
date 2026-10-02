@@ -111,5 +111,28 @@ describe("Audio Studio — generate sound", () => {
     expect(r.scenes).toBe(1);
     expect(r.requested).toBe(fake.calls.filter((c) => c.fn === "request_audio_generation").length);
     expect(r.requested).toBeGreaterThan(0);
+    // 2026-10-02: every request of a whole-film run is marked as batch work (migration 0055).
+    expect(fake.calls.filter((c) => c.fn === "request_audio_generation").every((c) => c.args.p_params.batch === true)).toBe(true);
+  });
+  it("regression 2026-10-02 (“that's a lot of generations in a minute”): when the run queue is full the batch stops, says how many are left, and is not an error", async () => {
+    const fake = fakeDb(rows());
+    let n = 0;
+    const rpc = fake.db.rpc;
+    fake.db.rpc = async (fn: string, args: Row) => {
+      if (fn === "request_audio_generation" && ++n > 1) { fake.calls.push({ fn, args }); return { data: null, error: { message: "AURA-AUD-429: the generator is still making 48 sounds from this run — the rest are added as they finish" } }; }
+      return rpc(fn, args);
+    };
+    const res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/generate-all` });
+    expect(res.statusCode, res.body).toBe(200);
+    const r = res.json();
+    expect(r).toMatchObject({ requested: 1, busy: true, failed: [] });
+    expect(r.remaining).toBeGreaterThan(0);
+  });
+  it("a cue whose sound failed twice is left for the person, not asked for again", async () => {
+    const r0 = rows();
+    r0.audio_generations.push({ id: "f1", project_id: P, scene_id: S1, clip_id: C.bg, status: "failed" }, { id: "f2", project_id: P, scene_id: S1, clip_id: C.bg, status: "failed" });
+    const fake = fakeDb(r0);
+    await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/generate-all` });
+    expect(fake.calls.filter((c) => c.fn === "request_audio_generation").some((c) => c.args.p_clip === C.bg)).toBe(false);
   });
 });

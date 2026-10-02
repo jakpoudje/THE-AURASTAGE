@@ -17,6 +17,7 @@ import { InvitePanel, OpenInvites } from "./components/InvitePanel";
 import { RoleGuide } from "./components/RoleGuide";
 import { StudioPanel } from "./components/StudioPanel";
 import { ReviewQueue } from "./components/ReviewQueue";
+import { StageOwners } from "./components/StageOwners";
 import { ActivityFeed } from "./components/ActivityFeed";
 
 export default function TeamCollaborationPage() {
@@ -65,6 +66,7 @@ export default function TeamCollaborationPage() {
             {team.can_manage_studio && t.studio && (
               <StudioPanel studio={t.studio} me={t.me} myRole={a.org_role} busy={t.busy} onRole={t.setStudioRole} onRemove={t.removeFromStudio} />
             )}
+            <StageOwners projectId={id} members={team.members} />
             <ReviewQueue projectId={id} members={team.members} me={t.me} />
             <RoleGuide roles={team.roles} />
           </div>

@@ -220,7 +220,8 @@ export type Task = z.infer<typeof TaskSchema>;
 export const NotificationSchema = z.object({
   id: z.string().uuid(),
   project_id: z.string().uuid().nullable(),
-  kind: z.enum(["mention", "reply", "task_assigned", "review_requested", "task_done"]),
+  /** stage_ready (migration 0057): work upstream is done and this person's stage can start on those scenes. */
+  kind: z.enum(["mention", "reply", "task_assigned", "review_requested", "task_done", "stage_ready"]),
   title: z.string(),
   body: z.string().nullable(),
   link: z.string().nullable(),
@@ -228,6 +229,22 @@ export const NotificationSchema = z.object({
   read_at: z.string().nullable(),
 });
 export type Notification = z.infer<typeof NotificationSchema>;
+
+// ---- Production hand-offs (migration 0057): who owns each stage, and who hears when it can start ----
+export const PRODUCTION_STAGES = [
+  { id: "casting", label: "Casting & Characters", path: "casting", after: "the script is approved" },
+  { id: "world", label: "Locations & Props", path: "world", after: "the script is approved" },
+  { id: "dialogue", label: "Dialogue Intelligence", path: "dialogue", after: "the script is approved" },
+  { id: "scene_dna", label: "Scene DNA", path: "scene-dna", after: "a scene's dialogue is approved" },
+  { id: "storyboard", label: "Storyboard & Shots", path: "storyboard", after: "a scene's Scene DNA is locked" },
+  { id: "visual", label: "Visual Generation", path: "visual", after: "a scene's shot plan is approved" },
+  { id: "audio", label: "Audio Studio", path: "audio", after: "a scene's shot plan is approved" },
+  { id: "editorial", label: "Editorial & Timeline", path: "editorial", after: "every shot of a scene has an approved take, or its mix is approved" },
+  { id: "delivery", label: "Export & Deliver", path: "export", after: "the picture is locked" },
+] as const;
+export type ProductionStage = (typeof PRODUCTION_STAGES)[number]["id"];
+export const ProductionStageSchema = z.enum(PRODUCTION_STAGES.map((s) => s.id) as [ProductionStage, ...ProductionStage[]]);
+export const SetStageOwnersSchema = z.object({ user_ids: z.array(z.string().uuid()).max(20) }).strict();
 
 export const ActivityItemSchema = z.object({
   id: z.string().uuid(),

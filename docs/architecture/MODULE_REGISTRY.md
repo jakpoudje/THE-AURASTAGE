@@ -19,7 +19,8 @@ API/domain service -> engine -> canonical data -> worker/provider using this tab
 | Assets Library | apps/web/src/modules/assets-library | apps/api/src/modules/assets | engines/assets | Asset / AssetVersion / AssetLink |
 | Help & Support | apps/web/src/modules/help-support | apps/api/src/modules/help | engines/help | SupportTicket (+ system status from telemetry) |
 | Ask AuraStage (Intelligence layer) | apps/web/src/modules/ask-aurastage (panel in AppShell) | apps/api/src/modules/assistant (+ packages/aura-intelligence, providers/reasoning) | planning prompts in packages/aura-intelligence | AIProposal (changes go through each domain's own service) |
-| Team & Collaboration | apps/web/src/modules/team-collaboration | apps/api/src/modules/collaboration | engines/collaboration | Organization / OrgMember / ProjectMember / Invite / Comment / Task / Notification |
+| Team & Collaboration | apps/web/src/modules/team-collaboration | apps/api/src/modules/collaboration | engines/collaboration | Organization / OrgMember / ProjectMember / Invite / Comment / Task / Notification / StageOwner (hand-offs, migration 0057) |
+| Production runs (MOS) | apps/web/src/modules/production-runs (panel on Audio Studio and Visual Generation) | apps/api/src/modules/runs | — (calls each area's own batch functions) | ProductionRun (migration 0056) — never canonical work, only the record of a whole-film job |
 
 Horizontal frontend-only workspaces (no single owned backend domain — they compose across domains):
 - apps/web/src/modules/home
@@ -47,6 +48,7 @@ Horizontal backend-only domains:
 | AURA-EXP | Export |
 | AURA-AST | Assets |
 | AURA-MOS | Orchestration |
+| AURA-RUN | Production runs (whole-film batches) |
 | AURA-COL | Team & Collaboration (permissions, invites) |
 | AURA-HLP | Help & Support, account security |
 | AURA-SET | Project Settings |
