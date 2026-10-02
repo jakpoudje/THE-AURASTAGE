@@ -172,6 +172,12 @@ export default function EditorialPage() {
           <span className="text-aura-gold">→</span>
           <span className="rounded-md border border-aura-gold px-3 py-1.5 text-aura-gold">Editorial & Timeline</span>
           <span className="text-white/30">→ Export & Deliver</span>
+          {ws.bin.length > 0 && (
+            <button onClick={() => d.testFilm()} disabled={d.busy !== null} title="Build the assembly if needed, lock the picture and render a Review Copy — each step can also be done by hand"
+              className="ml-auto rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+              Make a watchable film from everything approved (one click)
+            </button>
+          )}
         </div>
         {(d.error || d.notice) && (
           <div className={`rounded-md border px-4 py-2 text-sm ${d.error ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300"}`}>{d.error ?? d.notice}</div>

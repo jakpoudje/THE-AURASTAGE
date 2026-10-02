@@ -318,6 +318,12 @@ async function approveTakeFor(shotId) {
     await page.getByRole("button", { name: "Stop", exact: true }).click();
   });
 
+  await step("owner 2026-10-02: one click from everything approved to a Review Copy render (picture already locked: just renders); Export shows it", async () => {
+    await page.getByRole("button", { name: "Make a watchable film from everything approved (one click)" }).click();
+    await page.getByText(/queued a Review Copy of the whole film/).waitFor();
+    await page.goto(`${BASE}/projects/${P}/export`);
+    await page.getByText(/Review Copy/).first().waitFor();
+  });
   if (errors.length) { failed++; console.log("FAIL page errors", errors); }
   await browser.close();
   console.log(failed ? `${failed} FAILED` : "ALL PASSED");

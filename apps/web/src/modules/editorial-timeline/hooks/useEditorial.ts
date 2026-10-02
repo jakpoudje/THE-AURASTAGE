@@ -11,6 +11,7 @@ import type { AutomationPoint, EditOperation, PictureImpact, Project } from "@au
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { ApiError, apiGet } from "@/lib/apiClient";
 import { editorialApi } from "../api/editorialApi";
+import { deliveryApi } from "@/modules/export-deliver/api/deliveryApi";
 import { useAssistantChanges } from "@/modules/ask-aurastage/askBus";
 import type { EditorialWorkspace } from "../types";
 
@@ -93,6 +94,21 @@ export function useEditorial(projectId: string) {
     /** Volume automation: sound, not picture — saved against its own revision, never breaks the Picture Lock. */
     saveAutomation: (points: AutomationPoint[], summary: string) =>
       run("automation", () => editorialApi.saveAutomation(projectId, { A1: points }, ws!.timeline!.automation_revision), () => `${summary} — saved.`),
+    /**
+     * One click from everything approved to a watchable film (owner, 2026-10-02): build the first assembly if there is
+     * none, lock the picture if it isn't, and queue a Review Copy render — each through its own endpoint, so every step
+     * stays available by hand. A cut with offline slugs is refused at the lock with the reason.
+     */
+    testFilm: () =>
+      run("lock", async () => {
+        let w = await editorialApi.getWorkspace(projectId);
+        const built = !w.timeline;
+        if (built) { await editorialApi.assemble(projectId, null); w = await editorialApi.getWorkspace(projectId); }
+        const locked = !w.timeline!.lock;
+        if (locked) await editorialApi.lock(projectId, w.timeline!.revision);
+        const r = await deliveryApi.createRender(projectId, { profile_id: "review_copy" });
+        return { built, locked, render: r.render_id };
+      }, (r) => `${r.built ? "Built the first assembly, " : ""}${r.locked ? "locked the picture and " : ""}queued a Review Copy of the whole film. Watch it in Export & Deliver when the render finishes.`),
     lock: () => run("lock", () => editorialApi.lock(projectId, rev()!), (r) => `Picture locked (lock ${r.lock_number}). Sound, subtitles and delivery can now work from this exact cut.`),
     exportEdl: async () => {
       setBusy("export");
