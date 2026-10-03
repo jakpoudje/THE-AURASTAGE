@@ -747,9 +747,9 @@ await check("delivery: queue Streaming Master, Subtitles, Audio Package, a socia
   assert(mix && mix.mix && mix.mix.master && mix.tracks.every((t: any) => t.fx && t.fx.eq), "mix routing / channel strips missing from the manifest");
   assert(m.manifest.automation?.A1?.length === 3 && typeof m.manifest.sources.automation_revision === "string", "automation missing from the manifest");
   assert(m.manifest.picture.some((p: any) => p.kind === "take" && p.transition?.in === "fade_from_black"), "the transition didn't reach the manifest");
-  // R3 lip sync (manifest 1.10.0): the built-in sketch shots of speaking characters carry timed mouth shapes.
-  const lips = m.manifest.picture.filter((p: any) => p.lipsync?.length);
-  assert(lips.length > 0 && lips.every((p: any) => p.lipsync.every((c: any) => typeof c.key === "string" && Number.isInteger(c.frame) && c.frame >= 0 && c.frame < p.duration)), `no lip sync in the manifest (${m.manifest.engine_versions?.manifest})`);
+  // R3 lip sync (manifest 1.10.0): never invented — mouth timings only where a line is heard over a sketch shot
+  // (here the line falls after the cut's last shot; the end-of-run check renders a scene where it is on screen).
+  assert(m.manifest.picture.every((p: any) => !p.lipsync || p.lipsync.every((c: any) => typeof c.key === "string" && Number.isInteger(c.frame) && c.frame >= 0 && c.frame < p.duration)), "bad lip sync timings");
   const c = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "edit_decision_list" });
   const x = await api("POST", `/api/renders/${c.render_id}/cancel`, {});
   assert(x.status === "cancelled" || x.cancel_requested, "cancel");
@@ -1731,6 +1731,45 @@ await check("editorial (owner 2026-10-02: test one scene): a test cut of one sce
   assert(wasLocked || ws.versions.some((v: any) => v.label === "Before re-assembly"), "the previous cut wasn't kept as a version");
   await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "conform", scene_id: s1 } }, [200, 409]);
   return r.summary;
+});
+
+// ---- R3 lip sync (2026-10-03): a scene whose line is on screen renders with the speaker's mouth timed to it ----
+await check("lip sync (R3): re-spot, fill and approve Scene 1's sound, bring the test cut up to date and lock it — the render plan times the speaker's mouth on the sketch shot", async () => {
+  await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/spot`, {});
+  await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/generate-cues`, {});
+  let p: any = null;
+  for (let i = 0; i < 30; i++) {
+    await Bun.sleep(3000);
+    p = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/place-generated`, {});
+    if (!p.still_making) break;
+  }
+  let aw = await api("GET", `/api/projects/${projectId}/audio`);
+  let sc = aw.scenes.find((x: any) => x.scene.id === s1);
+  const m = { integrated_lufs: -23.2, true_peak_dbtp: -6.5, lra_lu: 2, duration_seconds: sc.session.scene_seconds, clip_count: sc.clips.length, engine_version: "1.0.0" };
+  await api("POST", `/api/audio-sessions/${sc.session.id}/measurements`, { ...m, session_revision: sc.session.revision });
+  const v = await api("POST", `/api/projects/${projectId}/audio/scenes/${s1}/approve`, {});
+  let ws = await edWs();
+  await api("POST", `/api/projects/${projectId}/editorial/assemble`, { base_revision: ws.timeline.revision, scene_ids: [s1], break_lock: ws.timeline.status === "locked" });
+  for (;;) {
+    ws = await edWs();
+    const slug = ws.clips.find((c: any) => c.kind === "slug");
+    if (!slug) break;
+    await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "lift", clip_id: slug.id } });
+  }
+  ws = await edWs();
+  assert(ws.clips.some((c: any) => c.track === "A1" && c.scene_id === s1), "the approved sound isn't on the test cut");
+  await api("POST", `/api/projects/${projectId}/editorial/lock`, { base_revision: ws.timeline.revision });
+  const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "streaming_master" });
+  const man = (await api("GET", `/api/renders/${r.render_id}/manifest`)).manifest;
+  await api("POST", `/api/renders/${r.render_id}/cancel`, {});
+  const lips = man.picture.filter((x: any) => x.kind === "take" && x.lipsync?.length);
+  assert(man.engine_versions.manifest === "1.10.0" && lips.length > 0, `no lip sync: ${JSON.stringify(man.picture.map((x: any) => [x.kind, x.record_in, x.duration]))}`);
+  const chars = (await api("GET", `/api/projects/${projectId}/characters`)).characters ?? [];
+  const keys = [...new Set(lips.flatMap((x: any) => x.lipsync.map((c: any) => c.key)))];
+  assert(keys.every((k) => chars.some((c: any) => c.id === k)), `mouth keys aren't characters: ${keys}`);
+  const shapes = new Set(lips.flatMap((x: any) => x.lipsync.map((c: any) => c.viseme)));
+  assert(shapes.size >= 3 && lips.every((x: any) => x.lipsync.every((c: any) => c.frame >= 0 && c.frame < x.duration)), `shapes ${[...shapes]}`);
+  return `mix v${v.version_number}; ${lips.reduce((n: number, x: any) => n + x.lipsync.length, 0)} mouth changes on ${lips.length} sketch shot(s) for ${keys.map((k) => chars.find((c: any) => c.id === k)?.name).join(", ")}; shapes ${[...shapes].join(" ")}`;
 });
 
 const failed = results.filter((r) => !r.ok).length;
