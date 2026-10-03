@@ -55,7 +55,7 @@ async function api(method, path, body) {
     await page.getByTestId("world-sync-state").getByText("Not looked for yet.").waitFor();
   });
   await step("find them in the script: one location per place (with its times of day and areas), props with the line they come from; names are never props", async () => {
-    await page.getByRole("button", { name: "Find locations & props in the script" }).click();
+    await page.getByRole("button", { name: "1 · Find locations & props in the script" }).click();
     await page.getByText(/Found 2 locations and \d+ props in script version 1/).waitFor();
     await list("Locations").getByRole("button", { name: /Tunde's Flat/ }).waitFor();
     await list("Locations").getByText(/2 scenes · night, day/).waitFor();
@@ -142,7 +142,7 @@ async function api(method, path, body) {
     await page.goto(`${BASE}/projects/${P}/world`);
     const w0 = await api("GET", `/api/projects/${P}/world`);
     const written = w0.locations.find((l) => l.description);
-    await page.getByRole("button", { name: "Describe every place and prop (free)" }).click();
+    await page.getByRole("button", { name: "2 · Describe every place and prop (free)" }).click();
     const ask = page.getByRole("complementary", { name: "Ask AuraStage" });
     await ask.getByTestId("proposal-status").getByText(/Suggested/).waitFor();
     if (await ask.getByRole("button", { name: /^Apply/ }).isEnabled()) {
@@ -157,9 +157,9 @@ async function api(method, path, body) {
     if (written && w1.locations.find((l) => l.id === written.id).description !== written.description) throw new Error("a written description was replaced");
   });
   await step("owner 2026-10-02: reference pictures for every place and prop in one click (free); a second click makes nothing new; reload: pictures there", async () => {
-    await page.getByRole("button", { name: "Make reference pictures for every place and prop (free)" }).click();
+    await page.getByRole("button", { name: "3 · Make reference pictures for every place and prop (free)" }).click();
     await page.getByText(/^Making \d+ reference pictures? for \d+ places?/).waitFor();
-    await page.getByRole("button", { name: "Make reference pictures for every place and prop (free)" }).click();
+    await page.getByRole("button", { name: "3 · Make reference pictures for every place and prop (free)" }).click();
     await page.getByText("Every place and prop already has its reference pictures from the current description.").waitFor();
     const w = await api("GET", `/api/projects/${P}/world`);
     const first = w.locations.find((l) => !l.archived);
@@ -184,7 +184,7 @@ async function api(method, path, body) {
     await api("POST", `/api/projects/${P}/script/approve`, { version_id: v2.id });
     await reload();
     await page.getByTestId("world-sync-state").getByText("The approved script changed since the last look.").waitFor();
-    await page.getByRole("button", { name: "Find locations & props in the script" }).click();
+    await page.getByRole("button", { name: "1 · Find locations & props in the script" }).click();
     await page.getByText(/no longer in the script — kept and flagged/).waitFor();
     await list("Locations").getByRole("button", { name: /Lagos Harbour.*NOT IN SCRIPT/ }).click();
     await page.getByText(/No longer found in the approved script/).waitFor();

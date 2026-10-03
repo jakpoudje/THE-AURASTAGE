@@ -192,7 +192,7 @@ async function api(method, path, body) {
   await step("whole film (owner, 2026-09-30: downstream pages too): every scene's DNA filled free in one click — only empty fields; reload keeps it; lock every ready scene in one click", async () => {
     const before = await api("GET", `/api/projects/${P}/scene-dna`);
     const written = before.scenes.find((e) => e.editable.purpose);
-    await page.getByRole("group", { name: "Whole film" }).getByRole("button", { name: "Fill every scene's Scene DNA (free)" }).click();
+    await page.getByRole("group", { name: "Whole film" }).getByRole("button", { name: "1 · Fill every scene's Scene DNA (free)" }).click();
     const panel = page.getByRole("complementary", { name: "Ask AuraStage" });
     await panel.getByTestId("proposal-status").getByText("Suggested").waitFor();
     await panel.getByTestId("proposal-provider").getByText(/built in · free/).waitFor();
@@ -204,7 +204,7 @@ async function api(method, path, body) {
     const active = after.scenes.filter((e) => e.scene.status === "active");
     if (!active.every((e) => e.editable.lighting_intent && e.editable.sound_intent && e.editable.purpose)) throw new Error("a scene was left empty");
     if (written && after.scenes.find((e) => e.scene.id === written.scene.id).editable.purpose !== written.editable.purpose) throw new Error("a written purpose was replaced");
-    const lock = page.getByRole("group", { name: "Whole film" }).getByRole("button", { name: /Lock every ready scene/ });
+    const lock = page.getByRole("group", { name: "Whole film" }).getByRole("button", { name: /^2 · Lock every ready scene/ });
     if (await lock.isEnabled()) {
       await lock.click();
       await page.getByText(/Locked \d+ of \d+ ready scene/).waitFor();

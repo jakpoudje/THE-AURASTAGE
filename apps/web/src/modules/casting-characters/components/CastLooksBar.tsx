@@ -47,7 +47,7 @@ export function CastLooksBar({ projectId, firstCharacterId, count }: { projectId
     <div className="rounded-xl border border-aura-border bg-aura-panel px-4 py-3 text-sm" data-testid="cast-looks">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1">
-          <p className="font-medium">Character looks for the whole cast</p>
+          <p className="font-medium">3 · Character looks for the whole cast</p>
           <p className="text-xs text-white/50">The standard reference views for all {count} character{count === 1 ? "" : "s"}, each drawn from their own profile.</p>
         </div>
         <select aria-label="Image generator for the whole cast" value={provider} onChange={(e) => setProvider(e.target.value)} className="rounded-md border border-aura-border bg-black px-2 py-1.5 text-sm">

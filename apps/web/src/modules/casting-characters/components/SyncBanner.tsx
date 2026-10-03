@@ -32,6 +32,7 @@ export function SyncBanner({
       }`}
     >
       <span className="flex-1">
+        <span className="mr-1 font-medium">1 ·</span>
         {state === "never"
           ? `Script version ${ws.script!.version_number} is approved. Find the characters in it to get started.`
           : current

@@ -104,18 +104,18 @@ export default function SceneDnaPage() {
 
         {ws.script && (
           <div role="group" aria-label="Whole film" className="flex flex-wrap items-center gap-2 rounded-xl border border-aura-border bg-aura-panel p-3 text-sm">
-            <span className="text-white/60">Whole film:</span>
+            <span className="text-white/60">Whole film, in order:</span>
             <button onClick={() => askAuraStage("Fill every scene's Scene DNA from the script: only empty fields.", { task: "fill_all_scene_dna" })}
-              className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold">Fill every scene&apos;s Scene DNA (free)</button>
+              className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold">1 · Fill every scene&apos;s Scene DNA (free)</button>
             {(() => {
               const ready = ws.scenes.filter((e) => e.scene.status === "active" && e.proposal.ready_for_approval && !(e.record?.status === "approved" && e.record.review_state === "current")).map((e) => e.scene.id);
               return (
                 <button disabled={!ready.length || d.busy !== null}
                   onClick={() => window.confirm(`Lock ${ready.length} ready scene(s)? Each locks the version of the script, cast and dialogue it was built from; Storyboard then plans from it.`) && d.approveAll(ready)}
-                  className="rounded-md bg-aura-gold px-3 py-1.5 font-medium text-black disabled:opacity-40">Lock every ready scene ({ready.length})</button>
+                  className="rounded-md bg-aura-gold px-3 py-1.5 font-medium text-black disabled:opacity-40">2 · Lock every ready scene ({ready.length})</button>
               );
             })()}
-            <span className="text-[11px] text-white/40">A scene is ready once its dialogue is approved and its speakers are in Casting.</span>
+            <span className="text-[11px] text-white/40">Step 1 shows every change before it is saved (only empty fields). A scene is ready to lock once its dialogue is approved and its speakers are in Casting; any scene can still be done by hand below.</span>
           </div>
         )}
 

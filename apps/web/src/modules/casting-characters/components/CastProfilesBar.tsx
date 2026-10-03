@@ -25,7 +25,7 @@ export function CastProfilesBar({ projectId, characters, busy, onApplySuggestion
         </div>
       ) : (
         <>
-          <h2 className="text-sm font-medium">Profiles for the whole cast</h2>
+          <h2 className="text-sm font-medium">2 · Profiles for the whole cast</h2>
           <p className="mt-1 text-xs text-white/50">
             {incomplete.length ? `${incomplete.length} of ${characters.length} characters have empty fields` : "Every field is filled in"}
             {drafts.length ? ` · ${drafts.length} not approved yet` : ""}. Nothing you've written is changed.

@@ -118,15 +118,15 @@ export default function DialogueIntelligencePage() {
         ) : (
           <>
           <div role="group" aria-label="Whole film" className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-aura-border bg-aura-panel p-3 text-sm">
-            <span className="text-white/60">Whole film:</span>
+            <span className="text-white/60">Whole film, in order:</span>
             <button onClick={() => askAuraStage("Fill the performance of every line in the film from the script: only empty fields.", { task: "annotate_all_lines" })}
-              className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold">Fill every line in the film (free)</button>
+              className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold">1 · Fill every line in the film (free)</button>
             {(() => {
               const todo = scenes.filter((s) => ws.lines.some((l) => l.scene_id === s.id && l.status === "active" && !(l.approval === "approved" && l.review_state === "current"))).map((s) => s.id);
               return (
                 <button disabled={!todo.length || d.busy !== null}
                   onClick={() => window.confirm(`Approve the dialogue of ${todo.length} scene(s)? You can still edit any line afterwards.`) && d.approveAll(todo)}
-                  className="rounded-md bg-aura-gold px-3 py-1.5 font-medium text-black disabled:opacity-40">Approve every scene&apos;s dialogue ({todo.length})</button>
+                  className="rounded-md bg-aura-gold px-3 py-1.5 font-medium text-black disabled:opacity-40">2 · Approve every scene&apos;s dialogue ({todo.length})</button>
               );
             })()}
           </div>

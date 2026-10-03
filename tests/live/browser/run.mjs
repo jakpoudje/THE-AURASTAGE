@@ -159,7 +159,7 @@ await check("casting Voice DNA: the voice comes from the profile and says why; r
 await check("locations & props: find them in the script, describe one, make its views in the worker; reload: kept", async () => {
   await page.goto(projectUrl + "/world");
   await page.getByTestId("world-sync-state").waitFor();
-  await page.getByRole("button", { name: "Find locations & props in the script" }).click();
+  await page.getByRole("button", { name: "1 · Find locations & props in the script" }).click();
   await page.getByText(/Found 2 locations and \d+ props? in script version 1/).waitFor();
   await page.getByRole("list", { name: "Locations" }).getByRole("button", { name: /Lagos Harbour/ }).click();
   await page.getByLabel("Description").fill("Rusting cranes and stacked containers at first light");

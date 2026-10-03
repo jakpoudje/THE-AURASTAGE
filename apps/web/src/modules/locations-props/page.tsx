@@ -114,14 +114,14 @@ export default function LocationsPropsPage() {
           <span data-testid="world-sync-state">{syncLabel}{ws.sync.synced_at ? ` (checked ${new Date(ws.sync.synced_at).toLocaleString()})` : ""}</span>
           <button onClick={() => run(() => worldApi.sync(id), (r) => `Found ${r.locations} location${r.locations === 1 ? "" : "s"} and ${r.props} prop${r.props === 1 ? "" : "s"} in script version ${r.script_version_number} (${r.new_locations + r.new_props} new${r.flagged ? `, ${r.flagged} no longer in the script — kept and flagged` : ""}).`)}
             disabled={!canEdit || busy || ws.sync.state === "no_script"} title={canEdit ? undefined : "Your role can't edit Scene DNA"}
-            className="ml-auto rounded-md bg-aura-gold px-4 py-1.5 font-medium text-black disabled:opacity-40">Find locations & props in the script</button>
+            className="ml-auto rounded-md bg-aura-gold px-4 py-1.5 font-medium text-black disabled:opacity-40">1 · Find locations & props in the script</button>
           <button onClick={() => askAuraStage("Describe every location and prop from the script: only empty descriptions.", { task: "describe_all_world" })} disabled={!canEdit}
-            className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold disabled:opacity-40">Describe every place and prop (free)</button>
+            className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold disabled:opacity-40">2 · Describe every place and prop (free)</button>
           <button onClick={() => run(() => worldApi.generateAll(id), (r) => r.requested
               ? `Making ${r.requested} reference picture${r.requested === 1 ? "" : "s"} for ${r.items.filter((x) => x.requested).length} place${r.items.filter((x) => x.requested).length === 1 ? "" : "s"} and prop${r.items.filter((x) => x.requested).length === 1 ? "" : "s"} in the background (built-in, free). Pictures already made from the current description are kept.`
               : "Every place and prop already has its reference pictures from the current description.")}
             disabled={!canEdit || busy || !(ws.locations.length + ws.props.length)}
-            className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold disabled:opacity-40">Make reference pictures for every place and prop (free)</button>
+            className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold disabled:opacity-40">3 · Make reference pictures for every place and prop (free)</button>
         </div>
         {notice && <p role="status" className="rounded-md border border-emerald-400/40 px-4 py-2 text-sm text-emerald-300">{notice}</p>}
         {error && <p role="alert" className="rounded-md border border-red-400/40 px-4 py-2 text-sm text-red-300">{error}</p>}

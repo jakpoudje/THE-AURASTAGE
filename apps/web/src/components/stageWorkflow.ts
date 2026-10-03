@@ -11,19 +11,19 @@ export const STAGE_WORKFLOW: Record<string, StageWorkflow> = {
     one: "Write or edit any stage yourself — Setup, Story, Outline, Script — or condense one scene; nothing changes until you save or apply.",
   },
   casting: {
-    all: "“Find characters”, then “Profiles for the whole cast” and “Character looks for the whole cast” (only empty fields and missing views).",
+    all: "1 · Find characters in the script, 2 · Profiles for the whole cast, 3 · Character looks for the whole cast (only empty fields and missing views).",
     one: "Open a character to fill or edit their profile, make their looks, age them, and approve them one by one.",
   },
   world: {
-    all: "“Describe every place and prop (free)”, then “Make reference pictures for every place and prop (free)”.",
+    all: "“1 · Find locations & props in the script”, “2 · Describe every place and prop (free)”, then “3 · Make reference pictures for every place and prop (free)”.",
     one: "Open a location or prop to describe it and make its views (time of day, areas) one at a time.",
   },
   dialogue: {
-    all: "Bring in the lines, “Fill every line in the film (free)”, then “Approve every scene's dialogue”.",
+    all: "Bring in the lines, then “1 · Fill every line in the film (free)” (you see every change first) and “2 · Approve every scene's dialogue”.",
     one: "Pick a scene, edit each line's emotion, intensity and delivery, then approve that scene.",
   },
   "scene-dna": {
-    all: "“Fill every scene's Scene DNA (free)”, then “Lock every ready scene”.",
+    all: "“1 · Fill every scene's Scene DNA (free)” (you see every change first), then “2 · Lock every ready scene”.",
     one: "Pick a scene, work through its four sections (or fill them from the script), then lock that scene.",
   },
   storyboard: {
