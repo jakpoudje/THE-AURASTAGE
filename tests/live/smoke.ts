@@ -1759,7 +1759,13 @@ await check("lip sync (R3): re-spot, fill and approve Scene 1's sound, bring the
   // "Bring Scene 1 up to date" (Conform): newer approved takes swapped in, the approved sound laid in.
   ws = await edWs();
   await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "conform", scene_id: s1 } }, [200, 409]);
-  ws = await edWs();
+  // An "over picture" insert (V2) of a shot the re-approved plan no longer has can't be conformed: take it off, as a user would.
+  for (;;) {
+    ws = await edWs();
+    const gone = ws.issues.map((i: any) => ws.clips.find((c: any) => c.id === i.clip_id)).find((c: any) => c && c.track === "V2");
+    if (!gone) break;
+    await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "lift", clip_id: gone.id } });
+  }
   assert(ws.clips.some((c: any) => c.track === "A1" && c.scene_id === s1), "the approved sound isn't on the test cut");
   await api("POST", `/api/projects/${projectId}/editorial/lock`, { base_revision: ws.timeline.revision });
   const r = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "streaming_master" });
