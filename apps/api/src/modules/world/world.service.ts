@@ -9,7 +9,7 @@ import { ScreenplayElementSchema } from "@aurastage/contracts";
 import { propContinuityEngine, sceneBoundaryEngine, worldExtraction, worldLook } from "@aurastage/engines";
 import { stillBackends, stillBackendStatuses } from "../../providers";
 import { readProjectSettings } from "../settings/settings.read";
-import { mapDbError, WorldNotFoundError, WorldNotReadyError, WorldValidationError } from "./world.errors";
+import { mapDbError, WorldConflictError, WorldNotFoundError, WorldNotReadyError, WorldValidationError } from "./world.errors";
 
 type Env = Record<string, string | undefined>;
 type Row = Record<string, any>;
@@ -96,6 +96,8 @@ export async function getWorldWorkspace(db: SupabaseClient, projectId: string) {
       id: r.id as string, name: String(r.name),
       appearances: apps.filter((a) => a.object_type === "prop" && a.object_id === r.id).map((a) => ({ scene_number: Number(a.scene_number), evidence: String(a.evidence ?? "").slice(0, 4000) })),
     })),
+    // Where each scene happens (its location record), so an everyday prop's state stays in its place (engine 1.1.0).
+    scene_locations: apps.filter((a) => a.object_type === "location").map((a) => ({ scene_number: Number(a.scene_number), location: String(a.object_id) })),
   });
   return {
     continuity,
@@ -209,13 +211,20 @@ export async function generateWorldLook(db: SupabaseClient, kindRaw: string, id:
     const sketch = kind === "location"
       ? { kind, title: r.name, subtitle: v.label, view: v.view, time: v.time, int_ext: r.int_ext ?? [], lines: [out.identity], description: r.description || null, genre, seed: r.id }
       : { kind, title: r.name, subtitle: v.label, view: v.view, category: r.category, lines: [out.identity], description: r.description || null, genre };
-    const row = await rpc<Row>(db, "request_world_reference", {
-      p_type: kind, p_id: id, p_view: v.key, p_aspect: v.aspect_ratio, p_prompt: v.prompt, p_negative: out.negative, p_identity_hash: out.identity_hash,
-      p_provider: be.id, p_model: be.model, p_execution: be.execution, p_seed: Math.floor(Math.random() * 2 ** 31), p_sketch: sketch, p_engine_version: out.engine_version,
-    });
+    let row: Row;
+    try {
+      row = await rpc<Row>(db, "request_world_reference", {
+        p_type: kind, p_id: id, p_view: v.key, p_aspect: v.aspect_ratio, p_prompt: v.prompt, p_negative: out.negative, p_identity_hash: out.identity_hash,
+        p_provider: be.id, p_model: be.model, p_execution: be.execution, p_seed: Math.floor(Math.random() * 2 ** 31), p_sketch: sketch, p_engine_version: out.engine_version,
+      });
+    } catch (e) {
+      // The per-minute limit part-way: keep what was asked for and say the rest is waiting (the one-click carries on later).
+      if (requested.length && e instanceof WorldConflictError && /a lot of/.test(e.message)) return { requested, provider: be.id, identity_hash: out.identity_hash, stopped: true };
+      throw e;
+    }
     requested.push({ id: row.id, key: v.key, status: row.status, provider: be.id });
   }
-  return { requested, provider: be.id, identity_hash: out.identity_hash };
+  return { requested, provider: be.id, identity_hash: out.identity_hash, stopped: false };
 }
 
 /**
@@ -228,21 +237,33 @@ export async function generateAllWorldLooks(db: SupabaseClient, projectId: strin
   const b = parse(z.object({ provider: z.string().max(60).optional(), redo: z.boolean().default(false) }).strict(), body ?? {});
   const items: { kind: Kind; r: Row }[] = [];
   for (const kind of ["location", "prop"] as Kind[]) {
-    const rows = await many(db.from(kind === "location" ? "locations" : "props").select("id, name, archived_at").eq("project_id", projectId).order("created_at", { ascending: true }));
-    for (const r of rows.filter((x) => !x.archived_at)) items.push({ kind, r });
+    const rows = await many(db.from(kind === "location" ? "locations" : "props").select("id, name, archived_at, missing_since_version_id").eq("project_id", projectId).order("created_at", { ascending: true }));
+    // Items the approved script no longer has (flagged on the last "Find") get no new pictures.
+    for (const r of rows.filter((x) => !x.archived_at && !x.missing_since_version_id)) items.push({ kind, r });
   }
   const out: { kind: Kind; id: string; name: string; requested: number }[] = [];
   let provider: string | null = null;
+  // Whole film in batches (owner report 2026-10-03: "that's a lot of images in a minute"): when the per-minute limit is
+  // reached the click stops calmly and says how many places and props are still waiting; the page asks again a minute
+  // later and only the views not made or being made are requested (the same check as below), so nothing is doubled.
+  let waiting = 0;
   for (const { kind, r } of items) {
+    if (waiting) { waiting++; continue; }
     const look = await getWorldLook(db, kind, r.id, env);
     const todo = look.views.filter((v) => v.in_default_set).filter((v) => {
       if (v.latest && (v.latest.status === "queued" || v.latest.status === "running")) return false;
       return b.redo || !v.image || v.image.stale;
     }).map((v) => v.key);
     if (!todo.length) { out.push({ kind, id: r.id, name: r.name, requested: 0 }); continue; }
-    const g = await generateWorldLook(db, kind, r.id, { views: todo, ...(b.provider ? { provider: b.provider } : {}) }, env);
-    provider = g.provider;
-    out.push({ kind, id: r.id, name: r.name, requested: g.requested.length });
+    try {
+      const g = await generateWorldLook(db, kind, r.id, { views: todo, ...(b.provider ? { provider: b.provider } : {}) }, env);
+      provider = g.provider;
+      out.push({ kind, id: r.id, name: r.name, requested: g.requested.length });
+      if (g.stopped) waiting = 1;
+    } catch (e) {
+      if (!(e instanceof WorldConflictError) || !/a lot of/.test(e.message)) throw e;
+      waiting = 1;
+    }
   }
-  return { items: out, requested: out.reduce((a, x) => a + x.requested, 0), provider };
+  return { items: out, requested: out.reduce((a, x) => a + x.requested, 0), provider, waiting, retry_after_seconds: waiting ? 60 : 0 };
 }

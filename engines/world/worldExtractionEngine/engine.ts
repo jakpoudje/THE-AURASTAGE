@@ -32,13 +32,31 @@ export interface WorldExtractionOutput { locations: ExtractedLocation[]; props: 
 /** Everyday screen props (singular). Vehicles are kept as their own category. */
 const PROPS = new Set(("phone mobile smartphone letter envelope gun pistol revolver rifle shotgun knife machete dagger sword key keys laptop computer tablet notebook " +
   "diary journal book bible newspaper magazine camera photograph photo picture badge bag handbag backpack briefcase suitcase wallet purse ring necklace bracelet " +
-  "watch glass bottle cup mug flask cigarette lighter matchbox map file folder dossier document report ledger radio walkie-talkie torch flashlight umbrella box " +
+  "watch glass glasses bottle cup mug flask cigarette lighter matchbox map file folder dossier document report ledger radio walkie-talkie torch flashlight umbrella box " +
   "package parcel crate recorder dictaphone tape cassette usb pen pencil card passport ticket cash money coin banknote rope chain lamp lantern candle mirror " +
   "microphone headphones syringe pill pills drink plate bowl tray cane stick bat hammer spanner crowbar shovel axe helmet mask scarf hat cap sunglasses " +
   "handcuffs remote television tv screen monitor drone guitar drum trophy medal flag banner sign poster painting statue vase basket cooler").split(" "));
 const VEHICLES = new Set("car van truck lorry bus taxi cab motorbike motorcycle okada keke danfo bicycle bike boat canoe ship ferry jeep suv ambulance helicopter".split(" "));
 const DETERMINERS = new Set("a an the his her their its my our your this that one another".split(" "));
-const SOUNDS = new Set(("BANG CRASH THUD THUMP RING RINGS RINGING SLAM SLAMS BOOM CLICK CLICKS BUZZ BUZZES BEEP BEEPS KNOCK KNOCKS KNOCKING SCREAM SCREAMS WHOOSH " +
+const POSSESSIVE = new Set("his her their its my our your".split(" "));
+/** People and titles written in capitals when they first appear (a STEWARD, the LAWYER, HON. TAFIDA) — never props. */
+const PEOPLE = new Set(("STEWARD STEWARDS LAWYER LAWYERS GUARD GUARDS DRIVER DRIVERS GATEMAN PRODUCER VOLUNTEER VOLUNTEERS INSIDER ATTENDANT ATTENDANTS ESCORT ESCORTS " +
+  "LOYALIST LOYALISTS OBSERVER OBSERVERS HOST REPORTER REPORTERS JOURNALIST JOURNALISTS OFFICER OFFICERS AGENT AGENTS AIDE AIDES VOTER VOTERS SUPPORTER SUPPORTERS " +
+  "SECURITY POLICE POLICEMAN SOLDIER SOLDIERS NURSE DOCTOR WAITER WAITRESS CLERK CROWD WOMAN WOMEN MAN MEN BOY BOYS GIRL GIRLS CHILD CHILDREN YOUTH YOUTHS " +
+  "TRADER TRADERS VENDOR VENDORS PROTESTER PROTESTERS MARCHER MARCHERS DELEGATE DELEGATES OFFICIAL OFFICIALS STAFF ORDERLY CAMERAMAN PHOTOGRAPHER SPEAKER " +
+  "HON CHIEF DR PROF MR MRS MS ALHAJI ALHAJA MALLAM SENATOR BARRISTER GOVERNOR PRESIDENT JUSTICE JUDGE PASTOR IMAM MAMA PAPA BABA").split(" "));
+/** Common words and places that are emphasis, not objects (OTHER AGENTS, NATIONAL DEMOCRATIC CONGRESS). */
+const COMMON_CAPS = new Set(("OTHER OTHERS ALL EVERY EACH SOME MANY FEW MORE MOST NO NOT YES NEW OLD BIG SMALL FIRST LAST NEXT ONLY JUST VERY NOW STILL " +
+  "NATIONAL COUNTRY NATION NIGERIA NAIJA AFRICA STATE FEDERAL DEMOCRATIC CONGRESS PARTY PEOPLE VOTE VOTES ORDER WE YOU THEY HE SHE IT FOR HOW WHAT WHY " +
+  "WHO HAS HAVE IS ARE WAS WERE BE DO DID DONE GO STOP WAIT LIVE BREAKING").split(" "));
+/** Words that put the capitals after them into someone's mouth or on a surface (a sign, a page, a screen). */
+const SAYS = new Set(("shout shouts shouting shouted chant chants chanting chanted read reads reading says say said yell yells yelling cry cries crying " +
+  "call calls calling scream screams screaming write writes written writing label labelled labeled mark marked stamp stamped spell spells spelling print printed " +
+  "type types typed typing headline caption hashtag slogan banner").split(" "));
+/** Glass the material (windows, doors, a glass table) and glasses to see with are not a drinking glass. */
+const GLASS_SURROUND = /\b(window|windows|windscreen|windshield|louvre|louvred|louvered|pane|panes|door|doors|partition|wall|walls|screen|frame|table|counter|case|cabinet|roof|ceiling|tinted)\b/i;
+const DRINK = /\b(water|wine|zobo|juice|beer|whisky|whiskey|gin|palm|drink|drinks|sips?|pours?|raises?|lifts?|toasts?|clinks?|fills?|empty|empties|downs?)\b/i;
+const SOUNDS = new Set(("CHEER CHEERS CHEERING GROAN GROANS APPLAUSE LAUGHTER GASP GASPS MURMUR MURMURS SHOUT SHOUTS CHANT CHANTS WHISTLE WHISTLES BANG CRASH THUD THUMP RING RINGS RINGING SLAM SLAMS BOOM CLICK CLICKS BUZZ BUZZES BEEP BEEPS KNOCK KNOCKS KNOCKING SCREAM SCREAMS WHOOSH " +
   "SMASH SMASHES SHATTERS SHATTER CRACK CRACKS SNAP POP HISS RUMBLE RUMBLES ROAR ROARS SPLASH GUNSHOT GUNSHOTS BLAST SIREN SIRENS HONK HONKS WAIL CREAK CREAKS " +
   "VIBRATES VIBRATING THUNDER").split(" "));
 const STOP = new Set(("CONTINUOUS LATER INT EXT CUT FADE POV CONT'D BEAT SUPER TITLE INSERT BACK SCENE THE AND OF TO IN ON AT A AN MOMENTS MORNING NIGHT DAY " +
@@ -48,7 +66,7 @@ const TIMES: [RegExp, string][] = [[/night|midnight/i, "NIGHT"], [/dawn|sunrise/
 const ADJ_STOP = new Set(["a", "an", "the", "and", "or", "of", "with", "to", "into", "from", "on", "in"]);
 
 const title = (s: string) => s.toLowerCase().replace(/(^|[\s\-/(])([a-z])/g, (_m, p: string, c: string) => p + c.toUpperCase());
-const singular = (w: string) => (PROPS.has(w) || VEHICLES.has(w) ? w : w.endsWith("ies") ? w.slice(0, -3) + "y" : w.endsWith("es") && PROPS.has(w.slice(0, -2)) ? w.slice(0, -2) : w.endsWith("s") ? w.slice(0, -1) : w);
+const singular = (w: string) => (w === "spectacles" || w === "eyeglasses" ? "glasses" : PROPS.has(w) || VEHICLES.has(w) ? w : w.endsWith("ies") ? w.slice(0, -3) + "y" : w.endsWith("es") && PROPS.has(w.slice(0, -2)) ? w.slice(0, -2) : w.endsWith("s") ? w.slice(0, -1) : w);
 export const normalizeLocation = (s: string) => s.toUpperCase().replace(/\((CONTINUOUS|CONT'D|LATER|MOMENTS LATER)\)|\b(CONTINUOUS|MOMENTS LATER)\b/g, "").replace(/[^A-Z0-9'&/\- ]/g, " ").replace(/\s+/g, " ").trim().replace(/[\s-]+$/, "");
 export function timeOfDay(s: string | null | undefined) {
   if (!s) return null;
@@ -97,7 +115,11 @@ export function worldExtractionEngine(raw: WorldExtractionInput): WorldExtractio
       const lineIsCaps = el.text === el.text.toUpperCase() && /[A-Z]/.test(el.text);
       for (const sentence of sentences(el.text)) {
         const ev = { scene_number: s.number, line: el.line, text: sentence.slice(0, 240) };
-        const words = sentence.split(/\s+/).map((w) => w.replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9'\-]+$/g, "")).filter(Boolean);
+        const raw = sentence.split(/\s+/).filter((w) => w.replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9'\-]+$/g, ""));
+        const words = raw.map((w) => w.replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9'\-]+$/g, ""));
+        // Text written on something or said aloud: inside quotes, after a colon, or a #hashtag — never a prop.
+        const quoted: boolean[] = [];
+        { let q = false, colon = false; raw.forEach((w, k) => { const opens = /^["“‘]/.test(w); if (opens) q = true; quoted[k] = q || colon || /^#/.test(w); if (/["”’][^A-Za-z]*$/.test(w) && (!opens || w.length > 1)) q = false; if (/:$/.test(w)) colon = true; }); }
         for (let i = 0; i < words.length; i++) {
           const w = words[i];
           const lower = w.toLowerCase().replace(/'s$/, "");
@@ -113,6 +135,13 @@ export function worldExtractionEngine(raw: WorldExtractionInput): WorldExtractio
           const isCaps = !lineIsCaps && w.length >= 3 && w === w.toUpperCase() && /^[A-Z][A-Z'\-]+$/.test(w);
           const sing = singular(lower);
           if (VEHICLES.has(sing)) { add(sing, title(sing), "vehicle", isCaps, adjectives, ev); continue; }
+          if (sing === "glass") {
+            // A drinking glass only: "a glass of water", "his glass", or with a drink nearby — not a window, a door or a glass table.
+            const next = (words[i + 1] ?? "").toLowerCase();
+            const possessive = POSSESSIVE.has(words[detAt].toLowerCase());
+            if (next !== "of" && !possessive && (GLASS_SURROUND.test(sentence) || !DRINK.test(sentence))) continue;
+            if (/^[a-z]+$/.test(next) && next !== "of" && !DRINK.test(next) && /^(table|door|doors|wall|case|top|front|panel|screen|bowl|jar|vase)$/.test(next)) continue;
+          }
           if (PROPS.has(sing)) { add(sing, title(sing), "prop", isCaps, adjectives, ev); continue; }
           // "A crane BOOMS": a capitalised word ending in -S after a lower-case noun is what that thing does.
           const verbLike = between.length > 0 && /S$/.test(w);
@@ -120,8 +149,18 @@ export function worldExtractionEngine(raw: WorldExtractionInput): WorldExtractio
             // A capitalised object that isn't in the word list: take the capitalised run it starts ("the RED FILE").
             let j = i; const run = [w];
             while (j + 1 < words.length && words[j + 1] === words[j + 1].toUpperCase() && /^[A-Z][A-Z'\-]+$/.test(words[j + 1]) && !isSound(words[j + 1]) && !names.has(words[j + 1])) run.push(words[++j]);
-            const k = singular(run.join(" ").toLowerCase());
-            add(k, title(k), "prop", true, adjectives, ev);
+            // Not a prop (owner report 2026-10-03): a person or title written in capitals (a STEWARD, HON.), a slogan or headline
+            // (three words or more), text on a sign/page/screen or said aloud (quoted, after a colon, a #hashtag, after
+            // "shouting"/"reads"), a common word used for emphasis (OTHER, NATIONAL), or a label on an object that follows
+            // ("the RETRY button").
+            const after = (words[j + 1] ?? "").toLowerCase();
+            const notProp = run.length > 2 || quoted[i] || run.some((x) => PEOPLE.has(x.replace(/'S$/, "")) || COMMON_CAPS.has(x) || names.has(x))
+              || words.slice(Math.max(0, i - 3), i).some((x) => SAYS.has(x.toLowerCase()))
+              || (/^[a-z]+$/.test(after) && !/(s|ed|ing)$/.test(after) && !ADJ_STOP.has(after) && !["is", "was", "lies", "sits", "and", "or"].includes(after));
+            if (!notProp) {
+              const k = singular(run.join(" ").toLowerCase());
+              add(k, title(k), "prop", true, adjectives, ev);
+            }
             i = j;
           }
         }

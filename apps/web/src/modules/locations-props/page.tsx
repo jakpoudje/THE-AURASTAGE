@@ -9,7 +9,7 @@
 import { ContinuityPanel } from "./components/ContinuityPanel";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Project } from "@aurastage/contracts";
 import { AppShell } from "@/components/AppShell";
 import { apiGet } from "@/lib/apiClient";
@@ -70,6 +70,8 @@ export default function LocationsPropsPage() {
   const draft: Draft = draftState && draftState.for === tag ? draftState : { for: tag, name: sel?.name ?? "", description: sel?.description ?? "", category: sel?.category ?? "prop" };
   const setDraft = (d: Omit<Draft, "for">) => setDraftState({ ...d, for: tag });
 
+  const pictureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (pictureTimer.current) clearTimeout(pictureTimer.current); }, []);
   async function run<T>(fn: () => Promise<T>, done: (r: T) => string) {
     setBusy(true); setError(null); setNotice(null);
     try {
@@ -81,6 +83,23 @@ export default function LocationsPropsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Every place and prop in batches (owner report 2026-10-03: "that's a lot of images in a minute"): the server makes what
+  // fits in the minute and says how many are still waiting; this page asks again a minute later until all are made.
+  function makeAllPictures(made = 0) {
+    if (pictureTimer.current) { clearTimeout(pictureTimer.current); pictureTimer.current = null; }
+    void run(() => worldApi.generateAll(id), (r) => {
+      const total = made + r.requested;
+      const items = r.items.filter((x) => x.requested).length;
+      if (r.waiting) {
+        pictureTimer.current = setTimeout(() => makeAllPictures(total), (r.retry_after_seconds || 60) * 1000);
+        return `Making ${total} reference picture${total === 1 ? "" : "s"} in the background (built-in, free). ${r.waiting} more place${r.waiting === 1 ? "" : "s"} and prop${r.waiting === 1 ? "" : "s"} follow in a minute, in batches so the generator isn't overloaded — keep this page open, or press the button again later.`;
+      }
+      return total
+        ? `Making ${total} reference picture${total === 1 ? "" : "s"}${items ? ` (${items} place${items === 1 ? "" : "s"} and prop${items === 1 ? "" : "s"} in this batch)` : ""} in the background (built-in, free). Pictures already made from the current description are kept.`
+        : "Every place and prop already has its reference pictures from the current description.";
+    });
   }
 
   if (error && !ws) return <div className="p-12 text-center text-red-400">{error}</div>;
@@ -117,9 +136,7 @@ export default function LocationsPropsPage() {
             className="ml-auto rounded-md bg-aura-gold px-4 py-1.5 font-medium text-black disabled:opacity-40">1 · Find locations & props in the script</button>
           <button onClick={() => askAuraStage("Describe every location and prop from the script: only empty descriptions.", { task: "describe_all_world" })} disabled={!canEdit}
             className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold disabled:opacity-40">2 · Describe every place and prop (free)</button>
-          <button onClick={() => run(() => worldApi.generateAll(id), (r) => r.requested
-              ? `Making ${r.requested} reference picture${r.requested === 1 ? "" : "s"} for ${r.items.filter((x) => x.requested).length} place${r.items.filter((x) => x.requested).length === 1 ? "" : "s"} and prop${r.items.filter((x) => x.requested).length === 1 ? "" : "s"} in the background (built-in, free). Pictures already made from the current description are kept.`
-              : "Every place and prop already has its reference pictures from the current description.")}
+          <button onClick={() => makeAllPictures()}
             disabled={!canEdit || busy || !(ws.locations.length + ws.props.length)}
             className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-aura-gold disabled:opacity-40">3 · Make reference pictures for every place and prop (free)</button>
         </div>

@@ -99,6 +99,22 @@ describe("Locations & Props API", () => {
     expect((await a.inject({ method: "POST", url: `/api/world/location/${L}/look/generate`, payload: { views: ["wide:MAGIC HOUR"] } })).statusCode).toBe(200);
     expect((await a.inject({ method: "POST", url: `/api/world/location/${L}/look/generate`, payload: { views: ["wide:<script>"] } })).statusCode).toBe(400);
   });
+  it("regression (owner report 2026-10-03, 'that's a lot of images in a minute'): the one-click stops calmly at the per-minute limit and says how many are waiting", async () => {
+    const PR2 = "77777777-7777-4777-8777-777777777772";
+    const f = fakeDb(base({ props: [base().props[0], { ...base().props[0], id: PR2, key: "phone", name: "Phone", category: "prop" }] }));
+    // The database allows two pictures, then refuses with its per-minute limit (as request_world_reference does).
+    let n = 0;
+    const real = f.db.rpc;
+    f.db.rpc = async (fn: string, args: Row) => (fn === "request_world_reference" && ++n > 2
+      ? (f.calls.push({ fn, args }), { data: null, error: { message: "AURA-WLD-429: that's a lot of sketches in a minute — give it a moment" } })
+      : real(fn, args)) as never;
+    const r = await (await app(f)).inject({ method: "POST", url: `/api/projects/${P}/world/looks/generate-all`, payload: {} });
+    expect(r.statusCode, r.body).toBe(200);
+    const body = r.json();
+    expect(body.requested).toBe(2);
+    expect(body.waiting).toBeGreaterThanOrEqual(1);
+    expect(body.retry_after_seconds).toBe(60);
+  });
   it("a paid provider that isn't connected is refused plainly; unknown kinds are 404; edits need the revision", async () => {
     const a = await app(fakeDb(base()));
     expect((await a.inject({ method: "POST", url: `/api/world/prop/${PR}/look/generate`, payload: { provider: "openai" } })).json().error.message).toBe("openai isn't connected on the server.");

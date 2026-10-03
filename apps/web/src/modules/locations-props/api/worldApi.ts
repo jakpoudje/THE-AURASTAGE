@@ -41,7 +41,7 @@ export const worldApi = {
   update: (kind: WorldKind, id: string, body: WorldPatch) => apiPatch<Record<string, unknown>>(`/api/world/${kind}/${id}`, body),
   look: (kind: WorldKind, id: string) => apiGet<WorldLook>(`/api/world/${kind}/${id}/look`),
   generateAll: (projectId: string) =>
-    apiPost<{ items: { kind: WorldKind; id: string; name: string; requested: number }[]; requested: number; provider: string | null }>(`/api/projects/${projectId}/world/looks/generate-all`, {}),
+    apiPost<{ items: { kind: WorldKind; id: string; name: string; requested: number }[]; requested: number; provider: string | null; waiting?: number; retry_after_seconds?: number }>(`/api/projects/${projectId}/world/looks/generate-all`, {}),
   generate: (kind: WorldKind, id: string, body: { views?: string[]; provider?: string }) =>
     apiPost<{ requested: { id: string; key: string }[]; provider: string }>(`/api/world/${kind}/${id}/look/generate`, body),
 };

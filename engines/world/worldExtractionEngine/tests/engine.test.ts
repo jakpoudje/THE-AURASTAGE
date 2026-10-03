@@ -48,4 +48,29 @@ describe("worldExtractionEngine", () => {
     expect(timeOfDay("LATER THAT NIGHT")).toBe("NIGHT");
     expect(timeOfDay(null)).toBeNull();
   });
+  it("regression (owner report 2026-10-03, The Last Ballot): people, signs, slogans and emphasis in capitals are not props; glasses and window glass are not a drinking glass", () => {
+    const lines = [
+      "A STEWARD sets down a tray of tea and leaves.", "A CHEER from the young end of the crowd.", "On the laptop, the RETRY button waits.",
+      "On the last page, in her handwriting, a single line: SCALE.", "A television on mute shows a trending hashtag: #THEPROOF.",
+      "A queue of VOTERS stretches along a wall painted with a faded alphabet: A FOR APPLE, B FOR BALL.", "Beside her sit HON.",
+      "At the top: NATIONAL DEMOCRATIC CONGRESS.", "Tamuno and the OTHER AGENTS check it against their notes.",
+      "The room breaks open: a cheer on one side, a groan on the other, an orderly shouting ORDER.",
+      "A banner reads the NORTH HAS DECIDED in green.",
+      "At the high table, PROFESSOR IDRIS BELLO (64) sits in a grey kaftan, his reading glasses on a chain.",
+      "A long room with louvred windows, half the glass missing.", "Faces slide past the tinted glass.",
+      "A cramped set dressed as a sitting room: glass table, three untouched mugs.", "She pushes through the glass doors into the hard noon light.",
+      "Adamu lifts a glass of zobo.", "A glass of water he has not touched.", "She grabs the BLUE LEDGER and runs.",
+    ];
+    const els = [el(0, "scene_heading", "INT. HALL - DAY"), ...lines.map((t, k) => el(k + 1, "action", t))];
+    const r2 = worldExtractionEngine({ elements: els, scenes: [{ number: 1, heading: "INT. HALL - DAY", int_ext: "INT", location: "HALL", time_of_day: "DAY", element_start: 0, element_end: lines.length, heading_line: 1 }],
+      character_names: ["Idris Bello", "Tamuno", "Adamu"] });
+    const keys = r2.props.map((p) => p.key);
+    for (const junk of ["steward", "cheer", "retry", "scale", "theproof", "voter", "for apple", "hon", "national", "national democratic congress", "other", "other agent", "order", "north has decided"])
+      expect(keys, junk).not.toContain(junk);
+    // Real props stay: the tray, the laptop, the television, the drinking glass (twice), the spectacles, the capitalised ledger.
+    expect(keys).toEqual(expect.arrayContaining(["tray", "laptop", "television", "glass", "glasses", "blue ledger"]));
+    const glass = r2.props.find((p) => p.key === "glass")!;
+    expect(glass.scenes[0].text).toMatch(/glass of (zobo|water)/);
+    expect(r2.props.find((p) => p.key === "glasses")!.scenes[0].text).toMatch(/reading glasses/);
+  });
 });

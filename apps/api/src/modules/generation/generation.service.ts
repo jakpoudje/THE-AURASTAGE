@@ -203,7 +203,11 @@ export async function compileWithContext(db: SupabaseClient, ctx: CompileContext
   const loc = worldItems.locations.find((l) => here("location").has(l.id) && !l.archived_at) ?? null;
   const props = worldItems.props.filter((x) => here("prop").has(x.id) && !x.archived_at);
   // Each prop's state in this scene, from the script's continuity (Locations & Props lines): "Laptop — broken".
-  const continuity = propContinuityEngine({ props: props.map((x) => ({ id: x.id as string, name: String(x.name), appearances: propApps.filter((a) => a.object_id === x.id).map((a) => ({ scene_number: Number(a.scene_number), evidence: String(a.evidence ?? "").slice(0, 4000) })) })) });
+  const continuity = propContinuityEngine({
+    props: props.map((x) => ({ id: x.id as string, name: String(x.name), appearances: propApps.filter((a) => a.object_id === x.id).map((a) => ({ scene_number: Number(a.scene_number), evidence: String(a.evidence ?? "").slice(0, 4000) })) })),
+    // The place each scene happens (its heading's place, sub-areas ignored), so an everyday prop's state stays in its place.
+    scene_locations: scenes.map((sc) => ({ scene_number: Number(sc.number), location: String(sc.location ?? "").toUpperCase().split(/\s+-\s+/)[0].trim() })),
+  });
   const propState = new Map((continuity.set_dressing.find((d) => d.scene_number === Number(scene.number))?.items ?? []).map((it) => [it.prop_id, it.state]));
   const tod = String(scene.time_of_day ?? "").toUpperCase();
   const pickRef = (type: string, id: string, prefer: string[]) => {
