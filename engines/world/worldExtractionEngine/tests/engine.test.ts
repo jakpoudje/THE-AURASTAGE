@@ -60,12 +60,13 @@ describe("worldExtractionEngine", () => {
       "A long room with louvred windows, half the glass missing.", "Faces slide past the tinted glass.",
       "A cramped set dressed as a sitting room: glass table, three untouched mugs.", "She pushes through the glass doors into the hard noon light.",
       "Adamu lifts a glass of zobo.", "A glass of water he has not touched.", "She grabs the BLUE LEDGER and runs.",
+      "A phone in a cracked case gripped like a passport.", "A thick ring binder open before him.", "She opens the file properties of the portal image.", "They wait at the bus stop.",
     ];
     const els = [el(0, "scene_heading", "INT. HALL - DAY"), ...lines.map((t, k) => el(k + 1, "action", t))];
     const r2 = worldExtractionEngine({ elements: els, scenes: [{ number: 1, heading: "INT. HALL - DAY", int_ext: "INT", location: "HALL", time_of_day: "DAY", element_start: 0, element_end: lines.length, heading_line: 1 }],
       character_names: ["Idris Bello", "Tamuno", "Adamu"] });
     const keys = r2.props.map((p) => p.key);
-    for (const junk of ["steward", "cheer", "retry", "scale", "theproof", "voter", "for apple", "hon", "national", "national democratic congress", "other", "other agent", "order", "north has decided"])
+    for (const junk of ["passport", "ring", "file", "bus", "steward", "cheer", "retry", "scale", "theproof", "voter", "for apple", "hon", "national", "national democratic congress", "other", "other agent", "order", "north has decided"])
       expect(keys, junk).not.toContain(junk);
     // Real props stay: the tray, the laptop, the television, the drinking glass (twice), the spectacles, the capitalised ledger.
     expect(keys).toEqual(expect.arrayContaining(["tray", "laptop", "television", "glass", "glasses", "blue ledger"]));

@@ -55,6 +55,9 @@ const SAYS = new Set(("shout shouts shouting shouted chant chants chanting chant
   "type types typed typing headline caption hashtag slogan banner").split(" "));
 /** Glass the material (windows, doors, a glass table) and glasses to see with are not a drinking glass. */
 const GLASS_SURROUND = /\b(window|windows|windscreen|windshield|louvre|louvred|louvered|pane|panes|door|doors|partition|wall|walls|screen|frame|table|counter|case|cabinet|roof|ceiling|tinted)\b/i;
+/** A word that, after a prop word, makes a different thing (a ring binder, a bus stop, a taxi driver, file properties). */
+const COMPOUND_HEADS = new Set(("binder park office post horn seat seats tyre tyres tire tires stand strap holder rack stop station driver drivers lane boot bonnet " +
+  "properties name format size path manager system tone shop store queue rank wheel engine number plate").split(" "));
 const DRINK = /\b(water|wine|zobo|juice|beer|whisky|whiskey|gin|palm|drink|drinks|sips?|pours?|raises?|lifts?|toasts?|clinks?|fills?|empty|empties|downs?)\b/i;
 const SOUNDS = new Set(("CHEER CHEERS CHEERING GROAN GROANS APPLAUSE LAUGHTER GASP GASPS MURMUR MURMURS SHOUT SHOUTS CHANT CHANTS WHISTLE WHISTLES BANG CRASH THUD THUMP RING RINGS RINGING SLAM SLAMS BOOM CLICK CLICKS BUZZ BUZZES BEEP BEEPS KNOCK KNOCKS KNOCKING SCREAM SCREAMS WHOOSH " +
   "SMASH SMASHES SHATTERS SHATTER CRACK CRACKS SNAP POP HISS RUMBLE RUMBLES ROAR ROARS SPLASH GUNSHOT GUNSHOTS BLAST SIREN SIRENS HONK HONKS WAIL CREAK CREAKS " +
@@ -134,6 +137,9 @@ export function worldExtractionEngine(raw: WorldExtractionInput): WorldExtractio
           if (isSound(w)) continue;
           const isCaps = !lineIsCaps && w.length >= 3 && w === w.toUpperCase() && /^[A-Z][A-Z'\-]+$/.test(w);
           const sing = singular(lower);
+          // "gripped like a passport" compares; "a ring binder", "the bus stop", "file properties" name something else.
+          if (["like", "as", "than"].includes((words[detAt - 1] ?? "").toLowerCase())) continue;
+          if (COMPOUND_HEADS.has((words[i + 1] ?? "").toLowerCase())) continue;
           if (VEHICLES.has(sing)) { add(sing, title(sing), "vehicle", isCaps, adjectives, ev); continue; }
           if (sing === "glass") {
             // A drinking glass only: "a glass of water", "his glass", or with a drink nearby — not a window, a door or a glass table.

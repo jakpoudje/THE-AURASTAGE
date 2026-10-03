@@ -57,6 +57,7 @@ describe("propContinuityEngine", () => {
           phone(19, "She picks up her phone."), phone(30, "His face lit blue by his phone."), phone(31, "Her phone buzzes on the desk."),
         ] },
         { id: "c", name: "Cup", appearances: [{ scene_number: 28, evidence: "A cup of tea gone cold." }, { scene_number: 34, evidence: "Her phone lies screen-down beside a cold cup of tea." }] },
+        { id: "v", name: "Car", appearances: [{ scene_number: 15, evidence: "She looks out at the gate, where the Emissary's car has gone." }, { scene_number: 31, evidence: "A car slows at the gate." }] },
         // Everyday (4+ scenes): smashed at the rally, later phones elsewhere are other people's; back at the rally it stays broken.
         { id: "m", name: "Mobile", appearances: [
           phone(2, "Ejike smashes the mobile on the ground."), phone(3, "A mobile on the hotel bed."), phone(4, "The mobile rings in the office."),
@@ -68,6 +69,8 @@ describe("propContinuityEngine", () => {
     });
     expect(out.props.find((p) => p.id === "p")!.states.every((s) => s.state === null)).toBe(true);
     expect(out.props.find((p) => p.id === "c")!.states.every((s) => s.state === null)).toBe(true);
+    // A car that "has gone" drove off — it isn't missing.
+    expect(out.props.find((p) => p.id === "v")!.states.every((s) => s.state === null)).toBe(true);
     expect(out.props.find((p) => p.id === "m")!.states.map((s) => s.state)).toEqual(["broken", null, null, "broken", null, "broken"]);
     expect(out.warnings).toEqual([{ prop_id: "m", scene_number: 5, scenes: [5, 7], message: "Mobile was broken in scene 2 — keep it broken in scenes 5, 7, or show it repaired or replaced." }]);
   });

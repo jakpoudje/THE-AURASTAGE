@@ -29,7 +29,7 @@ export interface PropContinuityOutput {
 
 /** Words on a prop's line → the state they put it in. `lasting` states carry forward. */
 const STATES: { state: string; re: RegExp; lasting: boolean }[] = [
-  { state: "missing", re: /\b(los(?:e|es|t)|missing|stolen|steals?|vanish(?:es|ed)?|gone|disappear(?:s|ed)?)\b/i, lasting: true },
+  { state: "missing", re: /\b(los(?:e|es|t)|missing|stolen|steals?|vanish(?:es|ed)?|disappear(?:s|ed)?)\b/i, lasting: true }, // not "gone": a car that has gone has driven off
   { state: "broken", re: /\b(smash(?:es|ed)?|crash(?:es|ed)?|wreck(?:s|ed)?|shatter(?:s|ed)?|break(?:s)?|broke|broken|crack(?:s|ed)?|snap(?:s|ped)?|dent(?:s|ed)?|crush(?:es|ed)?)\b/i, lasting: true },
   { state: "bloodied", re: /\b(blood(?:y|ied|stained)?)\b/i, lasting: true },
   { state: "burnt", re: /\b(burn(?:s|ed|t|ing)?|ablaze|charred|scorched|on fire)\b/i, lasting: true },
