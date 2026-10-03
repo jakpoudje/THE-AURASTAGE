@@ -1756,6 +1756,9 @@ await check("lip sync (R3): re-spot, fill and approve Scene 1's sound, bring the
     if (!slug) break;
     await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "lift", clip_id: slug.id } });
   }
+  // "Bring Scene 1 up to date" (Conform): newer approved takes swapped in, the approved sound laid in.
+  ws = await edWs();
+  await api("POST", `/api/projects/${projectId}/editorial/edit`, { base_revision: ws.timeline.revision, operation: { op: "conform", scene_id: s1 } }, [200, 409]);
   ws = await edWs();
   assert(ws.clips.some((c: any) => c.track === "A1" && c.scene_id === s1), "the approved sound isn't on the test cut");
   await api("POST", `/api/projects/${projectId}/editorial/lock`, { base_revision: ws.timeline.revision });
