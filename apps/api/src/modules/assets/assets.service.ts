@@ -171,9 +171,13 @@ export async function getLibrary(db: SupabaseClient, projectId: string, query: R
 }
 
 export async function getAssetDetail(db: SupabaseClient, assetId: string) {
-  const a = await assertAssetAccess(db, assetId);
-  const [versions, idx, history, edits] = await Promise.all([repo.listVersions(db, assetId), usageIndex(db, a.project_id), repo.listHistory(db, assetId),
-    a.type === "video" ? repo.listVideoEdits(db, assetId) : Promise.resolve([])]);
+  let a = await assertAssetAccess(db, assetId);
+  // Video edits are read before the versions (regression, live check 2026-10-03): the worker saves the new version and
+  // marks its edit done in one transaction, but these are separate reads — read in parallel, a finished edit could be
+  // shown next to the version list from just before it. Read edits first, then everything they may have changed.
+  const edits = a.type === "video" ? await repo.listVideoEdits(db, assetId) : [];
+  if (edits.some((e) => e.status === "succeeded" && Number(e.result_version) > Number(a.current_version ?? 1))) a = await assertAssetAccess(db, assetId);
+  const [versions, idx, history] = await Promise.all([repo.listVersions(db, assetId), usageIndex(db, a.project_id), repo.listHistory(db, assetId)]);
   const usage = idx.map.get(assetId) ?? [];
   return {
     asset: toLibraryDTO(a, versions.length || 1, usage),

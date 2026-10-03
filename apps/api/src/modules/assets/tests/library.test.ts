@@ -249,4 +249,30 @@ describe("Assets Library routes", () => {
     expect(d.video_edits).toHaveLength(1);
     expect(d.video_edits[0]).toMatchObject({ status: "running" });
   });
+
+  it("regression (live check 2026-10-03): an edit the worker finishes while the page reads is always shown with the version it made", async () => {
+    const VID = "88888888-8888-4888-8888-888888888889";
+    const asset = { id: VID, org_id: ORG, project_id: P, type: "video", category: "visual_references", name: "Master", description: "", tags: [], storage_path: "k/v1.mp4",
+      checksum: "b".repeat(64), metadata: { media_type: "video/mp4" }, current_version: 1, created_at: "2026-09-27T10:00:00Z" };
+    rows.assets.push(asset);
+    rows.asset_versions.push({ asset_id: VID, project_id: P, version_number: 1, storage_path: "k/v1.mp4", checksum: "b".repeat(64), metadata: {}, note: "", created_at: "2026-09-27T10:00:00Z" });
+    const edit = { asset_id: VID, id: "e2", source_version: 1, params: { mute: true }, status: "running", result_version: null as number | null, created_at: "2026-10-03T10:00:00Z" };
+    let committed = false;
+    // The worker's transaction commits at the moment the edits are read: version 2 saved, the asset moved to it, the edit done.
+    Object.defineProperty(rows, "video_edits", { configurable: true, get() {
+      if (!committed) {
+        committed = true;
+        rows.asset_versions.push({ asset_id: VID, project_id: P, version_number: 2, storage_path: "k/v2.mp4", checksum: "c".repeat(64), metadata: {}, note: "edit", created_at: "2026-10-03T10:00:05Z" });
+        Object.assign(asset, { current_version: 2, storage_path: "k/v2.mp4" });
+        Object.assign(edit, { status: "succeeded", result_version: 2 });
+      }
+      return [edit];
+    } });
+    const a = app(rows, []);
+    await registerAssetsRoutes(a);
+    const d = (await a.inject({ method: "GET", url: `/api/assets/${VID}` })).json();
+    expect(d.video_edits[0]).toMatchObject({ status: "succeeded", result_version: 2 });
+    expect(d.versions.map((v: any) => [v.version_number, v.current])).toEqual(expect.arrayContaining([[2, true], [1, false]]));
+    expect(d.asset.current_version).toBe(2);
+  });
 });
