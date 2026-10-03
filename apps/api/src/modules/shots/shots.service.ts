@@ -204,6 +204,66 @@ export async function generateAllShots(db: SupabaseClient, projectId: string, pa
   return { style, planned, skipped, engine_version: PLANNING_ENGINE_VERSION };
 }
 
+/**
+ * One round of a whole-film planning run (production runs, migration 0059 — owner request 2026-10-03: "a single click
+ * should … plan every single shot sequentially in the background"). Plans the scenes in story order, one after another,
+ * until the round's time is used: every locked scene with no shots yet and, when `replan` is on (the person confirmed it),
+ * every scene whose plan a Scene DNA change flagged. Current plans — approved or edited by hand — are never touched;
+ * a re-planned scene's approved version stays in its history and it is approved again by the same checks as by hand.
+ */
+export async function planScenesRound(db: SupabaseClient, projectId: string, opts: { replan: boolean; style?: CoverageStyle; budgetMs?: number }) {
+  await assertProjectAccess(db, projectId);
+  const t0 = Date.now(), budget = opts.budgetMs ?? 20_000, style = opts.style ?? "standard";
+  const u = await load(db, projectId);
+  const todo: { scene: Row; replace: boolean }[] = [];
+  const waiting_dna: number[] = [], flagged_kept: number[] = [];
+  for (const scene of u.scenes.filter((s) => s.status === "active").sort((a, b) => a.number - b.number)) {
+    const dna = lockedDna(u, scene), plan = u.plans.get(scene.id);
+    const hasShots = !!plan && u.shots.some((x) => x.plan_id === plan.id);
+    const flagged = !!plan && planReview(u, plan, dna).state !== "current";
+    if (hasShots && !flagged) continue;
+    if (!dna || !dna.current) { waiting_dna.push(scene.number); continue; }
+    if (hasShots && flagged && !opts.replan) { flagged_kept.push(scene.number); continue; }
+    todo.push({ scene, replace: hasShots });
+  }
+  const planned: { scene_number: number; shots: number; replanned: boolean }[] = [];
+  const failed: string[] = [];
+  for (const { scene, replace } of todo) {
+    if (planned.length && Date.now() - t0 > budget) break;
+    try {
+      planned.push({ scene_number: scene.number, shots: (await planScene(db, projectId, u, scene, style, replace)).shots, replanned: replace });
+    } catch (e) {
+      if ((e as { code?: string })?.code?.endsWith("-403") || (e as { message?: string })?.message?.includes("AURA-COL-403")) throw e;
+      failed.push(`Scene ${scene.number}: ${e instanceof Error ? e.message : "couldn't plan"}`);
+    }
+  }
+  return { style, planned, remaining: todo.length - planned.length - failed.length, failed, waiting_dna, flagged_kept, engine_version: PLANNING_ENGINE_VERSION };
+}
+
+/** Every scene's planning stage, counted from the records (rule 12) — for the run panel on Storyboard & Shots. */
+export async function getStoryboardProgress(db: SupabaseClient, projectId: string) {
+  await assertProjectAccess(db, projectId);
+  const u = await load(db, projectId);
+  const totals = { scenes: 0, dna_locked: 0, planned: 0, approved: 0, review: 0, shots: 0 };
+  const scenes = u.scenes.filter((s) => s.status === "active").sort((a, b) => a.number - b.number).map((scene) => {
+    const dna = lockedDna(u, scene), plan = u.plans.get(scene.id);
+    const shots = plan ? u.shots.filter((x) => x.plan_id === plan.id).length : 0;
+    const review = plan && shots ? planReview(u, plan, dna) : null;
+    const approved = !!plan && shots > 0 && plan.status === "approved" && review?.state === "current";
+    const counts = { approved: approved ? 1 : 0, planned: shots && !approved && review?.state === "current" ? 1 : 0, review: review && review.state !== "current" ? 1 : 0, shots };
+    totals.scenes++; totals.shots += shots;
+    if (dna?.current) totals.dna_locked++;
+    totals.planned += shots ? 1 : 0; totals.approved += counts.approved; totals.review += counts.review;
+    const [stage, label] = !dna?.current ? ["needs_plan", shots ? "Scene DNA changed — lock it again to re-plan" : "Lock its Scene DNA first"]
+      : approved ? ["approved", `Approved — ${shots} shot${shots === 1 ? "" : "s"}`]
+      : counts.review ? ["review", `Needs re-planning: ${review!.reason ?? "Scene DNA changed"}`]
+      : shots ? ["planned", `Planned — ${shots} shot${shots === 1 ? "" : "s"}, waiting for approval`]
+      : ["ready", "Ready to plan"];
+    return { scene_id: scene.id as string, number: scene.number as number, heading: scene.heading as string, stage, label, pct: approved ? 100 : counts.planned ? 50 : 0, counts };
+  });
+  return { scenes, totals, generator: { queued: 0, running: 0, run_queue: 0 }, at: new Date().toISOString() };
+}
+
 /** Runs `fn` over `items`, `size` at a time (independent scenes; each write is its own transaction). */
 async function inBatches<T>(items: T[], fn: (item: T) => Promise<void>, size = 6) {
   for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));

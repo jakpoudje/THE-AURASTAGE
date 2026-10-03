@@ -1781,5 +1781,21 @@ await check("lip sync (R3): re-spot, fill and approve Scene 1's sound, bring the
   return `mix v${v.version_number}; ${lips.reduce((n: number, x: any) => n + x.lipsync.length, 0)} mouth changes on ${lips.length} sketch shot(s) for ${keys.map((k) => chars.find((c: any) => c.id === k)?.name).join(", ")}; shapes ${[...shapes].join(" ")}`;
 });
 
+// ---- Storyboard & Shots in the background (migration 0059, owner request 2026-10-03) ----
+await check("storyboard run: one click plans (and, when asked, re-plans flagged scenes) one after another, then approves; shared, with per-scene progress from the records", async () => {
+  await api("POST", `/api/projects/${projectId}/runs`, { kind: "storyboard.film", style: "wild" }, [400]);
+  const s = await api("POST", `/api/projects/${projectId}/runs`, { kind: "storyboard.replan", style: "intimate" });
+  assert(s.joined === false && s.run.area === "storyboard" && s.run.progress.style === "intimate", JSON.stringify(s).slice(0, 300));
+  const end = await driveRun(s.run.id);
+  assert(end?.status === "completed" && /^Done\./.test(end.message), `run ended ${end?.status}: ${end?.message}`);
+  assert(JSON.stringify(end.progress.phases) === JSON.stringify(["plan", "approve"]), "steps");
+  const pr = await api("GET", `/api/projects/${projectId}/storyboard/progress`);
+  assert(pr.scenes.length > 0 && pr.scenes.every((x: any) => ["ready", "planned", "review", "approved", "needs_plan"].includes(x.stage)), JSON.stringify(pr.scenes).slice(0, 300));
+  const sb = await api("GET", `/api/projects/${projectId}/storyboard`);
+  const locked = sb.scenes.filter((x: any) => x.scene.status === "active" && x.dna.state === "locked");
+  assert(locked.every((x: any) => x.shots.length > 0), "a locked scene was left without shots");
+  return `${end.message.slice(0, 160)} · ${pr.totals.approved}/${pr.totals.scenes} scenes approved`;
+});
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`SUMMARY ${results.length - failed}/${results.length} passed${failed ? " — FAILURES: " + results.filter((r) => !r.ok).map((r) => r.check).join("; ") : ""}`);

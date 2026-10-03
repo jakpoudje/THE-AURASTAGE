@@ -1,5 +1,5 @@
 // apps/api/src/modules/runs/runs.service.ts
-// Production runs (MOS, migration 0056 — owner request 2026-10-02): whole-film work in Audio Studio and Visual Generation
+// Production runs (MOS, migration 0056 — owner request 2026-10-02; Storyboard & Shots added by 0059): whole-film work in Audio Studio, Storyboard and Visual Generation
 // done in batches, scene by scene, with everyone on the project able to see exactly what is happening.
 //
 // A run never does anything a person couldn't do with the buttons: each round calls the same permission-checked,
@@ -12,6 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ControlRunSchema, ProductionRunSchema, RUN_PHASES, StartRunSchema, type ProductionRun, type RunKind } from "@aurastage/contracts";
 import { generateAllCues, placeGenerated, spotAllScenes } from "../audio/audio.batch";
 import { approveAllShots, compileAllShots, sketchAllShots } from "../generation/generation.batch";
+import { approveAllShotPlans, planScenesRound } from "../shots/shots.service";
 import * as repo from "./runs.repository";
 import { RunForbiddenError, RunNotFoundError, RunValidationError } from "./runs.errors";
 
@@ -49,7 +50,7 @@ export async function listProjectRuns(db: SupabaseClient, projectId: string) {
   const runs = (await repo.listRuns(db, projectId)).map((r) => toRunDTO(r));
   return {
     runs,
-    active: { audio: runs.find((r) => r.area === "audio" && (r.status === "running" || r.status === "paused")) ?? null, visual: runs.find((r) => r.area === "visual" && (r.status === "running" || r.status === "paused")) ?? null },
+    active: Object.fromEntries((["audio", "visual", "storyboard"] as const).map((a) => [a, runs.find((r) => r.area === a && (r.status === "running" || r.status === "paused")) ?? null])) as Record<"audio" | "visual" | "storyboard", ProductionRun | null>,
   };
 }
 
@@ -57,8 +58,13 @@ export async function startRun(db: SupabaseClient, projectId: string, payload: u
   await projectVisible(db, projectId);
   const p = StartRunSchema.safeParse(payload ?? {});
   if (!p.success) throw new RunValidationError(p.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "), p.error.issues);
-  if (p.data.kind.startsWith("visual.") && p.data.scene_id) throw new RunValidationError("Visual runs work on the whole film — use a shot's own buttons for one scene.");
+  if (!p.data.kind.startsWith("audio.") && p.data.scene_id) throw new RunValidationError("This run works on the whole film — use the scene's own buttons for one scene.");
   const r = await repo.startRun(db, projectId, p.data.kind, p.data.scene_id ?? null);
+  // A storyboard run remembers the coverage style chosen on the page, for every scene it plans.
+  if (!r.joined && p.data.kind.startsWith("storyboard.") && p.data.style) {
+    const saved = await repo.saveRun(db, r.run.id, { phase: "plan", status: "running", message: "Starting…", progress: { ...(r.run.progress ?? {}), style: p.data.style }, log: null });
+    return { run: toRunDTO(saved), joined: false };
+  }
   return { run: toRunDTO(r.run), joined: r.joined };
 }
 
@@ -150,6 +156,30 @@ async function visualRound(db: SupabaseClient, run: Row, env: Env): Promise<Outc
   return { phase, done, message: done ? `Done. ${msg}` : msg, log: a.approved ? `Approved ${a.approved}` : null, wait_ms: waitForMaking && !a.approved ? 4_000 : 0, last: a };
 }
 
+/** One round of a Storyboard & Shots run: plan scenes one after another in story order, then approve every ready plan. */
+async function storyboardRound(db: SupabaseClient, run: Row): Promise<Outcome> {
+  const kind = run.kind as RunKind, pid = run.project_id as string;
+  const phase = RUN_PHASES[kind].includes(run.phase) ? run.phase : RUN_PHASES[kind][0];
+  if (phase === "plan") {
+    const r = await planScenesRound(db, pid, { replan: kind === "storyboard.replan", style: run.progress?.style, budgetMs: 20_000 });
+    const done = r.remaining <= 0;
+    const fresh = r.planned.filter((x) => !x.replanned), again = r.planned.filter((x) => x.replanned);
+    const msg = [
+      fresh.length ? `Planned ${plural(fresh.length, "scene")} (${fresh.map((x) => x.scene_number).join(", ")}).` : "",
+      again.length ? `Re-planned ${plural(again.length, "scene")} from their new Scene DNA (${again.map((x) => x.scene_number).join(", ")}).` : "",
+      r.remaining > 0 ? `${plural(r.remaining, "scene")} still to plan.` : "Every scene that can be planned has shots.",
+      r.failed.length ? `Couldn't plan ${r.failed.length}: ${r.failed.slice(0, 2).join("; ")}.` : "",
+      r.waiting_dna.length ? `Waiting for Scene DNA to be locked: scenes ${r.waiting_dna.slice(0, 12).join(", ")}${r.waiting_dna.length > 12 ? "…" : ""}.` : "",
+      r.flagged_kept.length ? `Kept as they are (flagged for review — use “Re-plan flagged scenes” to redo them): scenes ${r.flagged_kept.slice(0, 12).join(", ")}${r.flagged_kept.length > 12 ? "…" : ""}.` : "",
+    ].filter(Boolean).join(" ");
+    return { phase: done ? "approve" : "plan", done: false, message: msg, log: r.planned.length ? `Planned scene${r.planned.length === 1 ? "" : "s"} ${r.planned.map((x) => x.scene_number).join(", ")}` : null, wait_ms: 0, last: { plan: r } };
+  }
+  const a = await approveAllShotPlans(db, pid);
+  const notReady = a.skipped.filter((x) => !/no shot plan yet/.test(x.reason));
+  const msg = `${a.approved.length ? `Approved ${plural(a.approved.length, "shot plan")} (scenes ${a.approved.map((x) => x.scene_number).join(", ")}).` : "No new plans to approve."}${notReady.length ? ` Not approved — fix and approve by hand: ${notReady.slice(0, 4).map((x) => `scene ${x.scene_number} (${x.reason})`).join("; ")}${notReady.length > 4 ? "…" : ""}.` : ""}`;
+  return { phase, done: true, message: `Done. ${msg}`, log: a.approved.length ? `Approved ${a.approved.length}` : null, wait_ms: 0, last: { approve: a } };
+}
+
 /**
  * One round of a run, by whichever page holds its lease. Returns the run as it now stands, whether this page drove it,
  * and how long to wait before the next round (the generator is catching up).
@@ -162,10 +192,10 @@ export async function stepRun(db: SupabaseClient, runId: string, env: Env = proc
   if (!(await repo.leaseRun(db, runId, 45))) return { run: toRunDTO(before), driving: false, wait_ms: 3_000 };
   const errors = Number(before.progress?.errors ?? 0);
   try {
-    const o = before.area === "audio" ? await audioRound(db, before, env) : await visualRound(db, before, env);
+    const o = before.area === "audio" ? await audioRound(db, before, env) : before.area === "storyboard" ? await storyboardRound(db, before) : await visualRound(db, before, env);
     const saved = await repo.saveRun(db, runId, {
       phase: o.phase, status: o.done ? "completed" : "running", message: o.message,
-      progress: { phases: RUN_PHASES[before.kind as RunKind], phase_index: Math.max(0, RUN_PHASES[before.kind as RunKind].indexOf(o.phase)), last: o.last, errors: 0 },
+      progress: { phases: RUN_PHASES[before.kind as RunKind], phase_index: Math.max(0, RUN_PHASES[before.kind as RunKind].indexOf(o.phase)), last: o.last, errors: 0, ...(before.progress?.style ? { style: before.progress.style } : {}) },
       log: o.done ? `Finished — ${o.message.slice(0, 200)}` : o.log,
     });
     return { run: toRunDTO(saved), driving: true, wait_ms: o.wait_ms };

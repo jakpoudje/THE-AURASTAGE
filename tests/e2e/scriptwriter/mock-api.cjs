@@ -891,6 +891,19 @@ http.createServer((req, res) => {
         if (!t) { waiting++; continue; } t.approval = "approved"; approved++; }
       return send(200, { approved, remaining: 0, waiting, total: vUsable().length });
     }
+    // Where every scene's shot plan stands (mirrors getStoryboardProgress — counted from the records).
+    if (u === `/api/projects/${P}/storyboard/progress` && req.method === "GET") {
+      const totals = { scenes: 0, dna_locked: 0, planned: 0, approved: 0, review: 0, shots: 0 };
+      const list = scenes.filter((x) => x.status === "active").sort((a, z) => a.number - z.number).map((scene) => {
+        const dna = locked(scene), plan = plans.find((x) => x.scene_id === scene.id), n = plan ? planShots(plan).length : 0;
+        const rv = plan && n ? review(plan, dna) : null, approved = !!plan && n > 0 && plan.status === "approved" && rv[0] === "current";
+        const counts = { approved: approved ? 1 : 0, planned: n && !approved && rv[0] === "current" ? 1 : 0, review: rv && rv[0] !== "current" ? 1 : 0, shots: n };
+        totals.scenes++; totals.shots += n; if (dna && dna.current) totals.dna_locked++; totals.planned += n ? 1 : 0; totals.approved += counts.approved; totals.review += counts.review;
+        const [stage, label] = !(dna && dna.current) ? ["needs_plan", "Lock its Scene DNA first"] : approved ? ["approved", `Approved — ${n} shots`] : counts.review ? ["review", "Needs re-planning"] : n ? ["planned", `Planned — ${n} shots, waiting for approval`] : ["ready", "Ready to plan"];
+        return { scene_id: scene.id, number: scene.number, heading: scene.heading, stage, label, pct: approved ? 100 : counts.planned ? 50 : 0, counts };
+      });
+      return send(200, { scenes: list, totals, generator: { queued: 0, running: 0, run_queue: 0 }, at: now() });
+    }
     // Where every scene's pictures stand (mirrors generation.progress.ts — counted from the records).
     if (u === `/api/projects/${P}/visual/progress` && req.method === "GET") {
       runWorker();
@@ -1053,12 +1066,12 @@ http.createServer((req, res) => {
     // endpoints, the way the real service calls the batch functions; mock batches finish in one round. ----
     const RUNS = globalThis.__runs || (globalThis.__runs = []);
     const activeRun = (area) => RUNS.find((r) => r.area === area && (r.status === "running" || r.status === "paused")) || null;
-    if (u === `/api/projects/${P}/runs` && req.method === "GET") return send(200, { runs: [...RUNS].reverse().slice(0, 8), active: { audio: activeRun("audio"), visual: activeRun("visual") } });
+    if (u === `/api/projects/${P}/runs` && req.method === "GET") return send(200, { runs: [...RUNS].reverse().slice(0, 8), active: { audio: activeRun("audio"), visual: activeRun("visual"), storyboard: activeRun("storyboard") } });
     if (u === `/api/projects/${P}/runs` && req.method === "POST") {
       const p = cc0.StartRunSchema.safeParse(b); if (!p.success) return send(400, { error: { code: "AURA-RUN-400", message: "Unknown kind of run" } });
       const area = p.data.kind.split(".")[0]; const cur = activeRun(area); if (cur) return send(200, { run: cur, joined: true });
       const r = { id: crypto.randomUUID(), project_id: P, area, kind: p.data.kind, scene_id: p.data.scene_id || null, status: "running", phase: cc0.RUN_PHASES[p.data.kind][0], message: null,
-        progress: { phases: cc0.RUN_PHASES[p.data.kind], phase_index: 0 }, log: [{ at: now(), text: "Started" }], rounds: 0, started_by_label: "test", started_at: now(), updated_at: now(), finished_at: null, idle: false };
+        progress: { phases: cc0.RUN_PHASES[p.data.kind], phase_index: 0, ...(p.data.style ? { style: p.data.style } : {}) }, log: [{ at: now(), text: "Started" }], rounds: 0, started_by_label: "test", started_at: now(), updated_at: now(), finished_at: null, idle: false };
       RUNS.push(r); return send(200, { run: r, joined: false });
     }
     if ((m = u.match(/^\/api\/runs\/([^/]+)\/control$/)) && req.method === "POST") {
@@ -1074,7 +1087,16 @@ http.createServer((req, res) => {
       return (async () => {
         const phases = cc0.RUN_PHASES[r.kind], film = r.kind.endsWith(".film"); let next = r.phase, done = false, msg = "", wait = 0;
         const sc = r.scene_id;
-        if (r.phase === "spot") { const x = (await self(`/api/projects/${P}/audio/spot-all`)).j; msg = `Spotted ${x.spotted.length} scenes.`; if (film) next = "generate"; else done = true; }
+        if (r.area === "storyboard") {
+          // Mirrors storyboardRound (migration 0059): plan in story order (re-planning flagged scenes when asked), then approve.
+          if (r.phase === "plan") {
+            const x = (await self(`/api/projects/${P}/storyboard/generate-all`, "POST", { style: (r.progress && r.progress.style) || "standard" })).j;
+            let again = 0;
+            if (r.kind === "storyboard.replan") for (const pl of plans.filter((q) => q.review_state !== "current")) { await self(`/api/projects/${P}/storyboard/scenes/${pl.scene_id}/generate`, "POST", { replace: true, style: (r.progress && r.progress.style) || "standard" }); again++; }
+            msg = `Planned ${x.planned.length} scenes${again ? `, re-planned ${again}` : ""}.`; next = "approve";
+          } else { const x = (await self(`/api/projects/${P}/storyboard/approve-all`)).j; msg = `Approved ${x.approved.length} shot plans.`; done = true; }
+        }
+        else if (r.phase === "spot") { const x = (await self(`/api/projects/${P}/audio/spot-all`)).j; msg = `Spotted ${x.spotted.length} scenes.`; if (film) next = "generate"; else done = true; }
         else if (r.phase === "generate") { const x = (await self(sc ? `/api/projects/${P}/audio/scenes/${sc}/generate-cues` : `/api/projects/${P}/audio/generate-all`)).j;
           const n = Array.isArray(x.requested) ? x.requested.length : x.requested; msg = `Asked the generator for ${n} sounds.`;
           if (film) { const pl = (await self(`/api/projects/${P}/audio${sc ? `/scenes/${sc}` : ""}/place-generated`)).j; msg += ` Placed ${pl.placed}.`; next = "finish"; } else done = true; }
@@ -1086,7 +1108,7 @@ http.createServer((req, res) => {
           if (film) { await self(`/api/projects/${P}/visual/approve-all`); next = "finish"; } else done = true; }
         else { await self(`/api/projects/${P}/visual`, "GET"); const x = (await self(`/api/projects/${P}/visual/approve-all`)).j;
           const making = takes.filter((t) => t.status === "queued" || t.status === "running").length; msg = `Approved ${x.approved} takes.${making ? ` ${making} still being made.` : ""}`; done = !(film && making); wait = done ? 0 : 800; }
-        Object.assign(r, { phase: next, message: done ? `Done. ${msg}` : msg, rounds: r.rounds + 1, updated_at: now(), progress: { phases, phase_index: Math.max(0, phases.indexOf(next)) } });
+        Object.assign(r, { phase: next, message: done ? `Done. ${msg}` : msg, rounds: r.rounds + 1, updated_at: now(), progress: { ...(r.progress && r.progress.style ? { style: r.progress.style } : {}), phases, phase_index: Math.max(0, phases.indexOf(next)) } });
         r.log.push({ at: now(), text: done ? `Finished — ${msg}` : msg });
         if (done) Object.assign(r, { status: "completed", finished_at: now() });
         send(200, { run: r, driving: true, wait_ms: wait });

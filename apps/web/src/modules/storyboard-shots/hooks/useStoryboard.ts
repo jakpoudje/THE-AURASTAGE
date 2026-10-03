@@ -71,6 +71,7 @@ export function useStoryboard(projectId: string) {
   return {
     project,
     ws,
+    reload,
     loading,
     busy,
     error,

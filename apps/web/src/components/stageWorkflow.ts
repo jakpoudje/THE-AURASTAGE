@@ -27,8 +27,8 @@ export const STAGE_WORKFLOW: Record<string, StageWorkflow> = {
     one: "Pick a scene, work through its four sections (or fill them from the script), then lock that scene.",
   },
   storyboard: {
-    all: "“Plan every locked scene”, then “Approve every ready plan”.",
-    one: "Pick a scene to plan, edit any shot (size, angle, movement, length), then approve that plan.",
+    all: "“▶ Do 1–2 for the whole film”: every locked scene is planned one after another in the background, then every ready plan approved (or press 1 and 2 yourself; “↻ Re-plan flagged scenes” redoes scenes a Scene DNA change flagged).",
+    one: "Pick a scene, then on the right: 1 choose a coverage style, 2 plan its shots, 3 check and edit any shot, 4 approve that plan.",
   },
   visual: {
     all: "Whole film, in order: compile every prompt, sketch every shot (free), approve a take for each — worked in batches in the background.",

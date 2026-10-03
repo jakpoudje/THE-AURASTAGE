@@ -9,6 +9,7 @@ const refresh = vi.hoisted(() => ({ fn: async (_db: unknown, _p: string) => {} }
 vi.mock("../../scene-dna/sceneDna.service", () => ({ refreshSceneDnaReview: (db: unknown, p: string) => refresh.fn(db, p) }));
 
 import { registerShotsRoutes } from "../shots.controller";
+import { planScenesRound } from "../shots.service";
 
 const P = "11111111-1111-4111-8111-111111111111";
 const S1 = "88888888-8888-4888-8888-888888888888";
@@ -244,6 +245,36 @@ describe("Storyboard & Shots routes", () => {
     expect(res.json().skipped[0]).toMatchObject({ scene_number: 2 });
     expect(res.json().skipped[0].reason).toMatch(/^not ready: .*every dialogue line is covered/);
     expect(fake.calls.map((c) => [c.fn, c.args.p_scene_id])).toEqual([["approve_shot_plan", S1]]);
+  });
+
+  it("whole-film run round (owner request 2026-10-03): plans scenes in story order; a flagged scene is re-planned only when asked; current plans are never touched", async () => {
+    const S2 = "88888888-8888-4888-8888-888888888882", S3 = "88888888-8888-4888-8888-888888888883", S4 = "88888888-8888-4888-8888-888888888884";
+    const PLAN3 = "dddddddd-dddd-4ddd-8ddd-ddddddddddd3", PLAN4 = "dddddddd-dddd-4ddd-8ddd-ddddddddddd4";
+    rows.scenes.push({ ...rows.scenes[0], id: S2, number: 2 }, { ...rows.scenes[0], id: S3, number: 3 }, { ...rows.scenes[0], id: S4, number: 4 });
+    rows.scene_dna.push(
+      { ...rows.scene_dna[0], id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2", scene_id: S2, status: "draft", approved_version_id: null },
+      { ...rows.scene_dna[0], id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3", scene_id: S3 },
+      { ...rows.scene_dna[0], id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4", scene_id: S4 },
+    );
+    // Scene 3's shots were planned from an older Scene DNA lock (flagged); scene 4's plan is current and approved.
+    rows.shot_plans = [planRow({ id: PLAN3, scene_id: S3, scene_dna_version_id: DV2, status: "approved" }), planRow({ id: PLAN4, scene_id: S4, status: "approved" })];
+    rows.shots = [shotRow({ id: SH1, plan_id: PLAN3, scene_id: S3, ordinal: 1 }), shotRow({ id: SH2, plan_id: PLAN4, scene_id: S4, ordinal: 1 })];
+    let fake = fakeDb(rows, () => ({ data: planRow() }));
+    const a = await planScenesRound(fake.db as never, P, { replan: false, style: "intimate" });
+    expect(a).toMatchObject({ planned: [{ scene_number: 1, replanned: false }], remaining: 0, waiting_dna: [2], flagged_kept: [3], failed: [] });
+    expect(fake.calls.filter((c) => c.fn === "generate_shot_plan").map((c) => [c.args.p_scene_id, c.args.p_replace])).toEqual([[S1, false]]);
+    fake = fakeDb(rows, () => ({ data: planRow() }));
+    const b = await planScenesRound(fake.db as never, P, { replan: true });
+    expect(b.planned.map((x) => [x.scene_number, x.replanned])).toEqual([[1, false], [3, true]]);
+    expect(fake.calls.filter((c) => c.fn === "generate_shot_plan").map((c) => [c.args.p_scene_id, c.args.p_replace])).toEqual([[S1, false], [S3, true]]);
+    // A round stops when its time is used (at least one scene each round), the rest wait for the next round.
+    fake = fakeDb(rows, () => ({ data: planRow() }));
+    const c = await planScenesRound(fake.db as never, P, { replan: true, budgetMs: -1 });
+    expect(c).toMatchObject({ planned: [{ scene_number: 1 }], remaining: 1 });
+    // Progress per scene, counted from the records.
+    const pr = (await (await appWith(fakeDb(rows))).inject({ method: "GET", url: `/api/projects/${P}/storyboard/progress` })).json();
+    expect(pr.scenes.map((x: Row) => [x.number, x.stage])).toEqual([[1, "ready"], [2, "needs_plan"], [3, "review"], [4, "approved"]]);
+    expect(pr.totals).toMatchObject({ scenes: 4, dna_locked: 3, approved: 1, review: 1, shots: 2 });
   });
 
   describe("upstream Scene DNA changes (production graph)", () => {

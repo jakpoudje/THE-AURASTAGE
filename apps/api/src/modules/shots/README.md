@@ -23,6 +23,7 @@ dialogue lines as mandatory beats, readiness predicates).
 ## API endpoints
 - `GET    /api/projects/:id/storyboard` — scenes with locked-DNA state, plan, shots, coverage; persists plan review state (MOS invalidation step)
 - `POST   /api/projects/:id/storyboard/generate-all` — `{style?}`; one click for the film: plans every active scene whose Scene DNA is locked and current and that has **no** plan yet. Existing plans are never replaced; they (and unlocked scenes) come back in `skipped` with the reason
+- `GET    /api/projects/:id/storyboard/progress` — every scene's planning stage counted from the records (ready / planned / needs re-planning / approved / waiting for Scene DNA), for the run panel. Whole-film planning in the background is a production run (`storyboard.film` / `storyboard.replan`, migration 0059): `planScenesRound` plans scenes in story order one after another within a round's time; a flagged scene is re-planned only by `storyboard.replan`, which the page confirms first; current plans are never touched.
 - `POST   /api/projects/:id/storyboard/scenes/:sceneId/generate` — `{replace?, style?}`; 412 until Scene DNA is locked and current; 409 if shots exist and `replace` is not set
 
 Coverage styles (`CoverageStyleSchema`, shotPlanningEngine 1.1.0; 1.1.1 fits long Scene DNA lighting into a shot): `standard` (the 1.0.0 plan), `simple` (no reactions,

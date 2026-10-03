@@ -10,7 +10,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useStoryboard } from "./hooks/useStoryboard";
 import { planStatus, SceneList } from "./components/SceneList";
@@ -20,6 +20,9 @@ import { ShotListTable } from "./components/ShotListTable";
 import { ShotEditor } from "./components/ShotEditor";
 import { PlanPanel } from "./components/PlanPanel";
 import { ShotTimeline } from "./components/ShotTimeline";
+import { RunPanel } from "@/modules/production-runs/RunPanel";
+import { useProductionRun } from "@/modules/production-runs/useProductionRun";
+import { can, useProjectAccess } from "@/lib/useProjectAccess";
 
 const TABS = ["Storyboard", "Shot List"] as const;
 
@@ -29,6 +32,15 @@ export default function StoryboardShotsPage() {
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [shotId, setShotId] = useState<string | null>(null);
   const [tab, setTab] = useState<(typeof TABS)[number]>("Storyboard");
+  const access = useProjectAccess(id);
+  const canPlan = can(access, "shots", "edit");
+  // Whole-film planning in the background, shared with the team (production runs, migration 0059).
+  const lastReload = useRef(0);
+  const runs = useProductionRun(id, "storyboard", {
+    onRound: () => { if (Date.now() - lastReload.current > 5000) { lastReload.current = Date.now(); void d.reload().catch(() => undefined); } },
+    onFinished: () => void d.reload().catch(() => undefined),
+  });
+  const runBusy = runs.active || runs.starting;
 
   if (d.loading) return <div className="p-12 text-center text-white/50">Opening Storyboard & Shots…</div>;
   if (!d.project || !d.ws) {
@@ -100,32 +112,48 @@ export default function StoryboardShotsPage() {
           <span className="text-emerald-300">{ws.summary.approved}</span> of {ws.summary.scenes} scenes have an approved shot plan · {ws.summary.shots} shots
           {ws.summary.needs_review > 0 && <span className="text-aura-gold"> · {ws.summary.needs_review} need review after Scene DNA changes</span>}
         </p>
-        {ws.scenes.some((x) => x.scene.status === "active" && x.dna.state === "locked" && !x.plan) && (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-aura-gold/30 px-4 py-3 text-sm">
-            <span className="text-white/70">
-              {ws.scenes.filter((x) => x.scene.status === "active" && x.dna.state === "locked" && !x.plan).length} locked scene(s) have no shots yet.
-            </span>
-            <button
-              onClick={() => d.generateAll()}
-              disabled={d.busy !== null}
-              className="rounded-md bg-aura-gold px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40"
-            >
-              {d.busy === "generate" ? "Planning…" : `Plan every locked scene (${COVERAGE_STYLES.find((o) => o.value === d.style)?.label ?? "Standard"})`}
-            </button>
-            <span className="text-xs text-white/40">Scenes that already have shots are kept as they are.</span>
-          </div>
-        )}
-        {ws.scenes.some((x) => x.scene.status === "active" && x.plan && x.plan.status !== "approved" && x.plan.review_state === "current") && (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-500/30 px-4 py-3 text-sm">
-            <span className="text-white/70">
-              {ws.scenes.filter((x) => x.scene.status === "active" && x.plan && x.plan.status !== "approved" && x.plan.review_state === "current").length} scene(s) are planned and waiting for approval.
-            </span>
-            <button onClick={() => d.approveAll()} disabled={d.busy !== null} className="rounded-md bg-emerald-400 px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40">
-              {d.busy === "approve" ? "Approving…" : "Approve every ready plan"}
-            </button>
-            <span className="text-xs text-white/40">Only plans that pass their checks are approved; the rest are listed with what to fix.</span>
-          </div>
-        )}
+        {(() => {
+          // Whole film (owner request 2026-10-03: "a single click should … plan every single shot sequentially in the
+          // background"): a production run plans the scenes one after another and approves every ready plan, while the
+          // page stays usable; each scene can still be planned by hand on the right.
+          const active = ws.scenes.filter((x) => x.scene.status === "active");
+          const toPlan = active.filter((x) => x.dna.state === "locked" && !x.shots.length).length;
+          const toApprove = active.filter((x) => x.plan && x.shots.length && x.plan.status !== "approved" && x.plan.review_state === "current").length;
+          const flagged = active.filter((x) => x.plan && x.shots.length && x.plan.review_state !== "current").length;
+          const styleName = COVERAGE_STYLES.find((o) => o.value === d.style)?.label ?? "Standard";
+          if (!active.length) return null;
+          return (
+            <section className="rounded-xl border border-aura-gold/30 bg-aura-panel p-3" aria-label="Whole film">
+              <p className="text-xs uppercase tracking-wider text-white/50">Whole film — one click, worked scene by scene in the background (any scene can still be done by hand below)</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button onClick={() => runs.start("storyboard.film", null, d.style)} disabled={runBusy || d.busy !== null || !canPlan || (!toPlan && !toApprove)}
+                  title={canPlan ? "Plans every locked scene that has no shots yet, one after another, then approves every plan that passes its checks" : "Your role can't plan shots"}
+                  className="rounded-md bg-aura-gold px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40">
+                  ▶ Do 1–2 for the whole film ({styleName} coverage)
+                </button>
+                <button onClick={() => d.generateAll()} disabled={runBusy || d.busy !== null || !canPlan || !toPlan} className="rounded-md border border-aura-gold/60 px-3 py-1.5 text-sm text-aura-gold disabled:opacity-40">
+                  {d.busy === "generate" ? "Planning…" : `1 · Plan every locked scene${toPlan ? ` (${toPlan})` : ""}`}
+                </button>
+                <button onClick={() => d.approveAll()} disabled={runBusy || d.busy !== null || !canPlan || !toApprove} className="rounded-md border border-emerald-400/60 px-3 py-1.5 text-sm text-emerald-300 disabled:opacity-40">
+                  {d.busy === "approve" ? "Approving…" : `2 · Approve every ready plan${toApprove ? ` (${toApprove})` : ""}`}
+                </button>
+                {flagged > 0 && (
+                  <button
+                    onClick={() => window.confirm(`Re-plan the ${flagged} scene${flagged === 1 ? "" : "s"} flagged by a Scene DNA change, from their new Scene DNA (${styleName} coverage)? Their current shots are replaced; each approved plan stays in its version history, and the new plans are approved by the same checks.`) && runs.start("storyboard.replan", null, d.style)}
+                    disabled={runBusy || d.busy !== null || !canPlan}
+                    className="rounded-md border border-amber-400/60 px-3 py-1.5 text-sm text-amber-200 disabled:opacity-40">
+                    ↻ Re-plan the {flagged} flagged scene{flagged === 1 ? "" : "s"} too, then approve
+                  </button>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-white/40">
+                {toPlan} to plan · {toApprove} waiting for approval · {flagged} flagged by Scene DNA changes · {active.length - active.filter((x) => x.dna.state === "locked").length} waiting for Scene DNA to be locked.
+                Plans that already exist and are current are never replaced. The coverage style is chosen on the right.
+              </p>
+            </section>
+          );
+        })()}
+        <RunPanel area="storyboard" run={runs.run} progress={runs.progress} error={runs.error} onControl={runs.control} canRun={canPlan} />
         {(d.error || d.notice) && (
           <div className={`rounded-md border px-4 py-2 text-sm ${d.error ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300"}`}>{d.error ?? d.notice}</div>
         )}

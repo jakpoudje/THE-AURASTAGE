@@ -25,7 +25,7 @@ character, scene, shot or technical truth.
 | Task / Comment / Review / Approval | Collaboration | Human workflow |
 | StageOwner / hand-off notification | Collaboration (`project_stage_owners`, notifications kind `stage_ready`) | Who is told a stage can start; written by the database when a scene clears the stage before (migration 0057) |
 | Job / EngineRun | MOS | Execution state and telemetry |
-| ProductionRun | MOS (`production_runs`, migration 0056) | A whole-film job's status, step and log; the work itself is written by each area's own functions, and per-scene progress is read from those records |
+| ProductionRun | MOS (`production_runs`, migrations 0056, 0059 — audio, visual and storyboard areas) | A whole-film job's status, step and log; the work itself is written by each area's own functions, and per-scene progress is read from those records |
 | AuditEvent | Platform | Immutable actor/action/version history |
 
 ### Single-authority examples

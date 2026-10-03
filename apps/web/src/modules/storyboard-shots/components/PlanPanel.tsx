@@ -29,7 +29,7 @@ export function PlanPanel({
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-aura-border bg-aura-panel p-4">
-        <h3 className="font-display text-lg">Shot planning tools</h3>
+        <h3 className="font-display text-lg">This scene, step by step</h3>
         {s.dna.state === "not_locked" ? (
           <p className="mt-2 text-sm text-white/60">
             Shots are planned from a locked Scene DNA.{" "}
@@ -52,7 +52,7 @@ export function PlanPanel({
           </p>
         )}
         <label className="mt-3 block text-xs text-white/60">
-          Coverage style
+          1 · Coverage style
           <select
             value={style}
             onChange={(e) => onStyle(e.target.value as CoverageStyle)}
@@ -71,8 +71,9 @@ export function PlanPanel({
           disabled={!canPlan || busy !== null}
           className="mt-3 w-full rounded-md border border-aura-gold/60 px-4 py-2 text-sm text-aura-gold disabled:opacity-40"
         >
-          {busy === "generate" ? "Planning…" : plan ? "Re-plan shots from Scene DNA" : "Plan shots from Scene DNA"}
+          {busy === "generate" ? "Planning…" : plan ? "2 · Re-plan shots from Scene DNA" : "2 · Plan shots from Scene DNA"}
         </button>
+        <p className="mt-2 text-[11px] text-white/50">3 · Check the shots on the left — change, add, reorder or remove any; the checks below must pass.</p>
         <button
           onClick={onApprove}
           disabled={!plan || !c?.ready_for_approval || approvedCurrent || plan.review_state !== "current" || busy !== null}
@@ -83,10 +84,10 @@ export function PlanPanel({
             : approvedCurrent
               ? `Approved · version ${plan!.approved_version_number} ✓`
               : plan?.approved_version_id
-                ? "Approve again (new version)"
-                : "Approve shot plan"}
+                ? "4 · Approve again (new version)"
+                : "4 · Approve shot plan"}
         </button>
-        <p className="mt-2 text-[11px] text-white/30">Suggestions are a starting point — change, add, reorder or remove any shot.</p>
+        <p className="mt-2 text-[11px] text-white/30">Then go on to Visual Generation. For the whole film at once, use the box at the top.</p>
       </div>
 
       {c && (

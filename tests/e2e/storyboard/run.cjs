@@ -66,14 +66,16 @@ async function api(method, path, body) {
   await step("an unlocked scene points to Scene DNA and cannot be planned", async () => {
     await sceneBtn(/INT\. NEWSROOM/).click();
     await page.getByRole("link", { name: "Lock this scene in Scene DNA →" }).waitFor();
-    if (await page.getByRole("button", { name: "Plan shots from Scene DNA" }).isEnabled()) throw new Error("should be disabled");
+    if (await page.getByRole("button", { name: "2 · Plan shots from Scene DNA" }).isEnabled()) throw new Error("should be disabled");
     await sceneBtn(/EXT\. LAGOS HARBOUR/).click();
   });
   await step("one click plans every locked scene (standard coverage); the unlocked one is left for later", async () => {
-    await page.getByText("1 locked scene(s) have no shots yet.").waitFor();
-    await page.getByRole("button", { name: "Plan every locked scene (Standard)" }).click();
+    // Owner request 2026-10-03: the whole-film box is numbered 1–2, with ▶ to do both in the background.
+    await page.getByRole("region", { name: "Whole film" }).getByText(/1 to plan · 0 waiting for approval · 0 flagged by Scene DNA changes · 1 waiting for Scene DNA/).waitFor();
+    await page.getByRole("button", { name: "▶ Do 1–2 for the whole film (Standard coverage)" }).waitFor();
+    await page.getByRole("button", { name: "1 · Plan every locked scene (1)" }).click();
     await page.getByText(/Planned 1 scene with standard coverage \(\d+ shots\)\. 1 not locked in Scene DNA yet\./).waitFor();
-    if (await page.getByText("locked scene(s) have no shots yet.").count()) throw new Error("the plan-all bar should go once every locked scene has shots");
+    if (await page.getByRole("button", { name: /1 · Plan every locked scene/ }).isEnabled()) throw new Error("nothing left to plan — step 1 should be done");
   });
   await step("plan shots from the locked Scene DNA: storyboard, checks and timeline", async () => {
     await page.getByRole("button", { name: "Shot 1", exact: true }).waitFor();
@@ -85,7 +87,7 @@ async function api(method, path, body) {
     await reload();
     await page.getByRole("button", { name: "Shot 1", exact: true }).waitFor();
     await sceneBtn(/EXT\. LAGOS HARBOUR/).getByText("Planned · approve").waitFor();
-    await page.getByText("1 scene(s) are planned and waiting for approval.").waitFor();
+    await page.getByRole("button", { name: "2 · Approve every ready plan (1)" }).waitFor();
   });
   await step("edit a shot, reload: the change is kept", async () => {
     await page.getByRole("button", { name: "Shot 2", exact: true }).click();
@@ -122,20 +124,20 @@ async function api(method, path, body) {
     await page.getByRole("button", { name: "Save shot" }).click();
     await page.getByText(/saved\./).waitFor();
     await checks().getByText(/Not covered: AMARA: “They know everything\.”/).waitFor();
-    if (await page.getByRole("button", { name: "Approve shot plan" }).isEnabled()) throw new Error("approve should be disabled");
+    if (await page.getByRole("button", { name: "4 · Approve shot plan" }).isEnabled()) throw new Error("approve should be disabled");
     // Owner report 2026-10-01: approve every ready plan in one click; a plan that isn't ready is listed with why, never approved.
-    await page.getByRole("button", { name: "Approve every ready plan" }).click();
+    await page.getByRole("button", { name: "2 · Approve every ready plan (1)" }).click();
     await page.getByText(/^No plans were ready to approve\. 1 need a fix first — scene \d+: .*dialogue line/).waitFor();
   });
   await step("re-plan with a different coverage style asks before replacing, then approval works; reload keeps it approved", async () => {
     await page.getByLabel("Coverage style").selectOption("intimate");
     await page.getByText("Closer singles with shallow focus and more reactions, for emotional scenes.").waitFor();
-    await page.getByRole("button", { name: "Re-plan shots from Scene DNA" }).click();
+    await page.getByRole("button", { name: "2 · Re-plan shots from Scene DNA" }).click();
     await page.getByText(/Planned \d+ shots \(intimate coverage\) from Scene DNA version 1/).waitFor();
     await page.getByRole("tab", { name: "Storyboard" }).click();
     await page.getByRole("button", { name: "Shot 1", exact: true }).click();
     if (!(await page.getByLabel("Notes").inputValue()).startsWith("Intimate coverage: ")) throw new Error("the shot's note should say which coverage style planned it");
-    await page.getByRole("button", { name: "Approve shot plan" }).click();
+    await page.getByRole("button", { name: "4 · Approve shot plan" }).click();
     await page.getByText(/Shot plan approved as version 1 \(100% of the scene covered\)/).waitFor();
     await reload();
     await page.getByRole("button", { name: "Approved · version 1 ✓" }).waitFor();
@@ -148,6 +150,21 @@ async function api(method, path, body) {
     await page.getByText(/Scene DNA needs review\./).waitFor();
     await sceneBtn(/EXT\. LAGOS HARBOUR/).getByText("Review").waitFor();
     await page.getByText(/Nothing was deleted/).waitFor();
+  });
+  await step("whole film in the background (owner 2026-10-03): re-lock Scene DNA, then one click re-plans the flagged scene and approves it; reload: approved", async () => {
+    await api("POST", `/api/projects/${P}/dialogue/scenes/${s1}/approve`, {});
+    const relock = await api("POST", `/api/projects/${P}/scene-dna/${s1}/approve`, {});
+    if (!relock.version_number) throw new Error("could not re-lock Scene DNA " + JSON.stringify(relock));
+    await reload();
+    await page.getByRole("region", { name: "Whole film" }).getByText(/0 to plan · 0 waiting for approval · 1 flagged by Scene DNA changes/).waitFor();
+    await page.getByRole("button", { name: "↻ Re-plan the 1 flagged scene too, then approve" }).click();
+    const panel = page.getByRole("region", { name: "Background activity" });
+    await panel.getByText("Whole film shot plans — plan and re-plan flagged scenes in order, then approve").waitFor();
+    await panel.getByText(/^Done\. Approved 1 shot plans\./).waitFor({ timeout: 15000 });
+    await panel.getByText("✓ 2 · Approve every ready plan").waitFor();
+    await reload();
+    await sceneBtn(/EXT\. LAGOS HARBOUR/).getByText("Approved").waitFor();
+    await page.getByRole("button", { name: "Approved · version 2 ✓" }).waitFor();
   });
   await page.screenshot({ path: `${OUT}/storyboard.png`, fullPage: true });
   console.log("ERRORS:", errors);

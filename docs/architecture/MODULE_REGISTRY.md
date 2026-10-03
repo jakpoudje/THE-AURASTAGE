@@ -20,7 +20,7 @@ API/domain service -> engine -> canonical data -> worker/provider using this tab
 | Help & Support | apps/web/src/modules/help-support | apps/api/src/modules/help | engines/help | SupportTicket (+ system status from telemetry) |
 | Ask AuraStage (Intelligence layer) | apps/web/src/modules/ask-aurastage (panel in AppShell) | apps/api/src/modules/assistant (+ packages/aura-intelligence, providers/reasoning) | planning prompts in packages/aura-intelligence | AIProposal (changes go through each domain's own service) |
 | Team & Collaboration | apps/web/src/modules/team-collaboration | apps/api/src/modules/collaboration | engines/collaboration | Organization / OrgMember / ProjectMember / Invite / Comment / Task / Notification / StageOwner (hand-offs, migration 0057) |
-| Production runs (MOS) | apps/web/src/modules/production-runs (panel on Audio Studio and Visual Generation) | apps/api/src/modules/runs | — (calls each area's own batch functions) | ProductionRun (migration 0056) — never canonical work, only the record of a whole-film job |
+| Production runs (MOS) | apps/web/src/modules/production-runs (panel on Audio Studio, Storyboard & Shots and Visual Generation) | apps/api/src/modules/runs | — (calls each area's own batch functions) | ProductionRun (migrations 0056, 0059) — never canonical work, only the record of a whole-film job |
 
 Horizontal frontend-only workspaces (no single owned backend domain — they compose across domains):
 - apps/web/src/modules/home

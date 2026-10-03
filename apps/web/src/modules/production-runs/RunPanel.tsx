@@ -11,16 +11,27 @@ import type { Area, AreaProgress, SceneProgress } from "./runsApi";
 const PHASE_LABEL: Record<string, string> = {
   spot: "Spot scenes", generate: "Generate sounds", finish: "Place & finish", place: "Place sounds",
   compile: "Compile prompts", make: "Sketch & approve", sketch: "Sketch shots", approve: "Approve takes",
+  plan: "Plan scenes, one after another",
 };
+const phaseLabel = (area: Area, p: string) => (area === "storyboard" && p === "approve" ? "Approve every ready plan" : PHASE_LABEL[p] ?? p);
 export const RUN_TITLE: Record<string, string> = {
   "audio.film": "Whole film sound — spot, generate and place, scene by scene",
   "audio.spot": "Spotting every scene", "audio.generate": "Generating every planned sound", "audio.place": "Placing every generated sound",
   "visual.film": "Whole film pictures — compile, sketch and approve, scene by scene",
   "visual.compile": "Compiling every shot's prompt", "visual.sketch": "Sketching every shot (free)", "visual.approve": "Approving a take for every shot",
+  "storyboard.film": "Whole film shot plans — plan every scene in order, then approve",
+  "storyboard.replan": "Whole film shot plans — plan and re-plan flagged scenes in order, then approve",
 };
 
 type Seg = { n: number; cls: string; label: string; moving?: boolean };
 function segments(area: Area, c: Record<string, number>): { total: number; segs: Seg[] } {
+  if (area === "storyboard") {
+    return { total: 1, segs: [
+      { n: c.approved ?? 0, cls: "bg-emerald-400", label: "plan approved" },
+      { n: c.planned ?? 0, cls: "bg-teal-300/70", label: "planned, to approve" },
+      { n: c.review ?? 0, cls: "bg-amber-400/80", label: "needs re-planning" },
+    ] };
+  }
   if (area === "audio") {
     return { total: c.total ?? 0, segs: [
       { n: c.placed ?? 0, cls: "bg-emerald-400", label: "placed" },
@@ -43,6 +54,7 @@ function segments(area: Area, c: Record<string, number>): { total: number; segs:
 export function overallPct(area: Area, kind: string | null, t: Record<string, number> | undefined) {
   if (!t) return null;
   const r = (a: number, b: number) => (b > 0 ? Math.round((100 * Math.min(a, b)) / b) : null);
+  if (area === "storyboard") return r(t.approved ?? 0, t.scenes ?? 0);
   if (area === "audio") {
     if (kind === "audio.spot") return r(t.spotted ?? 0, t.scenes ?? 0);
     if (kind === "audio.generate") return r((t.clips ?? 0) - (t.waiting ?? 0) - (t.failed ?? 0), t.clips ?? 0);
@@ -129,7 +141,7 @@ export function RunPanel(props: {
           {phases.map((p, i) => (
             <li key={p} className={`rounded-full border px-2 py-0.5 ${i < phaseIdx || run?.status === "completed" ? "border-emerald-500/40 text-emerald-300" : i === phaseIdx ? "border-sky-400 text-sky-200" : "border-aura-border text-white/40"}`}
               aria-current={i === phaseIdx ? "step" : undefined}>
-              {i < phaseIdx || run?.status === "completed" ? "✓ " : i === phaseIdx && running ? "● " : ""}{i + 1} · {PHASE_LABEL[p] ?? p}
+              {i < phaseIdx || run?.status === "completed" ? "✓ " : i === phaseIdx && running ? "● " : ""}{i + 1} · {phaseLabel(area, p)}
             </li>
           ))}
         </ol>
@@ -145,7 +157,14 @@ export function RunPanel(props: {
       )}
       {run?.message && <p className="mt-2 text-xs text-white/70" aria-live="polite">{run.message}</p>}
       {error && <p className="mt-1 text-xs text-amber-300">{error}</p>}
-      {gen && (
+      {gen && area === "storyboard" && progress && (
+        <p className="mt-1 text-[11px] text-white/45">
+          {progress.totals.approved ?? 0} of {progress.totals.scenes ?? 0} scenes have an approved shot plan · {progress.totals.shots ?? 0} shots
+          {progress.totals.review ? ` · ${progress.totals.review} flagged for re-planning` : ""}
+          {(progress.totals.scenes ?? 0) > (progress.totals.dna_locked ?? 0) ? ` · ${(progress.totals.scenes ?? 0) - (progress.totals.dna_locked ?? 0)} waiting for Scene DNA` : ""}
+        </p>
+      )}
+      {gen && area !== "storyboard" && (
         <p className="mt-1 text-[11px] text-white/45">
           Generator: {gen.running} being made now · {gen.queued} waiting{gen.run_queue ? ` (${gen.run_queue} from runs — your own requests always go first)` : ""}
           {progress && ` · ${area === "audio" ? `${progress.totals.placed ?? 0} of ${progress.totals.clips ?? 0} sounds placed, ${progress.totals.approved ?? 0} of ${progress.totals.scenes ?? 0} mixes approved` : `${progress.totals.approved ?? 0} of ${progress.totals.shots ?? 0} shots approved, ${progress.totals.prompts ?? 0} prompts current`}`}

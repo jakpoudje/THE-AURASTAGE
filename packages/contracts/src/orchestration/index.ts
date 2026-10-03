@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CoverageStyleSchema } from "../shot";
 
 // Canonical owner: MOS (Module Orchestration System) — see SRS §14 and
 // engines/orchestration. Coordinator, not source of truth: dependency/
@@ -38,7 +39,10 @@ export type Job = z.infer<typeof JobSchema>;
 // ---- Production runs (migration 0056, owner request 2026-10-02) ----
 // A whole-film (or one-scene) job in Audio Studio or Visual Generation, worked through in short rounds and shared with
 // the team. Progress per scene is read from the records by each area's progress endpoint, never stored as a guess.
-export const RUN_KINDS = ["audio.film", "audio.spot", "audio.generate", "audio.place", "visual.film", "visual.compile", "visual.sketch", "visual.approve"] as const;
+export const RUN_KINDS = ["audio.film", "audio.spot", "audio.generate", "audio.place", "visual.film", "visual.compile", "visual.sketch", "visual.approve",
+  // Storyboard & Shots (migration 0059, owner request 2026-10-03): plan every locked scene one after another, then approve
+  // every ready plan; `storyboard.replan` also re-plans the scenes a Scene DNA change flagged.
+  "storyboard.film", "storyboard.replan"] as const;
 export const RunKindSchema = z.enum(RUN_KINDS);
 export type RunKind = z.infer<typeof RunKindSchema>;
 /** The steps each kind goes through, in order (`phase` names one of them). */
@@ -51,14 +55,20 @@ export const RUN_PHASES: Record<RunKind, readonly string[]> = {
   "visual.compile": ["compile"],
   "visual.sketch": ["sketch"],
   "visual.approve": ["approve"],
+  "storyboard.film": ["plan", "approve"],
+  "storyboard.replan": ["plan", "approve"],
 };
-export const StartRunSchema = z.object({ kind: RunKindSchema, scene_id: z.string().uuid().nullable().optional() }).strict();
+export const StartRunSchema = z.object({
+  kind: RunKindSchema, scene_id: z.string().uuid().nullable().optional(),
+  /** Storyboard runs: the coverage style every scene is planned in (as chosen on the page). */
+  style: CoverageStyleSchema.optional(),
+}).strict();
 export const ControlRunSchema = z.object({ action: z.enum(["pause", "resume", "stop"]) }).strict();
 export const RunStatusSchema = z.enum(["running", "paused", "completed", "cancelled", "failed"]);
 export const ProductionRunSchema = z.object({
   id: z.string().uuid(),
   project_id: z.string().uuid(),
-  area: z.enum(["audio", "visual"]),
+  area: z.enum(["audio", "visual", "storyboard"]),
   kind: RunKindSchema,
   scene_id: z.string().uuid().nullable(),
   status: RunStatusSchema,

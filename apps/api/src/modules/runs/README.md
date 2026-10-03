@@ -1,7 +1,7 @@
 # Production runs (MOS)
 
 ## Purpose
-Whole-film work in Audio Studio and Visual Generation done in batches, scene by scene, with everyone on the project able
+Whole-film work in Audio Studio, Storyboard & Shots and Visual Generation done in batches, scene by scene, with everyone on the project able
 to see exactly what is happening (owner request 2026-10-02). A run is e.g. *spot → generate → place* for every scene, or
 *compile → sketch → approve* for every shot.
 
@@ -23,7 +23,11 @@ progress is read from those records by `GET /api/projects/:id/{audio|visual}/pro
 ## Kinds
 `audio.film` (spot → generate, placing finished sounds as it goes → finish), `audio.spot`, `audio.generate`, `audio.place`,
 `visual.film` (compile, sketching ready shots as it goes → sketch & approve → finish), `visual.compile`, `visual.sketch`,
-`visual.approve`.
+`visual.approve`, and (migration 0059, owner request 2026-10-03) `storyboard.film` (plan every locked scene with no shots,
+one after another in story order → approve every ready plan) and `storyboard.replan` (the same, also re-planning the scenes a
+Scene DNA change flagged — the page asks first; approved versions stay in history). Storyboard runs carry the coverage
+style chosen on the page (`style` on start) and need Storyboard & Shots edit rights; progress per scene is
+`GET /api/projects/:id/storyboard/progress`.
 
 ## Errors
 `AURA-RUN-400` bad kind/action · `AURA-RUN-403` no access · `AURA-RUN-404` run not found.

@@ -91,11 +91,11 @@ export function useProductionRun(projectId: string, area: Area, opts: { onRound?
     return () => { stop = true; clearTimeout(t); };
   }, [busy, loadProgress, loadRun, run?.status]);
 
-  const start = useCallback(async (kind: RunKind, sceneId: string | null = null) => {
+  const start = useCallback(async (kind: RunKind, sceneId: string | null = null, style?: string) => {
     setStarting(true);
     setError(null);
     try {
-      const r = await runsApi.start(projectId, kind, sceneId);
+      const r = await runsApi.start(projectId, kind, sceneId, style);
       setRun(r.run);
       if (r.joined) setError(`${r.run.started_by_label ?? "Someone"} already has a run going here — it's shown below. Pause or stop it to start a different one.`);
       if (r.run.status === "running") void drive(r.run.id);

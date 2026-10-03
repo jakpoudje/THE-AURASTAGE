@@ -6,6 +6,8 @@ const audio = { spotAllScenes: vi.fn(), generateAllCues: vi.fn(), placeGenerated
 const visual = { compileAllShots: vi.fn(), sketchAllShots: vi.fn(), approveAllShots: vi.fn() };
 vi.mock("../../audio/audio.batch", () => audio);
 vi.mock("../../generation/generation.batch", () => visual);
+const shots = { planScenesRound: vi.fn(), approveAllShotPlans: vi.fn() };
+vi.mock("../../shots/shots.service", () => shots);
 const { registerRunRoutes } = await import("../runs.controller");
 const { toRunDTO } = await import("../runs.service");
 
@@ -46,7 +48,7 @@ async function app(fake: ReturnType<typeof fakeDb>) {
   return a;
 }
 
-beforeEach(() => { for (const f of [...Object.values(audio), ...Object.values(visual)]) f.mockReset(); });
+beforeEach(() => { for (const f of [...Object.values(audio), ...Object.values(visual), ...Object.values(shots)]) f.mockReset(); });
 
 describe("production runs (owner request 2026-10-02: batches, scene by scene, always showing what is happening)", () => {
   it("a whole-film sound run goes spot → generate (placing what's ready) → finish, waits for the generator when its queue is full, and completes", async () => {
@@ -139,5 +141,35 @@ describe("production runs (owner request 2026-10-02: batches, scene by scene, al
     expect(toRunDTO(run({ kind: "visual.film", area: "visual", phase: "start" })).phase).toBe("compile");
     const list = (await a.inject({ method: "GET", url: `/api/projects/${P}/runs` })).json();
     expect(list.active.audio.id).toBe(R);
+  });
+
+  it("storyboard run (owner request 2026-10-03): plans scenes one after another in rounds, keeps flagged scenes unless re-planning was confirmed, then approves", async () => {
+    const st = { run: run({ area: "storyboard", kind: "storyboard.film", phase: "start", progress: { style: "intimate" } }) };
+    const a = await app(fakeDb(st));
+    shots.planScenesRound.mockResolvedValueOnce({ planned: [{ scene_number: 1, shots: 4, replanned: false }, { scene_number: 2, shots: 3, replanned: false }], remaining: 3, failed: [], waiting_dna: [7], flagged_kept: [5] });
+    let r = (await a.inject({ method: "POST", url: `/api/runs/${R}/step` })).json();
+    expect(shots.planScenesRound).toHaveBeenLastCalledWith(expect.anything(), P, expect.objectContaining({ replan: false, style: "intimate" }));
+    expect(r.run).toMatchObject({ phase: "plan", status: "running" });
+    expect(r.run.message).toMatch(/Planned 2 scenes \(1, 2\)\. 3 scenes still to plan\. Waiting for Scene DNA to be locked: scenes 7\. Kept as they are .*scenes 5/);
+    // The chosen style rides along with every round.
+    expect(r.run.progress.style).toBe("intimate");
+    shots.planScenesRound.mockResolvedValueOnce({ planned: [{ scene_number: 3, shots: 2, replanned: false }], remaining: 0, failed: [], waiting_dna: [], flagged_kept: [] });
+    r = (await a.inject({ method: "POST", url: `/api/runs/${R}/step` })).json();
+    expect(r.run.phase).toBe("approve");
+    shots.approveAllShotPlans.mockResolvedValueOnce({ approved: [{ scene_number: 1, version_number: 1 }, { scene_number: 3, version_number: 1 }], skipped: [{ scene_number: 2, reason: "not ready: every line is covered" }] });
+    r = (await a.inject({ method: "POST", url: `/api/runs/${R}/step` })).json();
+    expect(r.run.status).toBe("completed");
+    expect(r.run.message).toMatch(/Done\. Approved 2 shot plans \(scenes 1, 3\)\. Not approved — fix and approve by hand: scene 2/);
+    // Re-planning flagged scenes is its own run kind (the page asks first).
+    const st2 = { run: run({ area: "storyboard", kind: "storyboard.replan", phase: "plan" }) };
+    const b = await app(fakeDb(st2));
+    shots.planScenesRound.mockResolvedValueOnce({ planned: [{ scene_number: 5, shots: 3, replanned: true }], remaining: 0, failed: [], waiting_dna: [], flagged_kept: [] });
+    r = (await b.inject({ method: "POST", url: `/api/runs/${R}/step` })).json();
+    expect(shots.planScenesRound).toHaveBeenLastCalledWith(expect.anything(), P, expect.objectContaining({ replan: true }));
+    expect(r.run.message).toMatch(/Re-planned 1 scene from their new Scene DNA \(5\)/);
+    // Whole-film only; the style is checked; the run lists under its own area.
+    expect((await b.inject({ method: "POST", url: `/api/projects/${P}/runs`, payload: { kind: "storyboard.film", scene_id: R } })).statusCode).toBe(400);
+    expect((await b.inject({ method: "POST", url: `/api/projects/${P}/runs`, payload: { kind: "storyboard.film", style: "wild" } })).statusCode).toBe(400);
+    expect(toRunDTO(run({ area: "storyboard", kind: "storyboard.film", phase: "start" })).progress.phases).toEqual(["plan", "approve"]);
   });
 });
