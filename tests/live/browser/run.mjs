@@ -236,11 +236,11 @@ await check("scene dna: save, reload: kept; lock, reload: still locked", async (
   await reload("Production Blueprint");
   await page.getByRole("button", { name: "Locked · version 1 ✓" }).waitFor();
 });
-await check("storyboard: plan shots, reload: kept; edit, reload: kept; approve, reload: approved", async () => {
+await check("storyboard: plan shots, reload: kept; edit, reload: kept; whole-film run approves in the background, reload: approved", async () => {
   await page.goto(projectUrl + "/storyboard");
   await page.getByText("Cinematic Precision").waitFor();
   await page.getByRole("button", { name: /INT\. TUNDE'S APARTMENT/ }).first().click();
-  await page.getByRole("button", { name: "Plan shots from Scene DNA" }).click();
+  await page.getByRole("button", { name: "2 · Plan shots from Scene DNA" }).click();
   await page.getByText(/Planned \d+ shots (?:\(\w+ coverage\) )?from Scene DNA version 1/).waitFor();
   await reload("Cinematic Precision");
   await page.getByRole("button", { name: "Shot 1", exact: true }).click();
@@ -252,8 +252,11 @@ await check("storyboard: plan shots, reload: kept; edit, reload: kept; approve, 
   if ((await page.getByLabel("Angle").inputValue()) !== "low") throw new Error("shot edit lost after reload");
   // Owner report 2026-10-01: planned scenes say they wait for approval, and one click approves every ready plan.
   await page.getByRole("button", { name: /INT\. TUNDE'S APARTMENT/ }).first().getByText("Planned · approve").waitFor();
-  await page.getByRole("button", { name: "Approve every ready plan" }).click();
-  await page.getByText(/^Approved 1 shot plan\./).waitFor();
+  // Owner request 2026-10-03: one click does the whole film in the background (plan anything left, then approve).
+  await page.getByRole("button", { name: /▶ Do 1–2 for the whole film/ }).click();
+  const run = page.getByRole("region", { name: "Background activity" });
+  await run.getByText(/^Done\. Approved \d+ shot plans? \(scenes [\d, ]+\)\./).waitFor({ timeout: 90000 });
+  await run.getByText("✓ 2 · Approve every ready plan").waitFor();
   await reload("Cinematic Precision");
   await page.getByRole("button", { name: "Approved · version 1 ✓" }).waitFor();
 });
