@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { NEUTRAL_GRADE } from "@aurastage/contracts";
 import { getDeliveryProfile, renderManifestEngine, titleSequenceEngine, type RenderManifest } from "@aurastage/engines";
 import { creditMetadata, encodeArgs, renderDeliverable, type RenderClaim } from "./render";
-import { gradeFilter } from "./picture";
+import { gradeFilter, lipsyncRuns } from "./picture";
 
 const hasFfmpeg = (() => {
   try {
@@ -31,6 +31,9 @@ function wav(seconds: number, amp: number) {
 }
 const media: Record<string, { bytes: Uint8Array; contentType: string }> = {
   "k/take.svg": { bytes: Buffer.from(svg), contentType: "image/svg+xml" },
+  // A lipsync-ready sketch: a dark closed mouth at rest, a big white open mouth for every other shape.
+  "k/lip.svg": { bytes: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="640" height="360" fill="#808080"/>${
+    ["rest", "a", "e", "o", "closed", "fv", "l"].map((v) => `<g data-lipsync="c1" data-viseme="${v}" display="${v === "rest" ? "inline" : "none"}"><rect x="280" y="200" width="80" height="40" fill="${v === "rest" ? "#000000" : "#ffffff"}"/></g>`).join("")}</svg>`), contentType: "image/svg+xml" },
   "k/line.wav": { bytes: wav(1.5, 0.3), contentType: "audio/wav" },
   "k/music.wav": { bytes: wav(2, 0.5), contentType: "audio/wav" },
 };
@@ -208,6 +211,30 @@ describe.skipIf(!hasFfmpeg)("render worker (real ffmpeg)", () => {
     const top = execFileSync("ffmpeg", ["-v", "error", "-ss", "0.5", "-i", join(r.store, "social_9x16.mp4"), "-frames:v", "1", "-vf", "crop=100:100:0:0,scale=1:1", "-f", "rawvideo", "-pix_fmt", "gray", "-"])[0];
     expect(top).toBeGreaterThan(60);
   }, 120000);
+  it("lip sync (manifest 1.10.0): on a sketch take the speaker's mouth opens while their line plays and closes after it", async () => {
+    const extra = { takes: { [U(20)]: { storage_key: "k/lip.svg", media_type: "image/svg+xml", capability: "image", duration_seconds: null } }, lines: { l1: { speaker: "TUNDE", text: "You came.", character_id: "c1" } } };
+    const m = manifest("streaming_master", extra);
+    // The line plays from 0.25 s to 1.75 s (frames 6–42): the first shot opens at frame 6+; the second (frames 36–48)
+    // starts mid-line and closes at frame 42 (its frame 6).
+    expect(m.picture[0].lipsync!.length).toBeGreaterThan(2);
+    expect(m.picture[0].lipsync![0]).toMatchObject({ frame: 6, key: "c1", viseme: "rest" });
+    expect(m.picture[0].lipsync!.every((c) => c.frame >= 6 && c.frame < 24)).toBe(true);
+    const second = m.picture.find((p) => p.record_in === 36)!.lipsync!;
+    expect(second[0].frame).toBe(0);
+    expect(second.at(-1)).toEqual({ frame: 6, key: "c1", viseme: "rest" });
+    const r = await render("streaming_master", extra);
+    expect(r.qc.passed).toBe(true);
+    const mouth = (t: number) => execFileSync("ffmpeg", ["-v", "error", "-ss", String(t), "-i", join(r.store, "streaming_1080p24.mp4"), "-frames:v", "1", "-vf", "crop=100:60:910:630,scale=1:1", "-f", "rawvideo", "-pix_fmt", "gray", "-"])[0];
+    expect(mouth(0.1)).toBeLessThan(40); // before the line: closed (dark)
+    expect(Math.max(...[0.4, 0.5, 0.6, 0.7, 0.8].map(mouth))).toBeGreaterThan(200); // speaking: open (white)
+    expect(mouth(1.85)).toBeLessThan(40); // after the line ends, inside the second shot: closed again
+  }, 120000);
+  it("lip sync runs: mouth changes become held stills; equal states merge; rest counts as no shape", () => {
+    expect(lipsyncRuns([{ frame: 2, key: "a", viseme: "o" }, { frame: 4, key: "b", viseme: "e" }, { frame: 6, key: "a", viseme: "rest" }, { frame: 6, key: "b", viseme: "rest" }, { frame: 9, key: "a", viseme: "rest" }, { frame: 30, key: "a", viseme: "a" }], 12)).toEqual([
+      { from: 0, to: 2, state: {} }, { from: 2, to: 4, state: { a: "o" } }, { from: 4, to: 6, state: { a: "o", b: "e" } }, { from: 6, to: 12, state: { a: "rest", b: "rest" } },
+    ]);
+    expect(lipsyncRuns([], 10)).toEqual([{ from: 0, to: 10, state: {} }]);
+  });
   it("subtitles and EDL", async () => {
     const s = await render("subtitles");
     expect(s.qc.passed).toBe(true);

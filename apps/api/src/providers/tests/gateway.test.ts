@@ -56,6 +56,17 @@ describe("Provider Gateway", () => {
     expect(r).toMatchObject({ media_type: "image/svg+xml", cost_usd: 0 });
   });
 
+  it("sketch shots are lip-sync ready (R3): each named character's mouth in every shape, labelled with their id, at rest", () => {
+    const a = renderSketch(req());
+    const id = "11111111-1111-4111-8111-111111111111";
+    expect(a).toContain(`data-lipsync="${id}" data-viseme="rest" display="inline"`);
+    expect(a).toContain(`data-lipsync="${id}" data-viseme="o" display="none"`);
+    expect(a).not.toContain("<animate");
+    // A two-shot with one named character: the second person keeps a still mouth (never the first one's).
+    const two = renderSketch(req({ package: { ...pkg, camera: { ...pkg.camera, size: "TWO_SHOT" } } }));
+    expect(two.match(/data-viseme="rest"/g)!.length).toBe(1);
+  });
+
   it("runway image: sends the compiled prompt + ratio + seed, polls the task, downloads the result", async () => {
     const { f, calls } = fakeFetch([
       (u) => (u.endsWith("/text_to_image") ? json({ id: "task-1" }) : undefined),

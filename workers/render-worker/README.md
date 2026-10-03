@@ -18,6 +18,11 @@ private media bucket → `worker_complete_render` (or `worker_fail_render`).
   grade applied in RGB, one Rec.709 conversion), joined without re-encoding, then
   encoded once: H.264 High (streaming/review) or ProRes 422 HQ (mezzanine).
   Review copies can carry a watermark and burned-in timecode.
+- **Lip sync (manifest ≥ 1.10.0):** a sketch take with `lipsync` changes is drawn
+  once per mouth state (`showMouths` shows each speaking character's shape,
+  everyone else at rest; `lipsyncRuns` merges equal states), each still held for
+  its frames and joined with the ffmpeg concat demuxer — so the mouth follows the
+  voice. Sketches made before lip sync have no labelled mouths and render as before.
 - **QC:** ffprobe (codec, size, pixel format, frame rate, duration), ffmpeg
   `ebur128` (integrated loudness, true peak, LRA — an independent meter), SHA-256
   of every file, subtitle cue read-back.

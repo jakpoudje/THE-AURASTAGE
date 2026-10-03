@@ -37,7 +37,8 @@ export const RenderManifestInputSchema = z.object({
   /** Volume automation of the cut's sound and the revision it was read at (migration 0032). */
   automation: TimelineAutomationSchema.default({}),
   automation_revision: z.string().nullable().default(null),
-  lines: z.record(z.object({ speaker: z.string(), text: z.string() })),
+  /** Dialogue lines by id; `character_id` lets a sketch's speaking face move in time with its line (manifest ≥ 1.10.0). */
+  lines: z.record(z.object({ speaker: z.string(), text: z.string(), character_id: z.string().nullable().optional() })),
   /** Opening title card and end-credits roll (titleSequenceEngine), added to video deliverables only (manifest ≥ 1.4.0). */
   titles: z.object({
     opening: z.object({ frames: z.number().int().positive(), svg: z.string().max(200_000) }).nullable(),

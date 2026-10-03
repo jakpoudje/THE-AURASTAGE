@@ -9,6 +9,7 @@ import { subtitleTimelineEngine } from "../subtitleTimelineEngine";
 import { ENGINE_VERSION as SUB_V } from "../subtitleTimelineEngine/version";
 import { ENGINE_VERSION as MIX_V } from "../timelineAudioMixEngine/version";
 import { NEEDS_AUDIO, NEEDS_PICTURE } from "./rules";
+import { visemesFor } from "../../generation/auraSketchFigureEngine/speech";
 import { validateRenderManifestInput } from "./validator";
 import { ENGINE_VERSION, MANIFEST_SCHEMA } from "./version";
 import type { PictureSegment, RenderManifest, RenderManifestOutput } from "./output.schema";
@@ -97,6 +98,38 @@ export function renderManifestEngine(raw: unknown): RenderManifestOutput {
       if (!a?.storage_key) missing.push(`${c.label}: a recording's file is missing`);
       else assets[cl.asset_id] = { storage_key: a.storage_key, media_type: a.media_type };
     }
+  }
+
+  // Lip sync (manifest ≥ 1.10.0): on sketch takes, each speaking character's mouth follows their line — the voice
+  // clip's place in the scene mix, mapped to the cut the same way the mix is (record = a1.record_in + scene frame − source_in).
+  for (const seg of picture) {
+    if (seg.kind !== "take" || !/svg/.test(seg.media_type ?? "")) continue;
+    const s0 = seg.record_in, s1 = seg.record_in + seg.duration;
+    const changes: NonNullable<PictureSegment["lipsync"]> = [];
+    for (const a of audio) {
+      const m = i.mixes[a.mix_version_id];
+      if (!m || a.record_in >= s1 || a.record_in + a.duration <= s0) continue;
+      for (const cl of m.clips) {
+        const lineId = cl.source && typeof cl.source === "object" ? (cl.source as { dialogue_line_id?: unknown }).dialogue_line_id : null;
+        const line = typeof lineId === "string" ? i.lines[lineId] : undefined;
+        if (!line?.character_id || cl.kind !== "asset" || (cl as { muted?: boolean }).muted) continue;
+        const toCut = (sec: number) => a.record_in + Math.round(sec * i.fps) - a.source_in;
+        const start = Number(cl.start_seconds), dur = Number(cl.duration_seconds), off = Number(cl.offset_seconds) || 0;
+        const from = toCut(start), to = toCut(start + dur);
+        if (to <= s0 || from >= s1) continue;
+        // The line is spread over the whole recording; a clip trimmed at its head (offset) starts part-way through it.
+        const keys = visemesFor(line.text, off + dur).map((k) => ({ f: toCut(start + k.t - off), shape: k.shape })).filter((k) => k.f >= from && k.f < to);
+        for (const k of keys) if (k.f >= s0 && k.f < s1) changes.push({ frame: k.f - s0, key: line.character_id, viseme: k.shape });
+        // A line already under way when the shot starts: its shape at the first frame.
+        if (from < s0) {
+          const at = keys.filter((k) => k.f <= s0).at(-1);
+          if (at) changes.push({ frame: 0, key: line.character_id, viseme: at.shape });
+        }
+        // The mouth closes when the line ends (if that is inside this shot).
+        if (to > s0 && to < s1) changes.push({ frame: to - s0, key: line.character_id, viseme: "rest" });
+      }
+    }
+    if (changes.length) seg.lipsync = changes.sort((x, y) => x.frame - y.frame || x.key.localeCompare(y.key));
   }
 
   // Music across scenes (A2, manifest ≥ 1.7.0): audio files from the Assets Library, each at its own level.

@@ -20,6 +20,11 @@ export const PictureSegmentSchema = z.object({
   image_height: z.number().int().optional(),
   /** How a take starts/ends (manifest ≥ 1.6.0): dissolve from the picture before, fade from/to black; timing unchanged. */
   transition: ClipTransitionSchema.optional(),
+  /**
+   * Lip sync on a sketch take (manifest ≥ 1.10.0): mouth changes in frames from the segment's start — from that frame
+   * on, the character (`key`, their id in the sketch) shows `viseme`. Taken from the voice clips in the scene mix.
+   */
+  lipsync: z.array(z.object({ frame: z.number().int().min(0), key: z.string(), viseme: z.enum(["rest", "a", "e", "o", "closed", "fv", "l"]) })).optional(),
 });
 export type PictureSegment = z.infer<typeof PictureSegmentSchema>;
 

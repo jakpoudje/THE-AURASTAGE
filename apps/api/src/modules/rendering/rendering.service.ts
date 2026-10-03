@@ -107,7 +107,7 @@ function manifestInput(project: { id: string; title: string; genre?: string | nu
       })
     ),
     assets: Object.fromEntries(L.assets.map((a) => [a.id, { storage_key: a.storage_path ?? null, media_type: a.metadata?.media_type ?? null }])),
-    lines: Object.fromEntries(L.lines.map((l) => [l.id, { speaker: l.speaker_name, text: l.text }])),
+    lines: Object.fromEntries(L.lines.map((l) => [l.id, { speaker: l.speaker_name, text: l.text, character_id: (l.character_id as string | null) ?? null }])),
     // Sound automation may be refined after Picture Lock; the render records the exact curve and revision it used.
     automation: L.timeline?.automation ?? {},
     automation_revision: L.timeline?.automation_revision ?? null,

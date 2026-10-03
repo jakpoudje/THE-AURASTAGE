@@ -747,6 +747,9 @@ await check("delivery: queue Streaming Master, Subtitles, Audio Package, a socia
   assert(mix && mix.mix && mix.mix.master && mix.tracks.every((t: any) => t.fx && t.fx.eq), "mix routing / channel strips missing from the manifest");
   assert(m.manifest.automation?.A1?.length === 3 && typeof m.manifest.sources.automation_revision === "string", "automation missing from the manifest");
   assert(m.manifest.picture.some((p: any) => p.kind === "take" && p.transition?.in === "fade_from_black"), "the transition didn't reach the manifest");
+  // R3 lip sync (manifest 1.10.0): the built-in sketch shots of speaking characters carry timed mouth shapes.
+  const lips = m.manifest.picture.filter((p: any) => p.lipsync?.length);
+  assert(lips.length > 0 && lips.every((p: any) => p.lipsync.every((c: any) => typeof c.key === "string" && Number.isInteger(c.frame) && c.frame >= 0 && c.frame < p.duration)), `no lip sync in the manifest (${m.manifest.engine_versions?.manifest})`);
   const c = await api("POST", `/api/projects/${projectId}/delivery/renders`, { profile_id: "edit_decision_list" });
   const x = await api("POST", `/api/renders/${c.render_id}/cancel`, {});
   assert(x.status === "cancelled" || x.cancel_requested, "cancel");

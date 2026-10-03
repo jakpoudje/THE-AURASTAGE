@@ -79,6 +79,24 @@ describe("renderManifestEngine", () => {
     (i.assets as any)[U(41)] = { storage_key: null, media_type: null };
     expect(renderManifestEngine(i).missing).toContain("Main theme: the music file is missing");
   });
+  it("1.10.0 lip sync: a sketch take gets its speaker's mouth shapes timed to the line's place in the mix; photos and unknown speakers get none", () => {
+    const withChar = { lines: { l1: { speaker: "TUNDE", text: "You came.", character_id: "c1" } } };
+    const { manifest } = renderManifestEngine(input("streaming_master", withChar));
+    const [sketch, , photo] = manifest!.picture;
+    // The line sits at 1 s (frame 24) for 1.5 s; the sketch shot ends at frame 48, mid-line, so no closing key inside it.
+    expect(sketch.lipsync![0]).toEqual({ frame: 24, key: "c1", viseme: "rest" });
+    expect(sketch.lipsync!.every((c) => c.key === "c1" && c.frame >= 24 && c.frame < 48)).toBe(true);
+    expect(new Set(sketch.lipsync!.map((c) => c.viseme)).size).toBeGreaterThan(2);
+    expect(photo.lipsync).toBeUndefined();
+    expect(renderManifestEngine(input()).manifest!.picture[0].lipsync).toBeUndefined();
+    // A clip trimmed at its head starts part-way into the line; a scene mix placed later on the cut moves the keys with it.
+    const later = renderManifestEngine(input("streaming_master", { ...withChar, clips: [
+      clip(10, { track: "V1", kind: "take", record_in: 0, duration: 96, take_id: U(20) }),
+      clip(12, { track: "A1", kind: "audio_mix", record_in: 12, duration: 84, source_frames: 96, source_in: 0, audio_session_version_id: U(30) }),
+    ] })).manifest!.picture[0].lipsync!;
+    expect(later[0]).toEqual({ frame: 36, key: "c1", viseme: "rest" });
+    expect(later.at(-1)).toEqual({ frame: 72, key: "c1", viseme: "rest" });
+  });
   it("is deterministic", () => {
     expect(JSON.stringify(renderManifestEngine(input()))).toBe(JSON.stringify(renderManifestEngine(input())));
   });
@@ -110,7 +128,7 @@ describe("renderManifestEngine 1.5.0: on-screen text from Scene DNA", () => {
     // The scene's first stretch is 48 frames (2 s), shorter than 4 s, so the text stays for the whole stretch.
     expect(manifest!.overlays).toEqual([{ record_in: 0, duration: 48, text: "LAGOS — 1995", position: "lower_third", scene_id: U(90) }]);
     expect(manifest!.sources.scene_captions).toEqual([U(90)]);
-    expect(manifest!.engine_versions.manifest).toBe("1.9.0");
+    expect(manifest!.engine_versions.manifest).toBe("1.10.0");
   });
   it("moves with the opening title card; caps at 4 s on a long stretch; only video deliverables; no captions = no overlays", () => {
     const titles = { opening: { frames: 120, svg: "<svg>T</svg>" }, end_credits: null, engine_version: "1.0.0" };

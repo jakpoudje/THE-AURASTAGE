@@ -46,7 +46,7 @@ export const listMixVersions = (db: SupabaseClient, ids: string[]) =>
   rows(db.from("audio_session_versions").select("id, session_id, version_number, tracks, clips, measurement, mix").in("id", inList(ids)));
 export const listSessions = (db: SupabaseClient, p: string) => rows(db.from("audio_sessions").select("id, scene_id, scene_seconds, approved_version_id, status, review_state").eq("project_id", p));
 export const listAssets = (db: SupabaseClient, ids: string[]) => rows(db.from("assets").select("id, storage_path, metadata").in("id", inList(ids)));
-export const listLines = (db: SupabaseClient, ids: string[]) => rows(db.from("dialogue_lines").select("id, speaker_name, text").in("id", inList(ids)));
+export const listLines = (db: SupabaseClient, ids: string[]) => rows(db.from("dialogue_lines").select("id, speaker_name, text, character_id").in("id", inList(ids)));
 /** The cast for the end credits (read-only; Casting owns characters): leads first, merged duplicates left out. */
 export const listCast = (db: SupabaseClient, p: string) =>
   rows(db.from("characters").select("name, role, kind").eq("project_id", p).is("merged_into", null).order("name", { ascending: true }));

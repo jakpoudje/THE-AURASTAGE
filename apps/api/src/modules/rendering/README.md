@@ -26,7 +26,7 @@ can't call them).
 `engines/rendering`: `deliveryProfileEngine` (versioned profiles; unavailable ones
 say why), `renderManifestEngine` 1.7.0 (gap-free picture with V2 inserts cut in over V1, mixes with real recordings,
 the A2 music track in `music[]` mixed into the mix/MX/M&E stems by the worker,
-subtitles, EDL, exact source ids; 1.8.0: text cards at fixed places; refuses with reasons when a master file is
+subtitles, EDL, exact source ids; 1.8.0: text cards at fixed places; 1.10.0: lip sync on sketch takes from each line's `character_id` (the repository reads it with the line); refuses with reasons when a master file is
 missing), `subtitleTimelineEngine`, `timelineAudioMixEngine`, `finalQCEngine`.
 
 ## API endpoints

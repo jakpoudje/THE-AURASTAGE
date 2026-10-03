@@ -49,6 +49,12 @@ export function renderSketch(req: GenerateRequest): string {
   }));
   const neutral = characterAppearanceEngine({});
   const personAt = (i: number) => cast[i] ?? cast[0] ?? neutral;
+  // Lip sync in the film (R3): each character's mouths are drawn in every shape, labelled with their id, rest shown —
+  // the render worker opens and closes them in time with their lines in the scene mix.
+  const optsAt = (i: number) => {
+    const c = p.characters[i]; // an extra, unnamed person in the frame keeps a still mouth
+    return c ? { ...fo, mouth: { kind: "lipsync" as const, key: c.id } } : fo;
+  };
   // Figure size for the shot: how much of the body is in frame and how tall the figure stands in the frame.
   const FR: Record<string, { crop: SketchSize; h: number; floor: number }> = {
     EWS: { crop: "FULL", h: 0.22, floor: 0.7 }, WS: { crop: "FULL", h: 0.45, floor: 0.78 }, FULL: { crop: "FULL", h: 0.82, floor: 0.92 },
@@ -63,7 +69,7 @@ export function renderSketch(req: GenerateRequest): string {
     const fh = H * fr.h, bottom = H * fr.floor;
     if (size === "OTS") {
       // Over the shoulder: the other person seen from behind in the foreground, the subject facing us.
-      figures.push(drawAuraSketchFigure(personAt(0), "three_quarter", "MCU", { x: W * 0.42, y: bottom - fh, width: W * 0.45, height: fh }, fo).svg);
+      figures.push(drawAuraSketchFigure(personAt(0), "three_quarter", "MCU", { x: W * 0.42, y: bottom - fh, width: W * 0.45, height: fh }, optsAt(0)).svg);
       figures.push(drawAuraSketchFigure(personAt(1), "back", "MCU", { x: -W * 0.08, y: H * 0.2, width: W * 0.5, height: H * 1.05 }, fo).svg);
     } else {
       const n = people;
@@ -71,7 +77,7 @@ export function renderSketch(req: GenerateRequest): string {
       for (let i = 0; i < n; i++) {
         const cx = W * ((i + 1) / (n + 1)) + ((seed * 37 + i * 11) % 21) - 10;
         const angle: SketchAngle = n === 1 ? "front" : "three_quarter";
-        const fig = drawAuraSketchFigure(personAt(i), angle, fr.crop, { x: -bw / 2, y: 0, width: bw, height: fh }, fo).svg;
+        const fig = drawAuraSketchFigure(personAt(i), angle, fr.crop, { x: -bw / 2, y: 0, width: bw, height: fh }, optsAt(i)).svg;
         // In two- and three-shots the people turn towards each other (the right-hand side is mirrored).
         const mirror = n > 1 && cx > W / 2;
         figures.push(`<g transform="translate(${cx} ${bottom - fh})${mirror ? " scale(-1 1)" : ""}">${fig}</g>`);

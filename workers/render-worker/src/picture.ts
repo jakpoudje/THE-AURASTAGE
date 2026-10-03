@@ -4,7 +4,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Resvg } from "@resvg/resvg-js";
-import type { PictureSegment, RenderManifest } from "@aurastage/engines";
+import { lipsyncKeys, showMouths, type PictureSegment, type RenderManifest } from "@aurastage/engines";
 import { ffmpeg } from "./ffmpeg";
 
 const INTERMEDIATE = ["-c:v", "libx264", "-preset", "ultrafast", "-qp", "0", "-pix_fmt", "yuv444p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
@@ -28,6 +28,30 @@ export function fadeFilter(s: PictureSegment, fps: number): string | null {
   return parts.length ? parts.join(",") : null;
 }
 
+type Viseme = NonNullable<PictureSegment["lipsync"]>[number]["viseme"];
+/**
+ * Lip sync (manifest ≥ 1.10.0): the mouth state of every speaking character over a segment's frames, as runs
+ * ({ from, to, state }) — each run is one still of the sketch with those mouths. Pure; unit-tested.
+ */
+export function lipsyncRuns(changes: NonNullable<PictureSegment["lipsync"]>, frames: number) {
+  const state: Record<string, Viseme> = {};
+  const runs: { from: number; to: number; state: Record<string, Viseme> }[] = [];
+  const key = (s: Record<string, Viseme>) => JSON.stringify(Object.entries(s).filter(([, v]) => v !== "rest").sort());
+  let from = 0;
+  const sorted = [...changes].filter((c) => c.frame < frames).sort((a, b) => a.frame - b.frame);
+  for (let i = 0; i <= sorted.length; i++) {
+    const at = i < sorted.length ? Math.max(0, sorted[i].frame) : frames;
+    if (at > from) {
+      const prev = runs.at(-1);
+      if (prev && key(prev.state) === key(state)) prev.to = at;
+      else runs.push({ from, to: at, state: { ...state } });
+      from = at;
+    }
+    if (i < sorted.length) state[sorted[i].key] = sorted[i].viseme;
+  }
+  return runs;
+}
+
 export async function renderPicture(
   m: RenderManifest, fetchMedia: (key: string) => Promise<{ bytes: Uint8Array; contentType: string }>, dir: string,
   onProgress: (fraction: number) => void, signal?: AbortSignal
@@ -40,6 +64,7 @@ export async function renderPicture(
     : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=gbrp`;
   const toYuv = "scale=out_color_matrix=bt709:out_range=tv,format=yuv444p";
   const cache = new Map<string, string>();
+  const svgText = new Map<string, string>();
   const list: string[] = [];
   for (let i = 0; i < m.picture.length; i++) {
     const s = m.picture[i];
@@ -63,7 +88,8 @@ export async function renderPicture(
         const media = await fetchMedia(s.storage_key!);
         const type = s.media_type ?? media.contentType;
         if (/svg/.test(type)) {
-          const png = new Resvg(Buffer.from(media.bytes).toString("utf8"), { fitTo: { mode: "width", value: W }, background: "black" }).render().asPng();
+          svgText.set(s.storage_key!, Buffer.from(media.bytes).toString("utf8"));
+          const png = new Resvg(svgText.get(s.storage_key!)!, { fitTo: { mode: "width", value: W }, background: "black" }).render().asPng();
           src = join(dir, `src_${cache.size}.png`);
           writeFileSync(src, png);
         } else {
@@ -74,7 +100,29 @@ export async function renderPicture(
       }
       const vf = [fit, gradeFilter(s.grade), toYuv].filter(Boolean).join(",");
       const fx = fadeFilter(s, m.fps);
-      if (s.capability === "video") {
+      const svg = svgText.get(s.storage_key!);
+      // Only characters this sketch has labelled mouths for (sketches made before lip sync have none: drawn as before).
+      const speaking = svg && s.lipsync?.length ? s.lipsync.filter((c) => lipsyncKeys(svg).includes(c.key)) : [];
+      const runs = speaking.length ? lipsyncRuns(speaking, s.duration) : null;
+      if (runs && runs.length > 1) {
+        // Lip sync: one still per mouth state (the sketch with those mouths shown), held for its frames, joined in order.
+        const stills = new Map<string, string>();
+        const lines: string[] = [];
+        for (const r of runs) {
+          const k = JSON.stringify(r.state);
+          let file = stills.get(k);
+          if (!file) {
+            file = join(dir, `lip_${i}_${stills.size}.png`);
+            writeFileSync(file, new Resvg(showMouths(svg!, r.state), { fitTo: { mode: "width", value: W }, background: "black" }).render().asPng());
+            stills.set(k, file);
+          }
+          lines.push(`file '${file}'`, `duration ${((r.to - r.from) / m.fps).toFixed(6)}`);
+        }
+        lines.push(`file '${stills.get(JSON.stringify(runs.at(-1)!.state))}'`); // the concat demuxer needs the last still again
+        const concat = join(dir, `lip_${i}.txt`);
+        writeFileSync(concat, lines.join("\n") + "\n");
+        await ffmpeg(["-f", "concat", "-safe", "0", "-i", concat, "-vf", [`fps=${m.fps}`, vf, fx].filter(Boolean).join(","), ...common], { signal });
+      } else if (s.capability === "video") {
         const pad = `tpad=stop_mode=clone:stop_duration=${(s.duration / m.fps).toFixed(3)}`;
         await ffmpeg(["-ss", (s.source_in / m.fps).toFixed(4), "-i", src, "-vf", [`fps=${m.fps}`, vf, pad, fx].filter(Boolean).join(","), ...common], { signal });
       } else {

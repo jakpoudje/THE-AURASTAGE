@@ -16,7 +16,15 @@ export const faceOf = (a: Appearance): Face => a.face ?? { ...NEUTRAL_FACE, line
 
 export type MouthMode =
   | { kind: "still" }
-  | { kind: "talking"; track: VisemeKey[]; seconds: number; blinks: number[] };
+  | { kind: "talking"; track: VisemeKey[]; seconds: number; blinks: number[] }
+  /** Lip sync in the film (R3, 2026-10-03): every mouth shape is drawn, labelled with this character (`key`) and the
+   * shape, and only "rest" is shown; the render worker shows the shape each frame needs (the still is unchanged). */
+  | { kind: "lipsync"; key: string };
+
+/** Every mouth shape, in the order the render worker uses. */
+export const ALL_VISEMES: Viseme[] = ["rest", "a", "e", "o", "closed", "fv", "l"];
+/** A labelled mouth shape: `data-lipsync` is the character key, `data-viseme` the shape; only rest is shown. */
+const labelled = (key: string, sh: Viseme, body: string) => `<g data-lipsync="${key.replace(/[^a-zA-Z0-9_-]/g, "")}" data-viseme="${sh}" display="${sh === "rest" ? "inline" : "none"}">${body}</g>`;
 
 const f = (n: number) => Math.round(n * 1000) / 1000;
 const pts = (...xy: number[]) => xy.map(f).join(" ");
@@ -106,6 +114,7 @@ export function mouthShape(shape: Viseme, g: FaceGeo, fc: Face, skin: string, a:
 /** A mouth that speaks (each shape shown at its time, looping with a pause) or stays at rest. */
 function mouth(mode: MouthMode, g: FaceGeo, fc: Face, skin: string, a: Appearance, st: SketchStyle, ink: string, lw: number) {
   if (mode.kind === "still") return mouthShape("rest", g, fc, skin, a, st, ink, lw);
+  if (mode.kind === "lipsync") return ALL_VISEMES.map((sh) => labelled(mode.key, sh, mouthShape(sh, g, fc, skin, a, st, ink, lw))).join("");
   const dur = mode.seconds + 1.2;
   const keys = mode.track.filter((k, i, all) => i === 0 || k.t > all[i - 1].t);
   const kt = keys.map((k) => f(Math.min(0.999, k.t / dur))).join(";");
@@ -237,6 +246,7 @@ export function drawProfileFace(a: Appearance, skin: string, st: SketchStyle, ui
     return open ? `<path d="M ${pts(ul - 0.06, 0.8)} L ${pts(ul - 0.005, 0.8 - open * 0.3)} L ${pts(ll - 0.01, 0.8 + open * 0.7)} Z" fill="#2a1416"/>` : `<path d="M ${pts(ul - 0.005, 0.8)} L ${pts(0.22, 0.81)}" stroke="${ink}" stroke-width="${f(0.016 * lw)}" stroke-linecap="round"/>`;
   };
   if (mode.kind === "still") out.push(lips("rest"));
+  else if (mode.kind === "lipsync") for (const sh of ALL_VISEMES) out.push(labelled(mode.key, sh, lips(sh)));
   else {
     const dur = mode.seconds + 1.2;
     const keys = mode.track.filter((k, i, all) => i === 0 || k.t > all[i - 1].t);
@@ -246,3 +256,14 @@ export function drawProfileFace(a: Appearance, skin: string, st: SketchStyle, ui
   if (faceOf(a).lines > 0.4) out.push(`<path d="M 0.2 0.6 L 0.25 0.585 M 0.2 0.62 L 0.25 0.63" stroke="${ink}" stroke-width="${f(0.008 * lw)}" opacity="0.5"/>`);
   return out.join("");
 }
+
+/**
+ * The same sketch with the mouth shapes a moment needs (lip sync in the film): for each labelled character the shape in
+ * `want` is shown (rest when not named) and every other shape hidden. Pure string work on a lipsync-ready sketch.
+ */
+export function showMouths(svg: string, want: Record<string, Viseme>): string {
+  return svg.replace(/<g data-lipsync="([A-Za-z0-9_-]*)" data-viseme="(\w+)" display="(?:inline|none)">/g, (_m, key: string, sh: string) =>
+    `<g data-lipsync="${key}" data-viseme="${sh}" display="${(want[key] ?? "rest") === sh ? "inline" : "none"}">`);
+}
+/** The characters a sketch can lip-sync (their keys), from its labelled mouths. */
+export const lipsyncKeys = (svg: string) => [...new Set([...svg.matchAll(/data-lipsync="([A-Za-z0-9_-]*)"/g)].map((m) => m[1]))];

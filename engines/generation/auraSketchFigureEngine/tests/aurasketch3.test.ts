@@ -3,6 +3,7 @@ import { characterAppearanceEngine } from "../../../character/characterAppearanc
 import { auraSketchFigure } from "../engine";
 import { gradeHex, sketchStyleFor, SKETCH_STYLES } from "../style";
 import { blinksFor, estimateLineSeconds, visemesFor } from "../speech";
+import { ALL_VISEMES, lipsyncKeys, showMouths } from "../face";
 
 const box = { x: 0, y: 0, width: 300, height: 300 };
 // Same description, different people: the faces must differ (owner, 2026-10-02: "all character sketches just look the same").
@@ -69,5 +70,20 @@ describe("AuraSketch 3 — faces, genre styles and speech (owner request 2026-10
     expect(auraSketchFigure(a, "front", "CU", box).svg).not.toContain("<animate");
     const prof = auraSketchFigure(a, "profile", "CU", box, { mouth: { kind: "talking", track: visemesFor("Ah", 1), seconds: 1, blinks: [] } }).svg;
     expect(prof).toContain("<animate");
+  });
+
+  it("lip sync (R3): a lipsync figure carries every mouth shape labelled with its key, rest shown; showMouths picks one", () => {
+    const a = same("Amara Bello");
+    for (const view of ["front", "three_quarter", "profile"] as const) {
+      const svg = auraSketchFigure(a, view, "CU", box, { mouth: { kind: "lipsync", key: "char-1" } }).svg;
+      expect(svg).not.toContain("<animate attributeName=\"opacity\" calcMode=\"discrete\"");
+      for (const v of ALL_VISEMES) expect(svg, `${view} ${v}`).toContain(`data-lipsync="char-1" data-viseme="${v}" display="${v === "rest" ? "inline" : "none"}"`);
+      expect(lipsyncKeys(svg)).toEqual(["char-1"]);
+      const open = showMouths(svg, { "char-1": "o" });
+      expect(open).toContain('data-viseme="o" display="inline"');
+      expect(open).toContain('data-viseme="rest" display="none"');
+      // Characters not named stay at rest; the drawing is otherwise unchanged.
+      expect(showMouths(svg, { other: "a" })).toBe(svg);
+    }
   });
 });
