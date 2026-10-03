@@ -32,3 +32,4 @@ runtime, headings match the outline, characters named in the story bible, no inv
 CONTINUOUS after a time jump, scenes with no action, orphan dialogue, very long speeches).
 
 Built: `storySetupEngine` v1.0.0 — built-in story intelligence (free): genre, tone, setting, time period and a logline from the approved script (and the lead's motivation), plus the film's settings — look, palette, country, year, title-card line. Never invents credit names.
+- `scriptCastMatchEngine` v1.0.0 — the Scriptwriter's cast check: each speaking cue matched to the story's characters by full name, first name, surname (only when one unclaimed story person has it) or a titled name (PROFESSOR BELLO); roles (REPORTER, PRESIDING OFFICER, OPPOSITION AGENT #1) are walk-on parts and ALL/VOICES group lines, not mismatches; story entries that are groups or places (a party, a region) are listed apart. Pure.

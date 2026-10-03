@@ -130,6 +130,8 @@ async function api(method, path, body) {
   });
   await step("Character Extraction: checked against the story; rename a character everywhere in the script (then save a version)", async () => {
     await stepTab("Character Extraction");
+    // Owner report 2026-10-03: the check sorts the cast (in the story / named only in the script / walk-on parts / group lines).
+    await page.getByTestId("cast-summary").getByText(/\d+ in your story/).waitFor();
     const card = page.getByRole("listitem", { name: "Character FEMI" });
     await card.getByText(/In your story|Not in your current story/).waitFor();
     await card.getByRole("button", { name: "Rename everywhere" }).click();
