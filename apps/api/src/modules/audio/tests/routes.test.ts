@@ -121,7 +121,7 @@ describe("Audio Studio routes", () => {
     rows.shot_plan_versions[0].shots[0] = { ...rows.shot_plan_versions[0].shots[0], description: "Amara enters and walks to the desk." };
     const fake = fakeDb(rows, (fn) => ({ data: fn === "spot_audio_session" ? session() : {} }));
     const res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/spot` });
-    expect(res.json().space).toMatchObject({ id: "small_room", why: [expect.stringContaining("cramped")] });
+    expect(res.json().space).toMatchObject({ id: "small_room", why: expect.arrayContaining([expect.stringContaining("cramped back office")]) });
     const clips = fake.calls[0].args.p_clips as Row[];
     expect(clips.find((c) => c.track_key === "bg").label).toContain("small room tone");
     expect(clips.filter((c) => c.source.evidence?.includes("timed to the shot")).map((c) => c.label)).toEqual(["Footsteps on the floor", "Door opens"]);
