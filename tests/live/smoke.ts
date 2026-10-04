@@ -1139,7 +1139,8 @@ await check("studio mixer: a channel strip (HPF, EQ, compressor, send, automatio
   const ws = await api("GET", `/api/projects/${projectId}/audio`);
   const sc = ws.scenes.find((x: any) => x.scene.id === s1);
   const dx = sc.tracks.find((t: any) => t.family === "DX");
-  assert(dx.fx && dx.fx.comp.on === false && sc.session.mix.master.limiter === true, "neutral defaults missing");
+  // Since R4 a freshly spotted dialogue track arrives processed for the scene's room (clean-up strip, compressor on).
+  assert(dx.fx && dx.fx.comp.on === true && dx.fx.hpf_hz > 0 && sc.session.mix.master.limiter === true, "room strip / defaults missing");
   const fx = { ...dx.fx, hpf_hz: 80, eq: { ...dx.fx.eq, mid: { freq: 3000, gain_db: 2, q: 1 } }, comp: { ...dx.fx.comp, on: true, threshold_db: -20 }, reverb_send_db: -18, automation: [{ t: 0, db: 0 }, { t: 1, db: -6 }] };
   const saved = await api("PATCH", `/api/audio-tracks/${dx.id}`, { fx });
   assert(saved.fx.hpf_hz === 80 && saved.fx.comp.on && saved.fx.automation.length === 2, JSON.stringify(saved.fx).slice(0, 200));
