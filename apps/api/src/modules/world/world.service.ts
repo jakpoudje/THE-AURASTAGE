@@ -4,6 +4,7 @@
 // names, describes, adds or archives them. Reference views come from worldLookEngine and an image backend from the
 // Provider Gateway, made in the generation worker; files are registered by the Assets domain (rule 4).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readScriptVersion } from "../../infrastructure/scriptVersionCache";
 import { z } from "zod";
 import { ScreenplayElementSchema } from "@aurastage/contracts";
 import { propContinuityEngine, sceneBoundaryEngine, worldExtraction, worldLook } from "@aurastage/engines";
@@ -45,8 +46,7 @@ async function assertProject(db: SupabaseClient, projectId: string) {
 async function approvedScript(db: SupabaseClient, projectId: string) {
   const s = (await many(db.from("scripts").select("id, approved_version_id").eq("project_id", projectId).limit(1)))[0];
   if (!s?.approved_version_id) return null;
-  const v = (await many(db.from("script_versions").select("id, version_number, elements").eq("id", s.approved_version_id).limit(1)))[0];
-  return v ? (v as { id: string; version_number: number; elements: unknown[] }) : null;
+  return readScriptVersion(db, s.approved_version_id as string);
 }
 
 /** What the approved script says right now (pure apart from the reads). */

@@ -3,6 +3,7 @@
 // scenes), Casting (characters, character_appearances, wardrobe_looks) and
 // Dialogue (dialogue_lines) read-only; writes only via the migration-0011 functions.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readScriptVersion } from "../../infrastructure/scriptVersionCache";
 import { SceneDnaConflictError, SceneDnaNotFoundError, SceneDnaValidationError } from "./sceneDna.validator";
 import { SceneDnaForbiddenError } from "./sceneDna.permissions";
 import { colForbiddenMessage } from "../../infrastructure/permissions";
@@ -34,9 +35,9 @@ export async function getApprovedVersion(db: SupabaseClient, projectId: string) 
   const { data, error } = await db.from("scripts").select("id, approved_version_id").eq("project_id", projectId).maybeSingle();
   if (error) throw error;
   if (!data?.approved_version_id) return null;
-  const { data: v, error: vErr } = await db.from("script_versions").select("id, version_number, elements").eq("id", data.approved_version_id).single();
-  if (vErr) throw vErr;
-  return v as { id: string; version_number: number; elements: unknown[] };
+  const v = await readScriptVersion(db, data.approved_version_id);
+  if (!v) throw Object.assign(new Error("The approved script version could not be read"), { code: "PGRST116" });
+  return v;
 }
 
 export const listScenes = (db: SupabaseClient, projectId: string) =>

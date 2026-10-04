@@ -4,6 +4,7 @@
 // Dialogue (lines), Casting (names) and Assets (audio) read-only; writes only
 // via the migration-0015 functions.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readScriptVersion } from "../../infrastructure/scriptVersionCache";
 import { AudioBusyError, AudioConflictError, AudioNotFoundError, AudioNotReadyError, AudioValidationError } from "./audio.validator";
 import { AudioForbiddenError } from "./audio.permissions";
 import { colForbiddenMessage } from "../../infrastructure/permissions";
@@ -57,8 +58,7 @@ export async function getProjectStory(db: SupabaseClient, p: string): Promise<Ro
 }
 /** Source line of each element of a script version (read-only; Scriptwriter owns it) — to place sound cues by script position. */
 export async function scriptElementLines(db: SupabaseClient, versionId: string): Promise<Map<number, number>> {
-  const { data, error } = await db.from("script_versions").select("elements").eq("id", versionId).maybeSingle();
-  if (error) throw error;
+  const data = await readScriptVersion(db, versionId);
   return new Map(((data?.elements ?? []) as { index: number; line: number }[]).map((e) => [e.index, e.line]));
 }
 export const listCharacters = (db: SupabaseClient, p: string) => rows(db.from("characters").select("id, name, pronunciation").eq("project_id", p));

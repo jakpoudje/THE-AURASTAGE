@@ -1,6 +1,7 @@
 // workers/render-worker entrypoint — consumes renders from the MOS queue (Railway service "render-worker").
 // Env: SUPABASE_URL, SUPABASE_ANON_KEY, WORKER_TOKEN (its SHA-256 is in worker_credentials), MEDIA_* (bucket).
 import { createClient } from "@supabase/supabase-js";
+import { retryOnTimeout } from "@aurastage/api/dist/infrastructure/dbRetry";
 // Media storage lives in apps/api (canonical); the worker only uses it.
 import { getMedia, putMediaFile, renderStorageKey } from "@aurastage/api/dist/storage/media";
 import { ffmpeg } from "./ffmpeg";
@@ -14,7 +15,8 @@ const token = env.WORKER_TOKEN!;
 const log = (event: string, data: Record<string, unknown>) => console.log(JSON.stringify({ at: new Date().toISOString(), event, ...data }));
 
 async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
-  const { data, error } = await db.rpc(fn, args);
+  // A call the database cancelled for taking too long was rolled back: run it once more (BUILD_PLAN item 50).
+  const { data, error } = await retryOnTimeout(() => db.rpc(fn, args));
   if (error) throw new Error(`${fn}: ${error.message}`);
   return data as T;
 }

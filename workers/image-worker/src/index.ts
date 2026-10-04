@@ -4,6 +4,7 @@
 //      ANTHROPIC_API_KEY (optional; Ask AuraStage plans with the labelled test planner until it is set,
 //      unless AURA_TEST_PROVIDER=off).
 import { createClient } from "@supabase/supabase-js";
+import { retryOnTimeout } from "@aurastage/api/dist/infrastructure/dbRetry";
 // Provider Gateway + media storage live in apps/api (canonical, rule 7); the worker only uses them.
 import { chooseReferences, getAdapter, getAudioAdapter, providerStatuses, reasoningProvider } from "@aurastage/api/dist/providers";
 import { getMedia, putMedia, signedMediaUrl, takeStorageKey } from "@aurastage/api/dist/storage/media";
@@ -21,7 +22,8 @@ const token = env.WORKER_TOKEN!;
 const log = (event: string, data: Record<string, unknown>) => console.log(JSON.stringify({ at: new Date().toISOString(), event, ...data }));
 
 async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
-  const { data, error } = await db.rpc(fn, args);
+  // A call the database cancelled for taking too long was rolled back: run it once more (BUILD_PLAN item 50).
+  const { data, error } = await retryOnTimeout(() => db.rpc(fn, args));
   if (error) throw new Error(`${fn}: ${error.message}`);
   return data as T;
 }

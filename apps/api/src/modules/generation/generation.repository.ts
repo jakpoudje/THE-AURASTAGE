@@ -3,6 +3,7 @@
 // (scenes), Scene DNA, Storyboard (shot plans + approved versions), Casting and
 // Dialogue read-only; writes only via the migration-0013 functions.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readScriptVersion } from "../../infrastructure/scriptVersionCache";
 import { GenerationBusyError, GenerationConflictError, GenerationNotFoundError, GenerationNotReadyError, GenerationValidationError } from "./generation.validator";
 import { GenerationForbiddenError } from "./generation.permissions";
 import { colForbiddenMessage } from "../../infrastructure/permissions";
@@ -63,7 +64,7 @@ export const getScriptVersionId = async (db: SupabaseClient, projectId: string) 
   ((await one(db.from("scripts").select("approved_version_id").eq("project_id", projectId).maybeSingle()))?.approved_version_id as string | undefined) ?? null;
 /** The script elements of one version (Scriptwriter, read-only) — the action lines around each shot. */
 export const getScriptElements = async (db: SupabaseClient, versionId: string | null) =>
-  versionId ? (((await one(db.from("script_versions").select("elements").eq("id", versionId).maybeSingle()))?.elements as { index: number; type: string; text: string }[] | undefined) ?? []) : [];
+  versionId ? (((await readScriptVersion(db, versionId))?.elements as { index: number; type: string; text: string }[] | undefined) ?? []) : [];
 export const listCharacters = (db: SupabaseClient, projectId: string) =>
   rows(db.from("characters").select("id, name, age, gender, description, merged_into, nationality, accent, languages, physicality, personality").eq("project_id", projectId));
 export const listLooks = (db: SupabaseClient, projectId: string) =>

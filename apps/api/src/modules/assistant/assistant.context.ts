@@ -1,6 +1,7 @@
 // Context Engine (directive §18): only the objects a request is about, read with the user's own access (RLS), each
 // with its canonical id and the version it was read at (rows' updated_at). Read-only across domains (rule 4).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readScriptVersion } from "../../infrastructure/scriptVersionCache";
 import { readProjectSettings } from "../settings/settings.read";
 import { trimContext, type AssistantRequest, type ContextBundle, type ContextItem, type Intent } from "@aurastage/aura-intelligence";
 
@@ -47,8 +48,8 @@ export async function buildContext(db: SupabaseClient, req: AssistantRequest, in
   if (focusScene) {
     // The scene's action as written in the script (read-only), so the whole scene can be understood in one pass.
     if (focusScene.source_version_id) {
-      const v = await rows(db.from("script_versions").select("elements").eq("id", focusScene.source_version_id));
-      action = ((v[0]?.elements ?? []) as Row[]).filter((e) => e.index >= focusScene!.element_start && e.index <= focusScene!.element_end && e.type === "action")
+      const v = await readScriptVersion(db, focusScene.source_version_id);
+      action = ((v?.elements ?? []) as Row[]).filter((e) => e.index >= focusScene!.element_start && e.index <= focusScene!.element_end && e.type === "action")
         .map((e) => String(e.text)).join("\n").slice(0, 3000);
     }
     // The scene's Audio Studio tracks (read-only here), so a mix request can be turned into track changes.
