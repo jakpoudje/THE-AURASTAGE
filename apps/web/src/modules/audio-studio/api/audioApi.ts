@@ -6,7 +6,7 @@ import type { AudioAsset, AudioGeneration, AudioMeasurement, AudioWorkspace } fr
 export const audioApi = {
   getWorkspace: (projectId: string) => apiGet<AudioWorkspace>(`/api/projects/${projectId}/audio`),
   spot: (projectId: string, sceneId: string) =>
-    apiPost<{ session_id: string; tracks: number; cues: number; shot_plan_version_number: number }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/spot`, {}),
+    apiPost<{ session_id: string; tracks: number; cues: number; shot_plan_version_number: number; space?: { id: string; name: string; why: string[]; applied: string[] } }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/spot`, {}),
   approve: (projectId: string, sceneId: string) => apiPost<{ version_number: number }>(`/api/projects/${projectId}/audio/scenes/${sceneId}/approve`, {}),
   updateTrack: (trackId: string, patch: UpdateAudioTrackInput) => apiPatch<AudioTrack>(`/api/audio-tracks/${trackId}`, patch),
   addTrack: (sessionId: string, input: AddAudioTrackInput) => apiPost<AudioTrack>(`/api/audio-sessions/${sessionId}/tracks`, input),

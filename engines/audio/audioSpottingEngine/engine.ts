@@ -10,12 +10,19 @@
 import { FOLEY_WORDS, FX_CUE_SECONDS, LINE_PAD_SECONDS } from "./rules";
 import { validateAudioSpottingInput } from "./validator";
 import { ENGINE_VERSION } from "./version";
+import { sceneAcousticsEngine } from "../sceneAcousticsEngine";
 import type { AudioSpottingOutput } from "./output.schema";
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
-  const { scene, scene_seconds: T, shots, lines, dna, script_lines, music } = validateAudioSpottingInput(raw);
+  const { scene, scene_seconds: T, shots, lines, dna, script_lines, music, location_description } = validateAudioSpottingInput(raw);
+  // How the scene sounds as a place, and the Foley its shots need (R4).
+  const room = sceneAcousticsEngine({
+    scene: { int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day },
+    location_description: location_description ?? null, atmosphere: dna.atmosphere, weather: dna.weather,
+    shots: shots.map((s) => ({ ordinal: s.ordinal, story_start: Math.max(0, s.story_start), story_end: Math.max(0, s.story_end), description: s.description ?? "" })),
+  });
   const tracks: AudioSpottingOutput["tracks"] = [];
   const clips: AudioSpottingOutput["clips"] = [];
   const addTrack = (key: string, name: string, family: AudioSpottingOutput["tracks"][number]["family"]) => {
@@ -57,10 +64,10 @@ export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
   addTrack("bg", "BG — Ambience", "BG");
   clips.push({
     track_key: "bg",
-    label: `${place} ambience${bgBits ? ` — ${bgBits}` : ""}`,
+    label: `${place} ambience, ${room.bed}${bgBits ? ` — ${bgBits}` : ""}`,
     start_seconds: 0,
     duration_seconds: r2(T),
-    source: { cue: "ambience", evidence: `Scene ${scene.number} heading${bgBits ? " + Scene DNA weather/atmosphere" : ""}` },
+    source: { cue: "ambience", evidence: `Scene ${scene.number} heading${bgBits ? " + Scene DNA weather/atmosphere" : ""}; space: ${room.space.name} (${room.why.join("; ")})` },
   });
 
   // FX / Foley from Scene DNA's detected sound cues. When the script positions are known, each cue is placed where its
@@ -100,6 +107,23 @@ export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
     });
   });
 
+  // Foley timed to each shot's action (footsteps where someone walks, a door on the cut) — unless the script already
+  // spotted the same sound within that shot.
+  // Whole words: "outdoors" is not a door.
+  const KIND = { footsteps: /\b(footsteps?|steps|walk\w*|run\w*)\b/i, door: /\b(doors?|gates?)\b/i } as const;
+  for (const f of room.foley) {
+    const shot = shots.find((s) => s.ordinal === f.shot_ordinal)!;
+    const spotted = clips.some((c) => (c.track_key === "foley" || c.track_key === "fx") && KIND[f.kind].test(c.label)
+      && c.start_seconds < shot.story_end + 1 && c.start_seconds + c.duration_seconds > shot.story_start - 1);
+    if (spotted || f.start_seconds >= T) continue;
+    const key = addTrack("foley", "Foley", "FOLEY");
+    clips.push({
+      track_key: key, label: f.label, start_seconds: r2(Math.min(f.start_seconds, Math.max(0, T - 0.5))),
+      duration_seconds: r2(Math.max(0.5, Math.min(f.duration_seconds, T - Math.min(f.start_seconds, Math.max(0, T - 0.5))))),
+      source: { cue: f.label, evidence: `${f.evidence} — timed to the shot` },
+    });
+  }
+
   // Score intent from mood / sound intent.
   const intent = [dna.mood.join(", "), dna.sound_intent].filter(Boolean).join(" — ");
   if (music) {
@@ -114,5 +138,5 @@ export function audioSpottingEngine(raw: unknown): AudioSpottingOutput {
 
   const ORDER = ["DX", "VO", "ADR", "FOLEY", "FX", "WALLA", "BG", "MX", "SCORE"];
   tracks.sort((a, b) => ORDER.indexOf(a.family) - ORDER.indexOf(b.family));
-  return { tracks, clips, scene_seconds: r2(T), engine_version: ENGINE_VERSION };
+  return { tracks, clips, scene_seconds: r2(T), acoustics: { space: room.space, why: room.why, dx_fx: room.dx_fx, bg_fx: room.bg_fx }, engine_version: ENGINE_VERSION };
 }

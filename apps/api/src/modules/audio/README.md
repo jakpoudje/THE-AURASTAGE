@@ -81,7 +81,7 @@ Editorial & Timeline (Phase 9) — approved `audio_session_versions` snapshots.
 
 ## Relevant engines
 - `engines/audio/musicSuggestionEngine` 1.0.0 — each scene's suggested music (`music_suggestion` in the workspace): a style from the built-in library chosen from Scene DNA mood, then the dialogue's emotions, then the film's tone; key, tempo, level, placement, instruments from the setting/genre and why. Free. Spotting (1.2.0) names the Score cue after it so the built-in generator plays that style; a scene better without score gets no Score cue.
-- `engines/audio/audioSpottingEngine` — tracks and cues from shots, lines and Scene DNA (evidence per cue). The service passes each line's script position (read from the approved script version) so sound cues land where the action happens.
+- `engines/audio/audioSpottingEngine` — tracks and cues from shots, lines and Scene DNA (evidence per cue). The service passes each line's script position (read from the approved script version) so sound cues land where the action happens. R4 (1.3.0): it also passes each shot's action and the place's Locations & Props description (read-only); after spotting, the scene's room (shared reverb) and the dialogue/background strips for it are written into the mixer **only where the mixer and those tracks are still at their defaults** — anything a person set is kept — and the spot response names the room and its reason (`space`).
 - `engines/audio/loudnessMeterEngine` — ITU-R BS.1770-4 / EBU R128 (integrated, true peak, LRA). Runs in the browser on the rendered mix.
 - `engines/audio/proceduralAudioEngine` — the built-in synthesiser's layer plan.
 - `engines/audio/voiceCastingEngine` — Voice DNA per character and line (also shown in Casting → Voice DNA).

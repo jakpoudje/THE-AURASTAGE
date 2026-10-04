@@ -16,3 +16,5 @@ export * as musicSuggestion from "./musicSuggestionEngine";
 export { musicSuggestionEngine, MUSIC_LIBRARY } from "./musicSuggestionEngine";
 export * as recordedSound from "./recordedSoundEngine";
 export { planRecordedSound, renderRecordedSound, SOUND_CATEGORIES } from "./recordedSoundEngine";
+export * as sceneAcoustics from "./sceneAcousticsEngine";
+export { sceneAcousticsEngine } from "./sceneAcousticsEngine";

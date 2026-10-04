@@ -290,6 +290,8 @@ await check("audio: spot, upload a WAV onto the line, measure, approve, export; 
   await page.getByText("Professional Sound for").waitFor();
   await page.getByRole("button", { name: "Spot audio from the shot plan" }).click();
   await page.getByText(/Spotted \d+ cues on \d+ tracks from shot plan version 1/).waitFor();
+  // R4 sound realism: the room the scene sounds like is named with its reason and set in the mixer.
+  await page.getByText(/Sounds like: .+ \(.+\) — room reverb/).waitFor();
   await reload("Professional Sound for");
   // Item 5: the scene's suggested music (free) is on the page, and the Score cue follows it when there is one.
   await page.getByRole("region", { name: "Suggested music" }).getByText(/BPM|No score/).first().waitFor();
@@ -302,7 +304,9 @@ await check("audio: spot, upload a WAV onto the line, measure, approve, export; 
   await page.getByRole("button", { name: "Measure mix" }).click();
   const msg = await page.getByText(/Measured the rendered mix: /).innerText();
   const lufs = Number((msg.match(/(-\d+\.\d) LUFS/) || [])[1]);
-  if (!(lufs < -15 && lufs > -50)) throw new Error("implausible loudness: " + msg);
+  // Since R4 the dialogue track arrives processed for the room (compressor with make-up gain): a quiet test line measures
+  // hotter than it did raw, but always well under full scale.
+  if (!(lufs < -6 && lufs > -50)) throw new Error("implausible loudness: " + msg);
   await reload("Professional Sound for");
   await page.getByLabel("Loudness measurement").getByText(lufs.toFixed(1)).waitFor();
   await page.getByRole("button", { name: "Approve scene mix" }).click();

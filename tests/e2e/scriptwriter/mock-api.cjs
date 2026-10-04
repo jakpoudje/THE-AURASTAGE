@@ -1148,7 +1148,7 @@ http.createServer((req, res) => {
       const scene = scenes.find((x) => x.id === m[1]); const plan = plans.find((x) => x.scene_id === m[1]); const pv = plan && planVersions.find((v) => v.id === plan.approved_version_id);
       if (!pv || plan.status !== "approved" || plan.review_state !== "current") return aerr(412, "Approve this scene's shot plan in Storyboard first — audio is spotted from the approved version.");
       const dv = sdnaVersions.find((x) => x.id === pv.scene_dna_version_id); const ed = dv.content.editable || {}; const pr = dv.content.proposal || {};
-      const shotsIn = pv.shots.map((x) => ({ ordinal: x.ordinal, story_start: x.story_start, story_end: x.story_end, dialogue_line_ids: x.dialogue_line_ids || [] }));
+      const shotsIn = pv.shots.map((x) => ({ ordinal: x.ordinal, story_start: x.story_start, story_end: x.story_end, dialogue_line_ids: x.dialogue_line_ids || [], description: x.description || "" }));
       const seconds = Math.max(1, ...shotsIn.map((x) => x.story_end));
       const r = eng.audioSpottingEngine({ scene: { number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day }, scene_seconds: seconds, shots: shotsIn,
         lines: (pr.dialogue ? pr.dialogue.line_ids : []).map((id) => dlines.find((l) => l.id === id)).filter(Boolean).map((l) => ({ id: l.id, speaker: l.speaker_name, character_id: l.character_id,
@@ -1167,7 +1167,17 @@ http.createServer((req, res) => {
         aclips.push({ id: crypto.randomUUID(), session_id: s.id, track_id: keyToId[c.track_key], label: c.label, kind: "cue", asset_id: null, start_seconds: c.start_seconds, duration_seconds: c.duration_seconds,
           offset_seconds: 0, gain_db: 0, fade_in_seconds: 0, fade_out_seconds: 0, source: c.source, updated_at: now() });
       }
-      return send(200, { session_id: s.id, tracks: r.tracks.length, cues: r.clips.length, shot_plan_version_number: pv.version_number });
+      // R4: the scene's room into an untouched mixer (as audio.service applySceneAcoustics): reverb, dialogue and background strips.
+      const applied = [];
+      if (!s.mix) { s.mix = { ...cc0.NEUTRAL_SESSION_MIX, reverb: r.acoustics.space.reverb }; applied.push("room reverb"); }
+      let ndx = 0, nbg = 0;
+      for (const tr of atracks.filter((x) => x.session_id === s.id && !x.added_by_hand && !x.fx)) {
+        if (tr.family === "DX" || tr.family === "VO") { tr.fx = r.acoustics.dx_fx; ndx++; } else if (tr.family === "BG") { tr.fx = r.acoustics.bg_fx; nbg++; }
+      }
+      if (ndx) applied.push(`dialogue processed for the space (${ndx} track${ndx === 1 ? "" : "s"})`);
+      if (nbg) applied.push("background as room tone");
+      return send(200, { session_id: s.id, tracks: r.tracks.length, cues: r.clips.length, shot_plan_version_number: pv.version_number,
+        space: { id: r.acoustics.space.id, name: r.acoustics.space.name, why: r.acoustics.why, applied } });
     }
     if ((m = u.match(/^\/api\/projects\/[^/]+\/audio\/scenes\/([^/]+)\/approve$/))) {
       const s = asessions.find((x) => x.scene_id === m[1]); const r = aud.audioReadiness(s, atracks.filter((t) => t.session_id === s.id), aclips.filter((c) => c.session_id === s.id), [...ameasures].reverse().find((x) => x.session_id === s.id) || null);

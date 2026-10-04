@@ -113,7 +113,9 @@ export function useAudio(projectId: string) {
     reload,
     project, ws, loading, busy, error, notice, buffers,
     spot: (sceneId: string) =>
-      run("spot", () => audioApi.spot(projectId, sceneId), (r) => `Spotted ${r.cues} cues on ${r.tracks} tracks from shot plan version ${r.shot_plan_version_number}. Recordings you've placed are kept.`),
+      run("spot", () => audioApi.spot(projectId, sceneId), (r) => `Spotted ${r.cues} cues on ${r.tracks} tracks from shot plan version ${r.shot_plan_version_number}. ${
+        r.space ? `Sounds like: ${r.space.name} (${r.space.why.join("; ")}) — ${r.space.applied.length ? `${r.space.applied.join(", ")} set in the mixer` : "your own mixer settings were kept"}. ` : ""
+      }Recordings you've placed are kept.`),
     updateTrack: (id: string, patch: UpdateAudioTrackInput, msg: string | null = null) => run("save", () => audioApi.updateTrack(id, patch), () => msg),
     addTrack: (sessionId: string, input: AddAudioTrackInput) => run("save", () => audioApi.addTrack(sessionId, input), (t) => `Track “${t.name}” added — it stays when the scene is re-spotted.`),
     moveTrack: (id: string, direction: -1 | 1) => run("save", () => audioApi.moveTrack(id, direction), () => null),

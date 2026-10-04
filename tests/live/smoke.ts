@@ -414,8 +414,14 @@ await check("audio: spot the approved scene into tracks and cues (unplanned scen
   const sc = ws.scenes.find((x: any) => x.scene.id === s1);
   assert(sc.session.id === sessionId && sc.tracks.length >= 2 && sc.clips.some((c: any) => c.source.dialogue_line_id), "no dialogue cue");
   // Sound cues from the action lines are placed where they happen in the script (audioSpottingEngine 1.1.0).
-  const fx = sc.clips.filter((c: any) => c.source.cue && !["ambience", "score"].includes(c.source.cue));
+  // (Footsteps and doors timed to a shot's action — R4 — are placed by their shot instead.)
+  const fx = sc.clips.filter((c: any) => c.source.cue && !["ambience", "score"].includes(c.source.cue) && !/timed to the shot/.test(c.source.evidence));
   assert(fx.length >= 1 && fx.every((c: any) => /placed by its script position/.test(c.source.evidence)), `cues not placed by script: ${fx.map((c: any) => c.source.evidence).join(" | ") || "none"}`);
+  // R4 sound realism: the scene's room is chosen with its reason, and set in the fresh mixer — the shared reverb is that
+  // room and every dialogue track is processed for it.
+  assert(r.space && r.space.name && r.space.why.length > 0 && r.space.applied.includes("room reverb"), `room not applied: ${JSON.stringify(r.space)}`);
+  const dxTracks = sc.tracks.filter((t: any) => t.family === "DX" || t.family === "VO");
+  assert(dxTracks.length > 0 && dxTracks.every((t: any) => t.fx.comp.on && t.fx.reverb_send_db > -60), "dialogue not processed for the room");
   const typing = fx.find((c: any) => c.label === "Keyboard typing"), said = sc.clips.find((c: any) => c.source.dialogue_line_id);
   assert(typing && typing.start_seconds >= said.start_seconds + said.duration_seconds - 0.01, `typing should follow the line it comes after (${typing?.start_seconds} vs ${said.start_seconds}+${said.duration_seconds})`);
   // Honest generators: the built-in synthesiser is ready; nothing unbuilt claims to be connected.

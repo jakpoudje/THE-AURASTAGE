@@ -61,6 +61,13 @@ export async function scriptElementLines(db: SupabaseClient, versionId: string):
   const data = await readScriptVersion(db, versionId);
   return new Map(((data?.elements ?? []) as { index: number; line: number }[]).map((e) => [e.index, e.line]));
 }
+/** The scene's place in Locations & Props (read-only; World owns it): its description sets the room's sound (R4). */
+export async function sceneLocationDescription(db: SupabaseClient, projectId: string, sceneId: string): Promise<string | null> {
+  const ids = (await rows(db.from("world_appearances").select("object_id").eq("scene_id", sceneId).eq("object_type", "location"))).map((r) => r.object_id as string);
+  if (!ids.length) return null;
+  const locs = await rows(db.from("locations").select("description, archived_at").eq("project_id", projectId).in("id", ids));
+  return (locs.find((l) => !l.archived_at && l.description)?.description as string | undefined) ?? null;
+}
 export const listCharacters = (db: SupabaseClient, p: string) => rows(db.from("characters").select("id, name, pronunciation").eq("project_id", p));
 export const listSessions = (db: SupabaseClient, p: string) => paged(() => db.from("audio_sessions").select("*").eq("project_id", p).order("id"));
 export const listTracks = (db: SupabaseClient, p: string) => paged(() => db.from("audio_tracks").select("*").eq("project_id", p).order("ordinal", { ascending: true }).order("id"));

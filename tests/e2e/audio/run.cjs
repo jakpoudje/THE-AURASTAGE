@@ -77,6 +77,8 @@ async function api(method, p, body) {
   await step("spot audio from the approved shot plan: dialogue, ambience and score cues; survives reload", async () => {
     await page.getByRole("button", { name: "Spot audio from the shot plan" }).click();
     await page.getByText(/Spotted \d+ cues on \d+ tracks from shot plan version 1/).waitFor();
+    // R4: the scene's room is named, with the words it came from, and set in the mixer.
+    await page.getByText(/Sounds like: .+ \(.+\) — room reverb, dialogue processed for the space/).waitFor();
     await page.getByRole("button", { name: /Clip Tunde.*You came/i }).waitFor();
     await reload();
     await page.getByRole("button", { name: /Clip Tunde.*You came/i }).waitFor();
@@ -137,9 +139,12 @@ async function api(method, p, body) {
     await page.getByRole("button", { name: "Measure mix" }).click();
     const n = await page.getByText(/Measured the rendered mix: -\d+\.\d LUFS, true peak -\d+\.\d dBTP\./).innerText();
     const lufs = Number(n.match(/(-\d+\.\d) LUFS/)[1]), tp = Number(n.match(/(-\d+\.\d) dBTP/)[1]);
-    // 440 Hz tone at 0.1 peak for 2 s in a longer scene: true peak ≈ -20 dBTP (panned mono -> stereo -3 dB law may apply).
-    if (!(tp < -15 && tp > -27)) throw new Error("implausible true peak " + tp);
-    if (!(lufs < -15 && lufs > -45)) throw new Error("implausible loudness " + lufs);
+    // 440 Hz tone at 0.1 peak for 2 s in a longer scene: true peak ≈ -20 dBTP unprocessed. Since R4 the dialogue track
+    // arrives with the "Dialogue clean-up" strip for the scene's room: the compressor (Chromium's, with its own make-up
+    // gain, plus 3 dB) and the mono -> stereo up-mix lift it by up to ~13 dB — still well under the -1 dBTP ceiling.
+    if (!(tp < -4 && tp > -27)) throw new Error("implausible true peak " + tp);
+    // Integrated loudness gates out the silence, so it follows the (processed) tone: about 2–3 LU under its true peak.
+    if (!(lufs < -6 && lufs > -45 && lufs < tp)) throw new Error("implausible loudness " + lufs);
     await reload();
     await page.getByLabel("Loudness measurement").getByText(String(lufs.toFixed(1))).waitFor();
     await page.getByRole("list", { name: "Audio checks" }).getByText(/^Measured /).waitFor();

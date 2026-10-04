@@ -24,8 +24,9 @@ function fakeDb(rows: Record<string, Row[]>, rpcImpl: (fn: string, a: Row) => { 
   const calls: { fn: string; args: Row }[] = [];
   const from = (t: string) => {
     const f: [string, unknown][] = [];
-    const res = () => (rows[t] ?? []).filter((r) => f.every(([k, v]) => r[k] === v));
-    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), order: () => q, limit: () => q,
+    const ins: [string, unknown[]][] = [];
+    const res = () => (rows[t] ?? []).filter((r) => f.every(([k, v]) => r[k] === v) && ins.every(([k, vs]) => vs.includes(r[k])));
+    const q: any = { select: () => q, eq: (k: string, v: unknown) => (f.push([k, v]), q), in: (k: string, vs: unknown[]) => (ins.push([k, vs]), q), order: () => q, limit: () => q,
       maybeSingle: async () => ({ data: res()[0] ?? null, error: null }), then: (ok: any) => ok({ data: res(), error: null }) };
     return q;
   };
@@ -88,6 +89,42 @@ describe("Audio Studio routes", () => {
     const dx = args.p_clips.find((c: Row) => c.source.dialogue_line_id === L1);
     expect(dx).toMatchObject({ track_key: `dx:${T}`, start_seconds: 4, duration_seconds: 1.5 });
     expect(args.p_tracks.map((t: Row) => t.family)).toEqual(["DX", "FOLEY", "BG", "SCORE"]);
+  });
+
+  it("R4: the scene's room goes into an untouched mixer — reverb for the space, dialogue and background strips for it", async () => {
+    rows.audio_tracks = [track(), track({ id: "bg-track", key: "bg", family: "BG", name: "BG — Ambience" })];
+    const fake = fakeDb(rows, (fn) => ({ data: fn === "spot_audio_session" ? session() : {} }));
+    const res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/spot` });
+    expect(res.json().space).toMatchObject({ id: "outdoor", why: ["EXT (scene heading)"] });
+    const mix = fake.calls.find((c) => c.fn === "update_audio_mix")!;
+    expect(mix.args).toMatchObject({ p_session_id: SES, p_revision: REV, p_mix: { reverb: { decay_s: 0.3, return_db: -12 } } });
+    const strips = fake.calls.filter((c) => c.fn === "update_audio_track");
+    expect(strips.find((c) => c.args.p_track_id === TR)!.args.p_patch.fx).toMatchObject({ hpf_hz: 100, reverb_send_db: -30, comp: { on: true } });
+    expect(strips.find((c) => c.args.p_track_id === "bg-track")!.args.p_patch.fx).toMatchObject({ reverb_send_db: -60 });
+  });
+
+  it("R4: never replaces what a person set — their reverb and their channel strip stay exactly as they are", async () => {
+    const mine = { reverb: { type: "hall", decay_s: 3, pre_delay_ms: 40, return_db: 0 } };
+    rows.audio_sessions = [session({ mix: mine })];
+    rows.audio_tracks = [track({ fx: { hpf_hz: 120, reverb_send_db: -3 } }), track({ id: "bg-track", key: "bg", family: "BG" })];
+    const fake = fakeDb(rows, (fn) => ({ data: fn === "spot_audio_session" ? session({ mix: mine }) : {} }));
+    const res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/spot` });
+    expect(fake.calls.some((c) => c.fn === "update_audio_mix")).toBe(false);
+    expect(fake.calls.filter((c) => c.fn === "update_audio_track").map((c) => c.args.p_track_id)).toEqual(["bg-track"]);
+    expect(res.json().space.applied).toEqual(["background as room tone"]);
+  });
+
+  it("R4: the place's description in Locations & Props sets the room, and shots' action times the Foley", async () => {
+    rows.scenes = [{ ...rows.scenes[0], heading: "INT. NEWSROOM - DAY", int_ext: "INT", location: "NEWSROOM", time_of_day: "DAY" }];
+    rows.world_appearances = [{ scene_id: S1, object_type: "location", object_id: "loc-1" }];
+    rows.locations = [{ id: "loc-1", project_id: P, description: "A cramped back office stacked with files", archived_at: null }];
+    rows.shot_plan_versions[0].shots[0] = { ...rows.shot_plan_versions[0].shots[0], description: "Amara enters and walks to the desk." };
+    const fake = fakeDb(rows, (fn) => ({ data: fn === "spot_audio_session" ? session() : {} }));
+    const res = await (await app(fake)).inject({ method: "POST", url: `/api/projects/${P}/audio/scenes/${S1}/spot` });
+    expect(res.json().space).toMatchObject({ id: "small_room", why: [expect.stringContaining("cramped")] });
+    const clips = fake.calls[0].args.p_clips as Row[];
+    expect(clips.find((c) => c.track_key === "bg").label).toContain("small room tone");
+    expect(clips.filter((c) => c.source.evidence?.includes("timed to the shot")).map((c) => c.label)).toEqual(["Footsteps on the floor", "Door opens"]);
   });
 
   it("item 5: every scene gets a music suggestion from the built-in library; the score cue is named after it (free)", async () => {

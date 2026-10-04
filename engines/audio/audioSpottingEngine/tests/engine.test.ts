@@ -42,7 +42,7 @@ describe("audioSpottingEngine", () => {
 
   it("adds an ambience bed across the scene from the heading, weather and atmosphere", () => {
     const bg = audioSpottingEngine(base()).clips.find((c) => c.track_key === "bg")!;
-    expect(bg).toMatchObject({ start_seconds: 0, duration_seconds: 20, label: "Exterior lagos harbour ambience — rain, dark, night" });
+    expect(bg).toMatchObject({ start_seconds: 0, duration_seconds: 20, label: "Exterior lagos harbour ambience, open exterior at night — rain, dark, night" });
   });
 
   it("splits Scene DNA sound cues into Foley vs FX, with the script line as evidence", () => {
@@ -111,5 +111,48 @@ describe("audioSpottingEngine 1.2.0: the score cue follows the scene's music sug
     const without = audioSpottingEngine({ ...base(), music: { needed: false, description: "Neutral pad (calm)", why: [] } });
     expect(without.clips.some((c) => c.track_key === "score")).toBe(false);
     expect(audioSpottingEngine(base()).clips.find((c) => c.track_key === "score")!.label).toContain("tense");
+  });
+
+  describe("R4 sound realism (1.3.0)", () => {
+    const withShots = () => {
+      const b = base();
+      b.shots[0] = { ...b.shots[0], description: "Tunde steps out onto the jetty." } as never;
+      b.shots[1] = { ...b.shots[1], description: "Close on Tunde. Behind him, a door slams in the harbour office." } as never;
+      b.shots[2] = { ...b.shots[2], description: "Amara walks along the jetty towards him." } as never;
+      return b;
+    };
+
+    it("times footsteps and doors to each shot's action, citing the shot", () => {
+      const foley = audioSpottingEngine(withShots()).clips.filter((c) => c.track_key === "foley");
+      const timed = foley.filter((c) => c.source.evidence.includes("timed to the shot"));
+      expect(timed.map((c) => [c.label, c.start_seconds])).toEqual([["Footsteps outdoors", 0.2], ["Door slams", 4.3]]);
+      expect(timed[0].source.evidence).toContain("Shot 1:");
+      // Regression: "Footsteps outdoors" just before it is not a door already spotted.
+    });
+
+    it("doesn't double a sound the script already spotted in that shot", () => {
+      // The script's "Footsteps" cue sits in shot 3 (spread through the scene), so Amara's walk adds no second one.
+      const foley = audioSpottingEngine(withShots()).clips.filter((c) => c.track_key === "foley" && /footsteps/i.test(c.label));
+      expect(foley).toHaveLength(2);
+      expect(foley.some((c) => c.start_seconds >= 10 && c.source.evidence.includes("timed to the shot"))).toBe(false);
+    });
+
+    it("returns the scene's acoustic space with the dialogue and background strips for it", () => {
+      const outside = audioSpottingEngine(base()).acoustics;
+      expect(outside.space.id).toBe("outdoor");
+      expect(outside.dx_fx.reverb_send_db).toBe(-30);
+      const b = base();
+      b.scene = { number: 3, heading: "INT. CHURCH - DAY", int_ext: "INT", location: "CHURCH", time_of_day: "DAY" };
+      const church = audioSpottingEngine(b);
+      expect(church.acoustics.space).toMatchObject({ id: "large_hall", reverb: { type: "hall" } });
+      expect(church.acoustics.dx_fx.reverb_send_db).toBeGreaterThan(-10);
+      expect(church.clips.find((c) => c.track_key === "bg")!.label).toContain("large hall tone");
+    });
+
+    it("a size in the Locations & Props description sets the space", () => {
+      const b = base();
+      b.scene = { number: 4, heading: "INT. NEWSROOM - DAY", int_ext: "INT", location: "NEWSROOM", time_of_day: "DAY" };
+      expect(audioSpottingEngine({ ...b, location_description: "A cramped back office full of files" }).acoustics.space.id).toBe("small_room");
+    });
   });
 });

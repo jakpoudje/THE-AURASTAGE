@@ -8,7 +8,7 @@
 // are never removed (rule 11).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { once } from "../../infrastructure/requestMemo";
-import { AddAudioTrackInputSchema, loudnessTarget, MoveAudioTrackInputSchema, SessionMixSchema, UpdateAudioMixInputSchema } from "@aurastage/contracts";
+import { AddAudioTrackInputSchema, loudnessTarget, MoveAudioTrackInputSchema, NEUTRAL_SESSION_MIX, NEUTRAL_TRACK_FX, SessionMixSchema, TrackFxSchema, UpdateAudioMixInputSchema } from "@aurastage/contracts";
 import { audioSpotting, audioSpottingEngine, musicSuggestionEngine } from "@aurastage/engines";
 // Storyboard owns plan review state; ask it to refresh (it refreshes Scene DNA first).
 import { refreshShotPlanReview } from "../shots/shots.service";
@@ -163,17 +163,25 @@ export async function spotScene(db: SupabaseClient, projectId: string, sceneId: 
   const proposal = (content.proposal ?? {}) as Row;
   const lineIds: string[] = proposal.dialogue?.line_ids ?? [];
   const name = new Map(chars.map((c) => [c.id as string, c.name as string]));
-  const shots = ((pv.shots as Row[]) ?? []).map((s) => ({ ordinal: s.ordinal, story_start: Number(s.story_start), story_end: Number(s.story_end), dialogue_line_ids: s.dialogue_line_ids ?? [] }));
+  const shots = ((pv.shots as Row[]) ?? []).map((s) => ({
+    ordinal: s.ordinal, story_start: Number(s.story_start), story_end: Number(s.story_end), dialogue_line_ids: s.dialogue_line_ids ?? [],
+    description: String(s.description ?? "").slice(0, 2000),
+  }));
   const seconds = Math.max(1, ...shots.map((s) => s.story_end));
   const sceneLines = lineIds.map((id) => lines.find((l) => l.id === id)).filter((l): l is Row => !!l);
   // Script positions (source lines) of the spoken lines and the scene, so sound cues land where the action happens.
   const sourceVersion = sceneLines[0]?.source_version_id as string | undefined;
   const at = sourceVersion ? await repo.scriptElementLines(db, sourceVersion) : new Map<number, number>();
   const bounds = [at.get(scene.element_start), at.get(scene.element_end)];
-  const { tracks, clips, engine_version } = audioSpottingEngine({
+  const [locationDescription, before] = await Promise.all([
+    repo.sceneLocationDescription(db, projectId, sceneId),
+    repo.listSessions(db, projectId).then((all) => all.find((x) => x.scene_id === sceneId) ?? null),
+  ]);
+  const { tracks, clips, engine_version, acoustics } = audioSpottingEngine({
     scene: { number: scene.number, heading: scene.heading, int_ext: scene.int_ext, location: scene.location, time_of_day: scene.time_of_day },
     scene_seconds: seconds,
     shots,
+    location_description: locationDescription ? locationDescription.slice(0, 4000) : null,
     script_lines: bounds[0] && bounds[1] ? { start: bounds[0], end: bounds[1] } : null,
     lines: sceneLines
       .map((l) => ({
@@ -188,7 +196,33 @@ export async function spotScene(db: SupabaseClient, projectId: string, sceneId: 
     music: (() => { const m = musicFor(scene, scenes.indexOf(scene), scenes.length, pv, dnaVersions, lines, story); return { needed: m.needed, description: m.description, why: m.why }; })(),
   });
   const s = await repo.spot(db, { projectId, sceneId, planVersionId: pv.id, seconds, tracks, clips, engineVersion: engine_version });
-  return { session_id: s.id, tracks: tracks.length, cues: clips.length, shot_plan_version_number: pv.version_number };
+  const room = await applySceneAcoustics(db, projectId, s, before, acoustics);
+  return { session_id: s.id, tracks: tracks.length, cues: clips.length, shot_plan_version_number: pv.version_number, space: room };
+}
+
+/**
+ * R4 sound realism: the scene's room — its shared reverb, and the dialogue and background strips for that space — goes
+ * into the mixer only where it is still untouched (the defaults). Anything a person has set stays exactly as it is.
+ */
+async function applySceneAcoustics(db: SupabaseClient, projectId: string, session: Row, before: Row | null, a: ReturnType<typeof audioSpottingEngine>["acoustics"]) {
+  const same = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y);
+  const applied: string[] = [];
+  const mix = SessionMixSchema.parse(session.mix ?? {});
+  if (same(mix, NEUTRAL_SESSION_MIX) && (!before || same(SessionMixSchema.parse(before.mix ?? {}), NEUTRAL_SESSION_MIX))) {
+    await repo.updateMix(db, session.id as string, { ...mix, reverb: a.space.reverb }, session.revision as string);
+    applied.push("room reverb");
+  }
+  const tracks = (await repo.listTracks(db, projectId)).filter((t) => t.session_id === session.id && !t.added_by_hand);
+  let dx = 0, bg = 0;
+  for (const t of tracks) {
+    const fx = TrackFxSchema.parse(t.fx ?? {});
+    if (!same(fx, NEUTRAL_TRACK_FX)) continue;
+    if (t.family === "DX" || t.family === "VO") { await repo.updateTrack(db, t.id as string, { fx: a.dx_fx }); dx++; }
+    else if (t.family === "BG") { await repo.updateTrack(db, t.id as string, { fx: a.bg_fx }); bg++; }
+  }
+  if (dx) applied.push(`dialogue processed for the space (${dx} track${dx === 1 ? "" : "s"})`);
+  if (bg) applied.push("background as room tone");
+  return { id: a.space.id, name: a.space.name, why: a.why, applied };
 }
 
 export async function updateTrack(db: SupabaseClient, trackId: string, payload: unknown) {

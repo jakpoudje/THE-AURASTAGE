@@ -5,7 +5,13 @@ export const AudioSpottingInputSchema = z.object({
   /** Story time of the approved shot plan (seconds). */
   scene_seconds: z.number().positive(),
   /** Shots of the approved shot plan version (story-time intervals + which lines they cover). */
-  shots: z.array(z.object({ ordinal: z.number().int(), story_start: z.number(), story_end: z.number(), dialogue_line_ids: z.array(z.string()) })),
+  shots: z.array(z.object({
+    ordinal: z.number().int(), story_start: z.number(), story_end: z.number(), dialogue_line_ids: z.array(z.string()),
+    /** What happens in the shot (1.3.0): footsteps and doors are timed to it. */
+    description: z.string().max(2000).optional(),
+  })),
+  /** The place's description in Locations & Props (1.3.0): its size and kind set the scene's acoustic space. */
+  location_description: z.string().max(4000).nullable().optional(),
   /** Dialogue lines of the locked Scene DNA, in script order. */
   lines: z.array(
     z.object({
